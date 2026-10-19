@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 type Page = { id: string; title: string; parent_id: string | null; sort_key: string };
 type Row = { page: Page; depth: number };
+type SearchHit = { id: string; title: string; parent_id: string | null };
 
 function flatten(pages: Page[], parent: string | null = null, depth = 0, visited = new Set<string>()): Row[] {
   const rows: Row[] = [];
@@ -22,6 +23,9 @@ export default function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
   const reload = useCallback(async () => {
     setPages(await invoke<Page[]>("list_pages"));
   }, []);
@@ -29,6 +33,19 @@ export default function App() {
   useEffect(() => {
     void reload().catch(e => setError(String(e)));
   }, [reload]);
+
+  useEffect(() => {
+    if (!search.trim()) { setHits([]); setSearching(false); return; }
+    let cancelled = false;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      void invoke<SearchHit[]>("search_notes", { query: search })
+        .then(result => { if (!cancelled) { setHits(result); setError(""); } })
+        .catch(reason => { if (!cancelled) setError(String(reason)); })
+        .finally(() => { if (!cancelled) setSearching(false); });
+    }, 180);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [search, pages]);
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true); setError("");
@@ -48,13 +65,18 @@ export default function App() {
           setSelected(page.id);
         })}>＋</button>
       </div>
-      <nav aria-label="Pages">
+      <input className="search-input" aria-label="Search notes" placeholder="Search notes…" value={search} onChange={e => setSearch(e.target.value)} />
+      {search.trim() && <div className="search-caption">{searching ? "Searching…" : `${hits.length} match(es)`}</div>}
+      <nav aria-label={search.trim() ? "Search results" : "Pages"}>
+        {search.trim() && hits.map(hit => <button key={hit.id} className={"page-item " + (selected === hit.id ? "active" : "")} onClick={() => setSelected(hit.id)}><span>⌕</span><span className="page-title">{hit.title}</span></button>)}
+        {!search.trim() && <>
         {rows.map(({ page, depth }) => <button key={page.id}
           className={"page-item " + (selected === page.id ? "active" : "")}
           style={{ paddingLeft: 16 + depth * 16 }}
           onClick={() => setSelected(page.id)}>
           <span>▤</span><span className="page-title">{page.title}</span>
         </button>)}
+        </>}
       </nav>
       {pages.length === 0 && <p className="hint">Create your first note to begin.</p>}
       <div className="sidebar-footer">Stored locally in SQLite · No account needed</div>
