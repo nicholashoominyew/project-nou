@@ -11,7 +11,8 @@ A Windows-first, local-first knowledge workspace with **two separate systems**: 
 - Move pages and their descendants to trash (restoration UI not yet available).
 - Keep page metadata in an offline per-user SQLite database.
 - Plain-text note content editor with Yjs updates saved to SQLite and local FTS5 title/body search.
-- **Not implemented:** BlockNote rich-text blocks, file manager, server sync, backup/restore, signed installer.
+- Local **recovery snapshot creation and integrity verification** via SQLite `VACUUM INTO` (same PC by default; not independent backup).
+- **Not implemented:** BlockNote rich-text blocks, file manager, server sync, automated/off-device backups, guided restoration, signed installer.
 
 ## Windows development
 See [Windows setup and commands](docs/development/WINDOWS.md). After installing Node.js, Rust MSVC, Visual Studio C++ Build Tools and WebView2:
@@ -43,13 +44,15 @@ cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 - [Notes persistence ADR](docs/architecture/ADR-001-notes-persistence.md)
 - [Initial Notes SQLite migration](db/notes/001_initial.sql)
 - [SQLite schema tests](tests/test_notes_schema.py)
+- [Snapshot safety tests](tests/test_notes_snapshot.py)
+- [Native backup implementation](apps/desktop/src-tauri/src/backup.rs)
 - [Windows development guide](docs/development/WINDOWS.md)
 - [Phase 0 issues](https://github.com/nicholashoominyew/project-nou/issues)
 
 ## Next engineering milestones
 1. Verify Windows CI runs, fix native compilation and add necessary bundle assets.
 2. Validate offline editor persistence and SQLite search on an actual Windows machine.
-3. Implement safe Notes backup/restore and a richer BlockNote document model with explicit migration from current Y.Text.
+3. Verify local snapshot restore on a Windows test machine, then build independent off-device backup and guided restore; add BlockNote with explicit migration from current Y.Text.
 4. Design Files database and verified archive state machine separately.
 
 Never commit private note contents or credentials.
