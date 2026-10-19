@@ -56,7 +56,7 @@ jobs:
       - name: Rust compilation check
         run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: Create unsigned NSIS Windows test installer
-        run: npm run tauri -- build --bundles nsis
+        run: npm exec --workspace=@nou/desktop -- tauri build --bundles nsis
       - name: Validate installer file and write SHA256SUMS
         shell: pwsh
         run: |
