@@ -117,6 +117,11 @@ fn rename_page(db: State<'_, Db>, page_id: String, title: String) -> Result<(), 
         "UPDATE pages SET title=?1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE id=?2 AND deleted_at IS NULL",
         params![title,page_id]).map_err(|e| e.to_string())?;
     if affected != 1 { return Err("Page not found".into()); }
+    // Keep derived FTS titles consistent after a rename without rewriting Yjs content.
+    conn.execute(
+        "UPDATE page_search SET title=?1 WHERE page_id=?2",
+        params![title,page_id],
+    ).map_err(|e| e.to_string())?;
     Ok(())
 }
 
