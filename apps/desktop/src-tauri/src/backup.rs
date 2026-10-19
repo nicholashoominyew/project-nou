@@ -79,6 +79,45 @@ pub fn verify_snapshot(directory: &Path, filename: &str) -> Result<Snapshot, Str
     })
 }
 
+/// Recover a verified snapshot into a fresh, isolated SQLite database.
+/// Never open or overwrite the live application's Notes database.
+pub fn stage_restore(directory: &Path, filename: &str, staging: &Path) -> Result<Snapshot, String> {
+    let selected = verify_snapshot(directory, filename)?;
+    fs::create_dir_all(staging).map_err(|e| format!("Cannot create staging directory: {e}"))?;
+    let source = directory.join(filename);
+    let restored_name = format!("restore-{}.sqlite3", Uuid::new_v4());
+    let destination = staging.join(&restored_name);
+
+    // The caller can inspect this recovered copy before any cutover decision.
+    // create_new ensures a previous successful recovery cannot be overwritten.
+    let mut input = fs::File::open(&source).map_err(|e| e.to_string())?;
+    let mut output = fs::OpenOptions::new().write(true).create_new(true).open(&destination)
+        .map_err(|e| e.to_string())?;
+    if let Err(e) = std::io::copy(&mut input, &mut output) {
+        drop(output);
+        let _ = fs::remove_file(&destination);
+        return Err(format!("Restore copy failed: {e}"));
+    }
+    output.sync_all().map_err(|e| format!("Restore flush failed: {e}"))?;
+    drop(output);
+    let bytes = match verify_file(&destination) {
+        Ok(size) if size == selected.bytes => size,
+        Ok(_) => {
+            let _ = fs::remove_file(&destination);
+            return Err("Restored file size does not match source snapshot".into());
+        }
+        Err(error) => {
+            let _ = fs::remove_file(&destination);
+            return Err(format!("Staged restore failed verification: {error}"));
+        }
+    };
+    Ok(Snapshot {
+        filename: restored_name,
+        path: destination.to_string_lossy().to_string(),
+        bytes,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,6 +148,35 @@ mod tests {
         assert_eq!(restored_title, "Before backup");
         assert!(verify_snapshot(&dir.join("snapshots"), &snapshot.filename).is_ok());
         drop(backup_db);
+        drop(db);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn restore_is_staged_and_live_file_unchanged() {
+        let dir = temporary_directory();
+        let live_path = dir.join("live.sqlite3");
+        let db = Connection::open(&live_path).unwrap();
+        db.execute_batch("
+            CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY);
+            INSERT INTO schema_migrations(version) VALUES (1);
+            CREATE TABLE pages(id TEXT PRIMARY KEY, title TEXT NOT NULL);
+            INSERT INTO pages VALUES ('p1','Original');
+        ").unwrap();
+        let snapshots = dir.join("snapshots");
+        let snapshot = create_snapshot(&db, &snapshots).unwrap();
+        db.execute("UPDATE pages SET title='Live change' WHERE id='p1'", []).unwrap();
+        let staged = stage_restore(&snapshots, &snapshot.filename, &dir.join("restore-tests")).unwrap();
+        let staged_db = Connection::open(&staged.path).unwrap();
+        let title: String = staged_db.query_row(
+            "SELECT title FROM pages WHERE id='p1'", [], |row| row.get(0)
+        ).unwrap();
+        let live_title: String = db.query_row(
+            "SELECT title FROM pages WHERE id='p1'", [], |row| row.get(0)
+        ).unwrap();
+        assert_eq!(title, "Original");
+        assert_eq!(live_title, "Live change");
+        drop(staged_db);
         drop(db);
         fs::remove_dir_all(dir).unwrap();
     }
