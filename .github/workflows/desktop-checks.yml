@@ -1,31 +1,66 @@
-name: Windows desktop checks
+name: Windows desktop build and test installer
 
 on:
   push:
+    branches: [main]
     paths:
       - 'apps/desktop/**'
+      - 'db/notes/**'
+      - 'tests/**'
       - 'package.json'
       - '.github/workflows/desktop-checks.yml'
   pull_request:
     paths:
       - 'apps/desktop/**'
+      - 'db/notes/**'
+      - 'tests/**'
       - 'package.json'
       - '.github/workflows/desktop-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  windows-check:
+  windows-build:
+    name: Compile, test, package x64 Windows
     runs-on: windows-latest
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install dependencies
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up Rust MSVC
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+      - name: Install JS dependencies
         run: npm install --no-audit --no-fund
-      - name: Check TypeScript
+      - name: Generate Tauri icon assets
+        run: npm run icons
+      - name: SQLite regression tests
+        run: python -m unittest discover -s tests -v
+      - name: TypeScript typecheck
         run: npm run typecheck
-      - name: Build frontend
+      - name: Vite production build
         run: npm run build
-      - name: Check native Rust backend
+      - name: Rust unit tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Rust compilation check
         run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Create unsigned NSIS Windows test installer
+        run: npm run tauri -- build --bundles nsis
+      - name: Upload unsigned test installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-nou-windows-x64-unsigned
+          path: apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 14
