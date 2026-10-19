@@ -8,11 +8,12 @@ A Windows-first, local-first knowledge workspace with **two separate systems**: 
 ## Prototype capabilities
 - Create a page or nested subpage in the default Personal workspace.
 - Rename and manually reorder pages using up/down controls.
-- Move pages and their descendants to trash (restoration UI not yet available).
+- Move pages and descendants to Trash; recover deleted page trees through a Restore action without clearing their Yjs update history.
 - Keep page metadata in an offline per-user SQLite database.
 - Plain-text note content editor with Yjs updates saved to SQLite and local FTS5 title/body search.
 - Local **recovery snapshot creation and integrity verification** via SQLite `VACUUM INTO` (same PC by default; not independent backup).
-- **Not implemented:** BlockNote rich-text blocks, file manager, server sync, automated/off-device backups, guided restoration, signed installer.
+- Stage verified recovery copies without replacing the live database; full live-database restoration remains out of scope.
+- **Not implemented:** BlockNote rich-text blocks, file manager, server sync, automated/off-device backups, guided full-database restoration, signed installer.
 
 ## Windows development
 See [Windows setup and commands](docs/development/WINDOWS.md). After installing Node.js, Rust MSVC, Visual Studio C++ Build Tools and WebView2:
@@ -45,6 +46,7 @@ cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 - [Initial Notes SQLite migration](db/notes/001_initial.sql)
 - [SQLite schema tests](tests/test_notes_schema.py)
 - [Snapshot safety tests](tests/test_notes_snapshot.py)
+- [Trash and Restore SQL behavior tests](tests/test_notes_trash_restore.py)
 - [Native backup implementation](apps/desktop/src-tauri/src/backup.rs)
 - [Windows development guide](docs/development/WINDOWS.md)
 - [Phase 0 issues](https://github.com/nicholashoominyew/project-nou/issues)
