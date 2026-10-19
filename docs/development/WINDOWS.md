@@ -55,3 +55,15 @@ While app is CLOSED, back up its complete per-user application data directory us
 6. Simulate a failed disk write only in a disposable test database; verify a visible save error instead of false success.
 
 Notes are Yjs documents stored as ordered updates. The current prototype uses a plain-text `Y.Text` field named `body`; a future BlockNote editor needs a defined migration strategy. Do not assume Yjs text updates are directly compatible with BlockNote block trees.
+
+## Offline search acceptance test (manual; not yet verified)
+1. Create a new page with the title `Morning planning`, without typing body text.
+2. Search for `Morning` in the sidebar; verify the page is visible.
+3. Type `Project NOU offline notes`, wait for a successful save and search for `offline`.
+4. Switch pages and search again. Confirm that stored text is searchable.
+5. Move a matching page to trash and verify it no longer appears in search results.
+6. Rename another matching page and verify the new title is indexed.
+7. Try punctuation and literal double quotes; a search must not throw an FTS query syntax error.
+8. Close, reopen and repeat the search while disconnected from the network.
+
+Implementation uses SQLite FTS5 over the separate Notes database. Search is a locally derived cache; the authoritative document remains Yjs update history. This milestone does **not** include backlinks or semantic/AI search.
