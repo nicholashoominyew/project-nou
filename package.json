@@ -2,11 +2,15 @@
   "name": "project-nou",
   "private": true,
   "version": "0.0.1",
-  "workspaces": ["apps/desktop"],
+  "workspaces": [
+    "apps/desktop"
+  ],
   "scripts": {
     "dev": "npm run dev -w @nou/desktop",
     "build": "npm run build -w @nou/desktop",
     "tauri": "npm run tauri -w @nou/desktop",
-    "typecheck": "npm run typecheck -w @nou/desktop"
+    "typecheck": "npm run typecheck -w @nou/desktop",
+    "icons": "npm run tauri -- icon assets/nou-icon.svg",
+    "package:windows": "npm run icons && npm run tauri -- build --bundles nsis"
   }
 }
