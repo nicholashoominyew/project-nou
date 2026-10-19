@@ -1,7 +1,7 @@
 # Windows development guide
 
 ## Status
-Early Phase 0/Phase 1 prototype. GUI supports page hierarchy, rename, manual up/down ordering and trash. **Rich-text document editing is not implemented yet.** Test before storing important notes.
+Early Phase 0/Phase 1 prototype. GUI supports page hierarchy, rename, manual up/down ordering and trash, plus a **plain-text Notes editor backed by Yjs updates stored in SQLite**. Rich-text blocks and BlockNote are not implemented yet. Test before storing important notes.
 
 ## Prerequisites
 1. Windows 10/11 (Windows 11 recommended).
@@ -37,7 +37,7 @@ Building an installer can be attempted with `npm run tauri -- build` after compl
 
 ## Security and limitations
 - Do not use this prototype for irreplaceable data.
-- No note-body editor, encryption key handling, sync or backup UI is in place.
+- Plain-text note-body editing is present, but not yet validated end-to-end on Windows; no BlockNote-rich-text UI, encryption key handling, sync or backup UI is in place.
 - Only the single default `personal` workspace is exposed.
 - Deleting a page moves it and descendants to trash; restore UI is future work.
 - Hierarchy cycle prevention for arbitrary reparenting will be implemented before adding drag-and-drop.
@@ -45,3 +45,13 @@ Building an installer can be attempted with `npm run tauri -- build` after compl
 
 ## Data backup
 While app is CLOSED, back up its complete per-user application data directory using a verified copy. Do not assume copying an open WAL-mode SQLite database is a consistent backup. The application backup workflow will be implemented separately using SQLite's online backup API.
+
+## Offline writing acceptance test (manual; not yet verified)
+1. Run the application with `npm run tauri -- dev`.
+2. Create a new page, type two paragraphs, and wait for **Saved on this device**.
+3. Switch to a different page and reopen the first page; confirm content persists.
+4. Exit the application, restart it and confirm content remains.
+5. Disconnect from the network and repeat editing and reopening.
+6. Simulate a failed disk write only in a disposable test database; verify a visible save error instead of false success.
+
+Notes are Yjs documents stored as ordered updates. The current prototype uses a plain-text `Y.Text` field named `body`; a future BlockNote editor needs a defined migration strategy. Do not assume Yjs text updates are directly compatible with BlockNote block trees.
