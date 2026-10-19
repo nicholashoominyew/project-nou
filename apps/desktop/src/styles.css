@@ -5,3 +5,7 @@
 .note-editor textarea::placeholder{color:#a2adb5}.note-editor textarea:disabled{opacity:.6}
 .editor-help{font-size:12px;color:#a0a9b1;margin-top:20px}
 .editor-error{font-size:13px;color:#a83434;padding:10px;background:#fff0f0;border:1px solid #f4cdcd;border-radius:6px}
+
+.search-input{display:block;margin:0 12px 10px;padding:10px 12px;border-radius:9px;border:1px solid #dce2e7;background:#fff;color:#263542;width:calc(100% - 24px);outline:none;font-size:13px}
+.search-input:focus{border-color:#668391;box-shadow:0 0 0 2px #66839124}
+.search-caption{font-size:11px;color:#8a959d;margin:0 18px 8px}
