@@ -21,6 +21,8 @@ function flatten(pages: Page[], parent: string | null = null, depth = 0, visited
 
 export default function App() {
   const [pages, setPages] = useState<Page[]>([]);
+  const [trashedPages, setTrashedPages] = useState<Page[]>([]);
+  const [showTrash, setShowTrash] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,7 +32,12 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [restoreCopy, setRestoreCopy] = useState<Snapshot | null>(null);
   const reload = useCallback(async () => {
-    setPages(await invoke<Page[]>("list_pages"));
+    const [active, trashed] = await Promise.all([
+      invoke<Page[]>("list_pages"),
+      invoke<Page[]>("list_trashed_pages")
+    ]);
+    setPages(active);
+    setTrashedPages(trashed);
   }, []);
 
   useEffect(() => {
@@ -66,11 +73,12 @@ export default function App() {
         <button disabled={busy} aria-label="New root page" title="New root page" onClick={() => void run(async () => {
           const page = await invoke<Page>("create_page", { parentId: null, title: "Untitled" });
           setSelected(page.id);
+          setShowTrash(false);
         })}>＋</button>
       </div>
-      <input className="search-input" aria-label="Search notes" placeholder="Search notes…" value={search} onChange={e => setSearch(e.target.value)} />
-      {search.trim() && <div className="search-caption">{searching ? "Searching…" : `${hits.length} match(es)`}</div>}
-      <nav aria-label={search.trim() ? "Search results" : "Pages"}>
+      {!showTrash && <input className="search-input" aria-label="Search notes" placeholder="Search notes…" value={search} onChange={e => setSearch(e.target.value)} /> }
+      {!showTrash && search.trim() && <div className="search-caption">{searching ? "Searching…" : `${hits.length} match(es)`}</div>}
+      {!showTrash && <nav aria-label={search.trim() ? "Search results" : "Pages"}>
         {search.trim() && hits.map(hit => <button key={hit.id} className={"page-item " + (selected === hit.id ? "active" : "")} onClick={() => setSelected(hit.id)}><span>⌕</span><span className="page-title">{hit.title}</span></button>)}
         {!search.trim() && <>
         {rows.map(({ page, depth }) => <button key={page.id}
@@ -80,8 +88,11 @@ export default function App() {
           <span>▤</span><span className="page-title">{page.title}</span>
         </button>)}
         </>}
-      </nav>
-      {pages.length === 0 && <p className="hint">Create your first note to begin.</p>}
+      </nav>}
+      <button className={"trash-toggle " + (showTrash ? "active" : "")} onClick={() => { setShowTrash(v => !v); setSearch(""); }}>
+        Trash ({trashedPages.length})
+      </button>
+      {pages.length === 0 && !showTrash && <p className="hint">Create your first note to begin.</p>}
       <div className="backup-panel">
         <button disabled={busy} onClick={() => void run(async () => {
           const created = await invoke<Snapshot>("create_notes_snapshot");
@@ -101,7 +112,16 @@ export default function App() {
     </aside>
     <section className="workspace">
       {error && <div role="alert" className="error">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
-      {current ? <div className="document" key={current.id}>
+      {showTrash ? <div className="document trash-screen">
+        <div className="toolbar">Knowledge / Trash</div>
+        <h1>Recently deleted pages</h1>
+        <p>Restoring a page also restores its subpages deleted in the same operation.</p>
+        {trashedPages.length === 0 && <p>Trash is empty.</p>}
+        {trashedPages.map(page => <div className="trash-row" key={page.id}>
+          <span>{page.title}</span>
+          <button disabled={busy} onClick={() => void run(() => invoke("restore_page", { pageId: page.id }))}>Restore</button>
+        </div>)}
+      </div> : current ? <div className="document" key={current.id}>
         <div className="toolbar">
           <span>Knowledge / Notes</span>
           <div className="actions">
