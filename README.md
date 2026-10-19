@@ -10,7 +10,8 @@ A Windows-first, local-first knowledge workspace with **two separate systems**: 
 - Rename and manually reorder pages using up/down controls.
 - Move pages and their descendants to trash (restoration UI not yet available).
 - Keep page metadata in an offline per-user SQLite database.
-- **Not implemented:** note-body editor, search UI, file manager, server sync, backup/restore, signed installer.
+- Plain-text note content editor with Yjs updates saved to SQLite and local FTS5 title/body search.
+- **Not implemented:** BlockNote rich-text blocks, file manager, server sync, backup/restore, signed installer.
 
 ## Windows development
 See [Windows setup and commands](docs/development/WINDOWS.md). After installing Node.js, Rust MSVC, Visual Studio C++ Build Tools and WebView2:
@@ -47,8 +48,8 @@ cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 
 ## Next engineering milestones
 1. Verify Windows CI runs, fix native compilation and add necessary bundle assets.
-2. Add persistent block editor and Yjs update/snapshot integration.
-3. Implement Notes search and backup/restore.
+2. Validate offline editor persistence and SQLite search on an actual Windows machine.
+3. Implement safe Notes backup/restore and a richer BlockNote document model with explicit migration from current Y.Text.
 4. Design Files database and verified archive state machine separately.
 
 Never commit private note contents or credentials.
