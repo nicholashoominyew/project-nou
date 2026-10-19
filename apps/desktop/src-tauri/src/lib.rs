@@ -284,6 +284,17 @@ fn verify_notes_snapshot(
     backup::verify_snapshot(&backup_directory.0, &filename)
 }
 
+#[tauri::command]
+fn stage_notes_restore(
+    backup_directory: State<'_, BackupDirectory>,
+    filename: String,
+) -> Result<backup::Snapshot, String> {
+    let app_data = backup_directory.0.parent()
+        .ok_or("Backup directory has no parent")?;
+    let staging_directory = app_data.join("restore-staging");
+    backup::stage_restore(&backup_directory.0, &filename, &staging_directory)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
@@ -295,7 +306,7 @@ pub fn run() {
             app.manage(Db(Mutex::new(conn)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update,search_notes,create_notes_snapshot,verify_notes_snapshot])
+        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update,search_notes,create_notes_snapshot,verify_notes_snapshot,stage_notes_restore])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");
 }
