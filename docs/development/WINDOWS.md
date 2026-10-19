@@ -33,11 +33,37 @@ npm run build
 cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 ```
 
-Building an installer can be attempted with `npm run tauri -- build` after completing the icon/assets and bundle validation work. The initial scaffold does not promise a signed installer.
+## First Windows installer (unsigned test build)
+The repository contains a dedicated GitHub Actions workflow: [Windows desktop build and test installer](https://github.com/nicholashoominyew/project-nou/actions/workflows/desktop-checks.yml).
+
+It runs on pushes to main and can be started manually from **Actions → Windows desktop build and test installer → Run workflow**. A successful run must pass SQLite unit tests, TypeScript compilation, Vite build, Rust unit tests, Rust check and Tauri/NSIS packaging.
+
+To retrieve the generated installer:
+1. Open the completed successful workflow run in GitHub Actions.
+2. Under **Artifacts**, download `project-nou-windows-x64-unsigned`.
+3. Unzip the archive to locate the Windows x64 `.exe` installer.
+4. Install only on a spare Windows PC/VM, with no important Notes data. The installer is **unsigned**; Windows SmartScreen may warn. Verify that the archive came from the repository's own Actions run rather than a third-party mirror.
+5. Create a test page, enter text, close and reopen, search notes, test Trash/Restore, then test a recovery snapshot and non-destructive staged restore.
+6. Report failures with the exact GitHub workflow/job or application error and Windows version.
+
+Alternatively, build locally from PowerShell:
+```powershell
+npm install
+npm run icons
+python -m unittest discover -s tests -v
+npm run typecheck
+npm run build
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+npm run package:windows
+```
+
+Installer output should appear in `apps/desktop/src-tauri/target/release/bundle/nsis/`. Building the installer does **not** guarantee runtime correctness; keep backups and avoid important data. Production distribution requires code signing, reproducible dependency locking, restore tests, and hardening.
+
+The Tauri icon files are generated on demand from `apps/desktop/assets/nou-icon.svg` using `npm run icons`. Run this before native `cargo check` or packaging after a fresh checkout.
 
 ## Security and limitations
 - Do not use this prototype for irreplaceable data.
-- Plain-text note-body editing is present, but not yet validated end-to-end on Windows; no BlockNote-rich-text UI, encryption key handling, sync or backup UI is in place.
+- Plain-text note-body editing is present, but not yet validated end-to-end on Windows; no BlockNote-rich-text UI, encryption key handling, sync or automatic off-device backup is in place.
 - Only the single default `personal` workspace is exposed.
 - Deleting a page moves it and its active descendants to Trash. A Restore action is now in the prototype, but Windows end-to-end behavior is unverified.
 - Hierarchy cycle prevention for arbitrary reparenting will be implemented before adding drag-and-drop.
