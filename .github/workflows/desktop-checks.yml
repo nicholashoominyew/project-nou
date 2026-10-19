@@ -1,0 +1,31 @@
+name: Windows desktop checks
+
+on:
+  push:
+    paths:
+      - 'apps/desktop/**'
+      - 'package.json'
+      - '.github/workflows/desktop-checks.yml'
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'package.json'
+      - '.github/workflows/desktop-checks.yml'
+
+jobs:
+  windows-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Check TypeScript
+        run: npm run typecheck
+      - name: Build frontend
+        run: npm run build
+      - name: Check native Rust backend
+        run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
