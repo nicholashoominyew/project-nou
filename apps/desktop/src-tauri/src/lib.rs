@@ -167,7 +167,7 @@ fn trash_page(db: State<'_, Db>, page_id: String) -> Result<(), String> {
     // Keep all descendants consistently in trash; recursive query assumes acyclic tree.
     tx.execute(
         "WITH RECURSIVE subtree(id) AS (SELECT id FROM pages WHERE id=?1 UNION ALL SELECT p.id FROM pages p JOIN subtree s ON p.parent_id=s.id)
-         UPDATE pages SET deleted_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE id IN (SELECT id FROM subtree)",
+         UPDATE pages SET deleted_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE id IN (SELECT id FROM subtree) AND deleted_at IS NULL",
         [&page_id]).map_err(|e| e.to_string())?;
     rebalance(&tx,parent.as_deref())?;
     tx.commit().map_err(|e| e.to_string())?;
