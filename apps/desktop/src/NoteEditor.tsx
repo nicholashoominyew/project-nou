@@ -12,6 +12,7 @@ export default function NoteEditor({ pageId }: { pageId: string }) {
   const docRef = useRef<Y.Doc | null>(null);
   const pendingRef = useRef<Promise<void>>(Promise.resolve());
   const failedRef = useRef(false);
+  const generationRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,14 +55,10 @@ export default function NoteEditor({ pageId }: { pageId: string }) {
     const previous = body.toString();
     if (next === previous) return;
 
-    const updates: Uint8Array[] = [];
-    const capture = (bytes: Uint8Array) => updates.push(bytes);
-    document.on("update", capture);
     document.transact(() => {
       body.delete(0, body.length);
       body.insert(0, next);
     }, "local-input");
-    document.off("update", capture);
 
     setText(next);
     setStatus("saving");
@@ -69,6 +66,7 @@ export default function NoteEditor({ pageId }: { pageId: string }) {
     // This avoids a lost intermediate update if an earlier write fails.
     const update = Array.from(Y.encodeStateAsUpdate(document));
     const currentPage = pageId;
+    const generation = ++generationRef.current;
     const previousWrite = pendingRef.current;
     const nextWrite = previousWrite.then(() =>
       invoke<number>("append_note_update", {
@@ -86,7 +84,7 @@ export default function NoteEditor({ pageId }: { pageId: string }) {
     // Prevent an unhandled rejection while ensuring failed saves stop the queue.
     void pendingRef.current.catch(() => undefined);
     void nextWrite.then(() => {
-      if (docRef.current === document && pendingRef.current === nextWrite) {
+      if (docRef.current === document && generationRef.current === generation) {
         setStatus("saved");
       }
     }).catch(() => undefined);
