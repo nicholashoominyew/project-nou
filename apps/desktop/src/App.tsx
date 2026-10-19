@@ -3,10 +3,20 @@ import BackupPanel from "./BackupPanel";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import * as Y from "yjs";
+import { migrateLegacy } from "./blockModel";
 
 type Page = { id: string; title: string; parent_id: string | null; sort_key: string };
 type Row = { page: Page; depth: number };
 type SearchHit = { id: string; title: string; parent_id: string | null };
+
+async function createRichPage(parentId: string | null, title: string): Promise<Page> {
+  const empty = new Y.Doc();
+  const rich = migrateLegacy(empty);
+  try {
+    return await invoke<Page>("create_page", { parentId, title, initialUpdate: Array.from(Y.encodeStateAsUpdate(rich)) });
+  } finally { rich.destroy(); empty.destroy(); }
+}
 
 
 function flatten(pages: Page[], parent: string | null = null, depth = 0, visited = new Set<string>()): Row[] {
@@ -92,7 +102,7 @@ export default function App() {
       <div className="brand"><span className="mark">脳</span><div><strong>Project NOU</strong><small>Offline Notes · Alpha</small></div></div>
       <div className="sidebar-heading"><span>Pages</span>
         <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} aria-label="New root page" title="New root page" onClick={() => void run(async () => {
-          const page = await invoke<Page>("create_page", { parentId: null, title: "Untitled" });
+          const page = await createRichPage(null, "Untitled");
           setSelected(page.id);
           setShowTrash(false);
         })}>＋</button>
@@ -137,7 +147,7 @@ export default function App() {
           <span>Knowledge / Notes</span>
           <div className="actions">
             <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => void run(async () => {
-              const p = await invoke<Page>("create_page", { parentId: current.id, title: "Untitled" });
+              const p = await createRichPage(current.id, "Untitled");
               setSelected(p.id);
             })}>+ Subpage</button>
             <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => void run(() => invoke("move_page", { pageId: current.id, direction: "up" }))}>↑</button>
@@ -158,7 +168,7 @@ export default function App() {
       </div> : <div className="empty"><span className="big-mark">脳</span><h1>Your knowledge, your device.</h1>
         <p>Select a page or create a new one. Everything stays offline on this computer.</p>
         <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => void run(async () => {
-          const p = await invoke<Page>("create_page", { parentId: null, title: "My first page" });
+          const p = await createRichPage(null, "My first page");
           setSelected(p.id);
         })}>Create a page</button></div>}
     </section>

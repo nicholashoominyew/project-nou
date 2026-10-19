@@ -9,7 +9,7 @@ The first 0.0.1 Windows alpha was installed and manually confirmed by the user: 
 ### Implemented
 
 - Offline pages, hierarchy, rename, manual ordering, search and recoverable Trash.
-- BlockNote rich text: headings, lists, checklists, tables, formatting, slash menu, block handles and undo; Yjs persists to the separate SQLite Notes database.
+- New pages start in BlockNote rich text: headings, lists, checklists, tables, formatting, slash menu, block handles and undo; Yjs persists to the separate SQLite Notes database.
 - Existing Y.Text notes stay editable as plain text until **Convert this note to rich text**. Original text, old Yjs history and a pre-conversion database recovery package are preserved.
 - **Backups & restore**: select a destination; create uniquely versioned standalone database packages with SHA-256, integrity, exact schema and reference checks; inspect and restore a selected package; preserve verified rollback first.
 - SQLite transactional restore handles WAL without replacing open files or deleting sidecars. Interrupted operations require review before further edits. A process lock prevents two current NOU instances from using the profile.

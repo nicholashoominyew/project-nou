@@ -32,6 +32,8 @@ If corruption prevents opening the application, the cold-recovery helper preview
 
 Schema 002 adds `note_formats(page_id, format, legacy_text, migrated_at)`. Before applying it, preserve a verified schema-v1 database package. Missing format rows mean legacy `Y.Text('body')`; old updates/snapshots remain intact. Alpha 0.0.1 refuses schema 2 instead of silently editing rich notes.
 
+New pages initialize their rich fragment, format marker and first Yjs update inside the page-creation transaction. They open directly in BlockNote; no conversion prompt is needed for content that did not exist before.
+
 Conversion is explicit per note. Clone the existing Y.Doc, convert literal lines to paragraphs with BlockNote's supported Yjs utilities, write them once to `nou-blocks-v1`, and retain `body`. Preserve exact original text separately, including CRLF/trailing newlines. Rich paragraphs normalize line endings but the original remains exact and viewable. Never interpret legacy Markdown/HTML or replace an already populated rich fragment.
 
 Create a pre-conversion database recovery package. In one SQLite transaction compare the expected update sequence and legacy format, append the complete Yjs state, insert the format marker/original text, update FTS and page revision. Reopen using the persisted format. A failed/stale/repeated migration cannot erase the original or append duplicate blocks. Existing rich notes rehydrate from Yjs updates, not JSON reconversion; CRDT history survives.

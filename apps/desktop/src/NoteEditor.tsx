@@ -93,7 +93,7 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false }: { pag
     {session?.loaded.format === "blocknote-v1" && <>
       <RichEditor session={session} disabled={status === "failed" || readOnly} onChange={save} />
       <p className="editor-help">Type / for blocks · Select text for formatting · Drag the block handle to reorder · Ctrl+Z to undo</p>
-      <details><summary>Original text before conversion (preserved)</summary><textarea aria-label="Original preserved text" readOnly value={session.loaded.legacy_text ?? ""} /></details>
+      {!!session.loaded.legacy_text && <details><summary>Original text before conversion (preserved)</summary><textarea aria-label="Original preserved text" readOnly value={session.loaded.legacy_text} /></details>}
     </>}
     {status === "failed" && <div className="recovery-card">
       {session ? <><button onClick={() => { session.queue.reset(); failed.current = false; setError(""); save(latestText.current); }}>Retry saving all current content</button>

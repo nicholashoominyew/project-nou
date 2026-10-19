@@ -225,3 +225,18 @@ fn legacy_snapshot_import_preserves_original_and_can_restore() {
     restore(&mut f.db, &staged, &f.dir).unwrap();
     assert_eq!(f.title(), "Before");
 }
+
+#[test]
+fn new_page_rich_state_and_format_commit_together() {
+    let mut f = Fixture::new(); editor::upgrade(&f.db).unwrap();
+    {
+        let tx = f.db.transaction().unwrap();
+        assert!(editor::initialize_rich(&tx, "p", &[]).is_err());
+    }
+    assert_eq!(editor::load(&f.db,"p",0).unwrap().format,"text-v1");
+    let tx = f.db.transaction().unwrap();
+    editor::initialize_rich(&tx, "p", &[1,2,3]).unwrap(); tx.commit().unwrap();
+    let note = editor::load(&f.db,"p",0).unwrap();
+    assert_eq!(note.format,"blocknote-v1"); assert_eq!(note.seq,1);
+    assert_eq!(note.updates,vec![vec![1,2,3]]);
+}

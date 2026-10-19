@@ -110,7 +110,7 @@ fn rebalance(tx: &Transaction<'_>, parent_id: Option<&str>) -> Result<(), String
 }
 
 #[tauri::command]
-fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String) -> Result<Page, String> {
+fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String, initial_update: Vec<u8>) -> Result<Page, String> {
     let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.writable()?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -128,6 +128,7 @@ fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String) -> R
     tx.execute("INSERT INTO note_locations(page_id) VALUES (?1)", [&id]).map_err(|e| e.to_string())?;
     tx.execute("INSERT INTO page_search(page_id,title,body) VALUES (?1,?2,'')",
         params![id,title]).map_err(|e| e.to_string())?;
+    editor::initialize_rich(&tx, &id, &initial_update)?;
     rebalance(&tx,parent_id.as_deref())?;
     let actual_key: String = tx.query_row(
         "SELECT sort_key FROM pages WHERE id=?1", [&id], |r| r.get(0)

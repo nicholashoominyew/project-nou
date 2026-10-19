@@ -2,6 +2,13 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
 pub const MIGRATION: &str = include_str!("../../../../db/notes/002_editor_formats.sql");
+/// Part of the page-creation transaction: never leave a format marker without its initial state.
+pub fn initialize_rich(tx: &rusqlite::Transaction<'_>, page: &str, update: &[u8]) -> Result<(), String> {
+    if update.is_empty() || update.len() > 8 * 1024 * 1024 { return Err("Invalid initial rich-text state".into()); }
+    tx.execute("INSERT INTO note_formats(page_id,format,legacy_text) VALUES (?1,'blocknote-v1','')", [page]).map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO yjs_updates(page_id,seq,update_bytes) VALUES (?1,1,?2)", params![page,update]).map_err(|e| e.to_string())?;
+    Ok(())
+}
 pub fn upgrade(c: &Connection) -> Result<(), String> {
     let v: i64 = c.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).map_err(|e| e.to_string())?;
     match v { 1 => c.execute_batch(MIGRATION).map_err(|e| e.to_string()), 2 => Ok(()), _ => Err(format!("Unsupported Notes schema: {v}")) }

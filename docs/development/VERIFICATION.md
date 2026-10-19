@@ -6,9 +6,9 @@ The user confirmed that alpha 0.0.1 installed/launched and passed persistence af
 
 ## Executed locally on Windows for 0.0.2
 
-- Rust native tests: WAL-consistent complete restore, reopen and rollback, corruption/truncation/foreign-schema/sidecar rejection, unavailable destination, retention floors and changed-survivor rejection, transactional migration/CAS, stale-editor barriers, interrupted journal and abrupt child-process exits before/during/after SQLite copying. The ignored crash worker is executed by its parent test, not skipped coverage.
+- Rust native tests: 16 passed, covering WAL-consistent complete restore, reopen and rollback, corruption/truncation/foreign-schema/sidecar rejection, unavailable destination, retention floors and changed-survivor rejection, transactional migration/CAS, new-page rich-state initialization, old standalone snapshot import, stale-editor barriers, interrupted journal and abrupt child-process exits before/during/after SQLite copying. The ignored crash worker is executed by its parent test, not skipped coverage.
 - Python: all 16 existing SQLite schema/search/snapshot/Trash tests passed.
-- Vitest/jsdom: explicit legacy migration preserving exact originals, Unicode/blank lines/literal markup, repeated-conversion refusal, mounted BlockNote rich-content save/reopen (headings/bold/nested lists/checklists/table cells), plain-text indexing, sequential save/failure/retry behavior, restore confirmation, cancellation and failed verification.
+- Vitest/jsdom: 11 passed, covering explicit legacy migration preserving exact originals, Unicode/blank lines/literal markup, repeated-conversion refusal, mounted BlockNote rich-content save/reopen (headings/bold/nested lists/checklists/table cells), plain-text indexing, sequential save/failure/retry behavior, restore confirmation, cancellation and failed verification.
 - PowerShell cold recovery: preview leaves data unchanged; active lock is refused; entire disposable profile preserves main DB, WAL and SHM bytes.
 - TypeScript typecheck and Vite production build passed. Vite reports a non-failing large-editor-chunk warning.
 - Unsigned NSIS 0.0.2 packaging completed locally; this is a build result, not an installation/GUI acceptance result.
