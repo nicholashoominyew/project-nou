@@ -9,3 +9,11 @@
 .search-input{display:block;margin:0 12px 10px;padding:10px 12px;border-radius:9px;border:1px solid #dce2e7;background:#fff;color:#263542;width:calc(100% - 24px);outline:none;font-size:13px}
 .search-input:focus{border-color:#668391;box-shadow:0 0 0 2px #66839124}
 .search-caption{font-size:11px;color:#8a959d;margin:0 18px 8px}
+
+.backup-panel{margin-top:auto;padding:14px 12px 0;border-top:1px solid #dfe3e8}
+.backup-panel button{width:100%;border:1px solid #c7d5dc;border-radius:8px;background:#fff;color:#264655;padding:10px;font-size:12px;font-weight:650;text-align:center}
+.backup-panel button:hover{background:#eaf2f5}
+.backup-panel small,.backup-panel p{display:block;font-size:10px;color:#687883;line-height:1.5;overflow-wrap:anywhere}
+.backup-panel p{color:#315f52}
+.snapshot-path{display:block;max-height:68px;overflow:auto;font-family:monospace}
+.sidebar-footer{margin-top:0}
