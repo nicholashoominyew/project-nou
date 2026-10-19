@@ -15,6 +15,12 @@ A Windows-first, local-first knowledge workspace with **two separate systems**: 
 - Stage verified recovery copies without replacing the live database; full live-database restoration remains out of scope.
 - **Not implemented:** BlockNote rich-text blocks, file manager, server sync, automated/off-device backups, guided full-database restoration, signed installer.
 
+## Windows test installer
+
+GitHub Actions is configured to run the Windows compilation, SQLite/Rust tests, and unsigned NSIS packaging. After a **successful** [Windows desktop workflow run](https://github.com/nicholashoominyew/project-nou/actions/workflows/desktop-checks.yml), download the `project-nou-windows-x64-unsigned` artifact from that run. The ZIP should contain an NSIS installer EXE and `SHA256SUMS.txt` for integrity verification. This prototype installer is **not code-signed** and is **not production-ready**. Do not test it with your real notes until backup and recovery have been confirmed.
+
+**Release verification:** A committed GitHub Actions workflow is not itself evidence that CI passed or that an installer was successfully uploaded. See the successful run and its artifacts before treating the test build as available.
+
 ## Windows development
 See [Windows setup and commands](docs/development/WINDOWS.md). After installing Node.js, Rust MSVC, Visual Studio C++ Build Tools and WebView2:
 
@@ -22,6 +28,7 @@ See [Windows setup and commands](docs/development/WINDOWS.md). After installing 
 git clone https://github.com/nicholashoominyew/project-nou.git
 cd project-nou
 npm install
+npm run icons
 npm run tauri -- dev
 ```
 
@@ -30,6 +37,7 @@ Check build and database tests:
 python -m unittest discover -s tests -v
 npm run typecheck
 npm run build
+npm run icons
 cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 ```
 
