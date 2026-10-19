@@ -170,6 +170,66 @@ fn move_page(db: State<'_, Db>, page_id: String, direction: String) -> Result<()
     Ok(())
 }
 
+
+#[tauri::command]
+fn load_note_updates(db: State<'_, Db>, page_id: String) -> Result<Vec<Vec<u8>>, String> {
+    let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    let active: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pages WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NULL)",
+        [&page_id], |row| row.get(0)
+    ).map_err(|e| e.to_string())?;
+    if !active { return Err("Page not found or in trash".into()); }
+    let mut statement = conn.prepare(
+        "SELECT update_bytes FROM yjs_updates WHERE page_id=?1 ORDER BY seq ASC"
+    ).map_err(|e| e.to_string())?;
+    statement.query_map([page_id], |row| row.get::<_, Vec<u8>>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn append_note_update(
+    db: State<'_, Db>,
+    page_id: String,
+    update: Vec<u8>,
+    plain_text: String,
+) -> Result<i64, String> {
+    if update.is_empty() || update.len() > 1_048_576 {
+        return Err("Invalid or oversized Yjs update".into());
+    }
+    if plain_text.len() > 5_000_000 {
+        return Err("Note text exceeds the current prototype limit".into());
+    }
+    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let title: String = tx.query_row(
+        "SELECT title FROM pages WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NULL",
+        [&page_id], |row| row.get(0)
+    ).optional().map_err(|e| e.to_string())?
+        .ok_or("Page not found or in trash")?;
+    let seq: i64 = tx.query_row(
+        "SELECT COALESCE(MAX(seq), 0) + 1 FROM yjs_updates WHERE page_id=?1",
+        [&page_id], |row| row.get(0)
+    ).map_err(|e| e.to_string())?;
+    tx.execute(
+        "INSERT INTO yjs_updates(page_id, seq, update_bytes) VALUES (?1,?2,?3)",
+        params![page_id,seq,update],
+    ).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM page_search WHERE page_id=?1", [&page_id])
+        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "INSERT INTO page_search(page_id,title,body) VALUES (?1,?2,?3)",
+        params![page_id,title,plain_text],
+    ).map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE pages SET updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE id=?1",
+        [&page_id],
+    ).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(seq)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
@@ -177,7 +237,7 @@ pub fn run() {
             app.manage(Db(Mutex::new(conn)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page])
+        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");
 }
