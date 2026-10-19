@@ -1,13 +1,28 @@
 mod backup;
+mod recovery;
+mod editor;
+mod recovery_commands;
+#[cfg(test)]
+mod recovery_tests;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::Serialize;
-use std::{fs, path::PathBuf, sync::Mutex};
+use std::{fs, path::PathBuf, sync::{Mutex, atomic::{AtomicBool, AtomicU64, Ordering}}};
 use tauri::{Manager, State};
 use uuid::Uuid;
 
 const MIGRATION: &str = include_str!("../../../../db/notes/001_initial.sql");
 
-struct Db(Mutex<Connection>);
+struct Db(Mutex<Connection>, AtomicU64, AtomicBool);
+impl Db {
+    fn writable(&self) -> Result<(), String> {
+        if self.2.load(Ordering::SeqCst) { Err("Review the interrupted restore in Backups & restore before editing".into()) } else { Ok(()) }
+    }
+    fn check_epoch(&self, epoch: u64) -> Result<(), String> {
+        self.writable()?;
+        if self.1.load(Ordering::SeqCst) != epoch { Err("Database was restored; reopen this note before saving".into()) } else { Ok(()) }
+    }
+}
+struct InstanceLock(#[allow(dead_code)] fs::File);
 struct BackupDirectory(PathBuf);
 
 #[derive(Clone, Debug, Serialize)]
@@ -36,10 +51,15 @@ fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     } else {
         let version: i64 = conn.query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version != 1 { return Err(format!("Unsupported Notes database version: {version}")); }
+        if version != 1 && version != 2 { return Err(format!("Unsupported Notes database version: {version}")); }
     }
     conn.execute("INSERT OR IGNORE INTO workspaces (id,title) VALUES ('personal','Personal')", [])
         .map_err(|e| e.to_string())?;
+    if conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get::<_,i64>(0)).map_err(|e| e.to_string())? == 1 {
+        recovery::create(&conn, &folder.join("schema-rollback"))?;
+        editor::upgrade(&conn)?;
+    }
+    conn.pragma_update(None, "synchronous", "FULL").map_err(|e| e.to_string())?;
     Ok(conn)
 }
 
@@ -92,6 +112,7 @@ fn rebalance(tx: &Transaction<'_>, parent_id: Option<&str>) -> Result<(), String
 #[tauri::command]
 fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String) -> Result<Page, String> {
     let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     if let Some(ref parent) = parent_id {
         let valid: bool = tx.query_row(
@@ -120,6 +141,7 @@ fn rename_page(db: State<'_, Db>, page_id: String, title: String) -> Result<(), 
     let title = title.trim();
     if title.is_empty() { return Err("Page title cannot be empty".into()); }
     let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let affected = tx.execute(
         "UPDATE pages SET title=?1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE id=?2 AND workspace_id='personal' AND deleted_at IS NULL",
@@ -159,6 +181,7 @@ fn search_notes(db: State<'_, Db>, query: String) -> Result<Vec<SearchHit>, Stri
 #[tauri::command]
 fn trash_page(db: State<'_, Db>, page_id: String) -> Result<(), String> {
     let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let parent: Option<String> = tx.query_row(
         "SELECT parent_id FROM pages WHERE id=?1 AND deleted_at IS NULL",
@@ -194,6 +217,7 @@ fn list_trashed_pages(db: State<'_, Db>) -> Result<Vec<Page>, String> {
 #[tauri::command]
 fn restore_page(db: State<'_, Db>, page_id: String) -> Result<(), String> {
     let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let (parent_id, deleted_at): (Option<String>, String) = tx.query_row(
         "SELECT parent_id,deleted_at FROM pages
@@ -254,6 +278,7 @@ fn restore_page(db: State<'_, Db>, page_id: String) -> Result<(), String> {
 fn move_page(db: State<'_, Db>, page_id: String, direction: String) -> Result<(), String> {
     if direction != "up" && direction != "down" { return Err("Invalid direction".into()); }
     let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let parent: Option<String> = tx.query_row(
         "SELECT parent_id FROM pages WHERE id=?1 AND deleted_at IS NULL",
@@ -284,63 +309,25 @@ fn move_page(db: State<'_, Db>, page_id: String, direction: String) -> Result<()
 
 
 #[tauri::command]
-fn load_note_updates(db: State<'_, Db>, page_id: String) -> Result<Vec<Vec<u8>>, String> {
-    let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    let active: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM pages WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NULL)",
-        [&page_id], |row| row.get(0)
-    ).map_err(|e| e.to_string())?;
-    if !active { return Err("Page not found or in trash".into()); }
-    let mut statement = conn.prepare(
-        "SELECT update_bytes FROM yjs_updates WHERE page_id=?1 ORDER BY seq ASC"
-    ).map_err(|e| e.to_string())?;
-    let updates = statement.query_map([page_id], |row| row.get::<_, Vec<u8>>(0))
-        .map_err(|e| e.to_string())?
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| e.to_string())?;
-    Ok(updates)
+fn load_note(db: State<'_, Db>, page_id: String) -> Result<editor::Note, String> {
+    let c = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    editor::load(&c, &page_id, db.1.load(Ordering::SeqCst))
 }
 
 #[tauri::command]
-fn append_note_update(
-    db: State<'_, Db>,
-    page_id: String,
-    update: Vec<u8>,
-    plain_text: String,
-) -> Result<i64, String> {
-    if update.is_empty() || update.len() > 1_048_576 {
-        return Err("Invalid or oversized Yjs update".into());
-    }
-    if plain_text.len() > 5_000_000 {
-        return Err("Note text exceeds the current prototype limit".into());
-    }
-    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let title: String = tx.query_row(
-        "SELECT title FROM pages WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NULL",
-        [&page_id], |row| row.get(0)
-    ).optional().map_err(|e| e.to_string())?
-        .ok_or("Page not found or in trash")?;
-    let seq: i64 = tx.query_row(
-        "SELECT COALESCE(MAX(seq), 0) + 1 FROM yjs_updates WHERE page_id=?1",
-        [&page_id], |row| row.get(0)
-    ).map_err(|e| e.to_string())?;
-    tx.execute(
-        "INSERT INTO yjs_updates(page_id, seq, update_bytes) VALUES (?1,?2,?3)",
-        params![page_id,seq,update],
-    ).map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM page_search WHERE page_id=?1", [&page_id])
-        .map_err(|e| e.to_string())?;
-    tx.execute(
-        "INSERT INTO page_search(page_id,title,body) VALUES (?1,?2,?3)",
-        params![page_id,title,plain_text],
-    ).map_err(|e| e.to_string())?;
-    tx.execute(
-        "UPDATE pages SET updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE id=?1",
-        [&page_id],
-    ).map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(seq)
+fn save_note(db: State<'_, Db>, page_id: String, update: Vec<u8>, plain_text: String, format: String, epoch: u64) -> Result<i64, String> {
+    let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.check_epoch(epoch)?;
+    editor::append(&mut c, &page_id, &update, &plain_text, &format, None)
+}
+
+#[tauri::command]
+fn migrate_note(db: State<'_, Db>, app: tauri::AppHandle, page_id: String, update: Vec<u8>, plain_text: String, original: String, expected_seq: i64, epoch: u64) -> Result<i64, String> {
+    let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.check_epoch(epoch)?;
+    let folder = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    recovery::create(&c, &folder.join("editor-rollback"))?;
+    editor::append(&mut c, &page_id, &update, &plain_text, "blocknote-v1", Some((expected_seq, &original)))
 }
 
 #[tauri::command]
@@ -373,16 +360,31 @@ fn stage_notes_restore(
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            use fs2::FileExt;
+            let folder = app.path().app_data_dir()?;
+            fs::create_dir_all(&folder)?;
+            let lock = fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(folder.join("nou.lock"))?;
+            lock.try_lock_exclusive().map_err(|_| std::io::Error::other("Project NOU is already running. Close the other instance first."))?;
+            app.manage(InstanceLock(lock));
+            let interrupted = !recovery::unresolved(&folder).map_err(std::io::Error::other)?.is_empty();
             let conn = get_connection(app.handle()).map_err(std::io::Error::other)?;
             let backups = app.handle().path().app_data_dir()
                 .map_err(std::io::Error::other)?
                 .join("snapshots");
             app.manage(BackupDirectory(backups));
-            app.manage(Db(Mutex::new(conn)));
+            app.manage(Db(Mutex::new(conn), AtomicU64::new(0), AtomicBool::new(interrupted)));
+            app.manage(recovery_commands::RecoveryState::default());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update,search_notes,create_notes_snapshot,verify_notes_snapshot,stage_notes_restore,list_trashed_pages,restore_page])
+        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note,save_note,migrate_note,search_notes,create_notes_snapshot,verify_notes_snapshot,stage_notes_restore,list_trashed_pages,restore_page,
+            recovery_commands::backup_status,recovery_commands::set_backup_destination,
+            recovery_commands::create_backup,recovery_commands::list_backups,
+            recovery_commands::prepare_restore,recovery_commands::execute_restore,
+            recovery_commands::prepare_legacy_restore,
+            recovery_commands::preview_retention,recovery_commands::apply_retention,
+            recovery_commands::review_restore])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");
 }

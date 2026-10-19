@@ -25,3 +25,25 @@
 .trash-row{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid #edf0f2;padding:15px 0;color:#465663;font-size:14px}
 .trash-row button{padding:8px 13px;border:1px solid #bed0d8;border-radius:8px;color:#284f60;background:#fff;font-size:12px}
 .trash-row button:hover{background:#eaf1f5}
+:root { color-scheme: light; }
+.recovery-screen { max-width: 1040px; margin: 0 auto; padding: 32px; height: 100vh; overflow-y: auto; box-sizing: border-box; }
+.recovery-screen header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.recovery-screen fieldset { border: 0; padding: 0; min-width: 0; }
+.recovery-screen h1 { font-size: 28px; margin: 10px 0 24px; }
+.recovery-screen h2 { font-size: 20px; margin-top: 0; }
+.recovery-card, .migration-notice { border: 1px solid #d8ddd7; border-radius: 10px; padding: 22px; margin: 18px 0; background: #fff; line-height: 1.55; }
+.migration-notice { background: #f5f6f1; font-size: 14px; }
+.recovery-screen code, .backup-version small { overflow-wrap: anywhere; }
+.recovery-screen label { display: block; margin: 15px 0; }
+.recovery-screen input, .recovery-screen select { display: block; max-width: 100%; margin-top: 8px; padding: 9px; border: 1px solid #bfc9bf; border-radius: 5px; }
+.recovery-screen button { margin: 5px 8px 5px 0; padding: 9px 13px; }
+.backup-version { display: flex; justify-content: space-between; align-items: center; gap: 18px; border-top: 1px solid #e6e9e4; padding: 14px 0; }
+.backup-version small { display: block; color: #687267; font-size: 12px; }
+.restore-preview { background: #fff6e8; border: 1px solid #e2c798; border-radius: 8px; padding: 20px; margin-top: 18px; }
+.notice { padding: 16px; border-radius: 6px; background: #eaf1e8; line-height: 1.5; overflow-wrap: anywhere; }
+.warning { border-color: #dfba78; background: #fff8ec; }
+.note-editor .bn-container { min-height: 300px; padding: 16px 0; }
+.note-editor details { margin: 18px 0; }
+.note-editor details textarea { min-height: 150px; width: 100%; }
+.note-editor summary { cursor: pointer; color: #596254; }
+button:disabled { opacity: .5; cursor: not-allowed; }

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Local Notes application shell",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }
