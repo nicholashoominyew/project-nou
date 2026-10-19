@@ -1,3 +1,4 @@
+import NoteEditor from "./NoteEditor";
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -82,11 +83,7 @@ export default function App() {
             if (title !== current.title) void run(() => invoke("rename_page", { pageId: current.id, title }));
           }}
           onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-        <div className="editor-placeholder">
-          <h2>Document editor comes next</h2>
-          <p>Page creation, hierarchy, manual ordering and renaming already persist in a local SQLite database.</p>
-          <p>BlockNote/Yjs editing, undo and search indexing are the next milestone.</p>
-        </div>
+        <NoteEditor pageId={current.id} />
       </div> : <div className="empty"><span className="big-mark">脳</span><h1>Your knowledge, your device.</h1>
         <p>Select a page or create a new one. Everything stays offline on this computer.</p>
         <button disabled={busy} onClick={() => void run(async () => {
