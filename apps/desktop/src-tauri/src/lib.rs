@@ -103,6 +103,8 @@ fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String) -> R
     tx.execute("INSERT INTO pages(id,workspace_id,parent_id,title,sort_key) VALUES (?1,'personal',?2,?3,?4)",
         params![id,parent_id,title,key]).map_err(|e| e.to_string())?;
     tx.execute("INSERT INTO note_locations(page_id) VALUES (?1)", [&id]).map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO page_search(page_id,title,body) VALUES (?1,?2,'')",
+        params![id,title]).map_err(|e| e.to_string())?;
     rebalance(&tx,parent_id.as_deref())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(Page { id,title,parent_id,sort_key:key })
@@ -112,17 +114,41 @@ fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String) -> R
 fn rename_page(db: State<'_, Db>, page_id: String, title: String) -> Result<(), String> {
     let title = title.trim();
     if title.is_empty() { return Err("Page title cannot be empty".into()); }
-    let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    let affected = conn.execute(
-        "UPDATE pages SET title=?1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE id=?2 AND deleted_at IS NULL",
+    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let affected = tx.execute(
+        "UPDATE pages SET title=?1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE id=?2 AND workspace_id='personal' AND deleted_at IS NULL",
         params![title,page_id]).map_err(|e| e.to_string())?;
     if affected != 1 { return Err("Page not found".into()); }
-    // Keep derived FTS titles consistent after a rename without rewriting Yjs content.
-    conn.execute(
-        "UPDATE page_search SET title=?1 WHERE page_id=?2",
-        params![title,page_id],
-    ).map_err(|e| e.to_string())?;
+    tx.execute("UPDATE page_search SET title=?1 WHERE page_id=?2",
+        params![title,page_id]).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SearchHit { id: String, title: String, parent_id: Option<String> }
+
+#[tauri::command]
+fn search_notes(db: State<'_, Db>, query: String) -> Result<Vec<SearchHit>, String> {
+    let search = query.trim();
+    if search.is_empty() { return Ok(Vec::new()); }
+    if search.len() > 200 { return Err("Search query is too long".into()); }
+    // Quote FTS5 input so user punctuation/operators cannot alter query grammar.
+    let exact = format!("\\"{}\\"", search.replace('"', "\\"\\""));
+    let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    let mut statement = conn.prepare(
+        "SELECT p.id,p.title,p.parent_id FROM page_search s
+         JOIN pages p ON p.id=s.page_id
+         WHERE page_search MATCH ?1 AND p.workspace_id='personal'
+           AND p.deleted_at IS NULL
+         ORDER BY bm25(page_search),p.title COLLATE NOCASE LIMIT 100"
+    ).map_err(|e| e.to_string())?;
+    let hits = statement.query_map([exact], |row| Ok(SearchHit {
+        id: row.get(0)?, title: row.get(1)?, parent_id: row.get(2)?
+    })).map_err(|e| e.to_string())?
+      .collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?;
+    Ok(hits)
 }
 
 #[tauri::command]
@@ -187,10 +213,11 @@ fn load_note_updates(db: State<'_, Db>, page_id: String) -> Result<Vec<Vec<u8>>,
     let mut statement = conn.prepare(
         "SELECT update_bytes FROM yjs_updates WHERE page_id=?1 ORDER BY seq ASC"
     ).map_err(|e| e.to_string())?;
-    statement.query_map([page_id], |row| row.get::<_, Vec<u8>>(0))
+    let updates = statement.query_map([page_id], |row| row.get::<_, Vec<u8>>(0))
         .map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(updates)
 }
 
 #[tauri::command]
@@ -242,7 +269,7 @@ pub fn run() {
             app.manage(Db(Mutex::new(conn)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update])
+        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update,search_notes])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");
 }
