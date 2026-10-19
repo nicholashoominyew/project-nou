@@ -100,5 +100,33 @@ class NotesSchemaTest(unittest.TestCase):
         )
 
 
+    def test_note_update_transactions_and_search_cache(self):
+        self.add_page("note1", "a")
+        # SQLite stores opaque Yjs update bytes; the JavaScript editor validates/decodes them.
+        self.conn.execute("INSERT INTO yjs_updates(page_id,seq,update_bytes) VALUES (?,?,?)",
+                          ("note1", 1, b"first-update"))
+        self.conn.execute("INSERT INTO page_search(page_id,title,body) VALUES (?,?,?)",
+                          ("note1", "Research", "Initial draft"))
+        # Emulate append_note_update's atomic replacement of the FTS cache.
+        with self.conn:
+            sequence = self.conn.execute(
+                "SELECT COALESCE(MAX(seq),0)+1 FROM yjs_updates WHERE page_id=?",
+                ("note1",)).fetchone()[0]
+            self.conn.execute("INSERT INTO yjs_updates(page_id,seq,update_bytes) VALUES (?,?,?)",
+                              ("note1", sequence, b"second-update"))
+            self.conn.execute("DELETE FROM page_search WHERE page_id=?", ("note1",))
+            self.conn.execute("INSERT INTO page_search(page_id,title,body) VALUES (?,?,?)",
+                              ("note1", "Research", "Updated offline notes"))
+        self.assertEqual([row[0] for row in self.conn.execute(
+            "SELECT update_bytes FROM yjs_updates WHERE page_id=? ORDER BY seq", ("note1",))],
+            [b"first-update", b"second-update"])
+        self.assertEqual(self.conn.execute(
+            "SELECT page_id FROM page_search WHERE page_search MATCH 'offline'"
+        ).fetchall(), [("note1",)])
+        self.assertEqual(self.conn.execute(
+            "SELECT page_id FROM page_search WHERE page_search MATCH 'Initial'"
+        ).fetchall(), [])
+
+
 if __name__ == "__main__":
     unittest.main()
