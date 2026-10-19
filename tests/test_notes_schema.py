@@ -146,7 +146,7 @@ class NotesSchemaTest(unittest.TestCase):
         self.assertEqual(self.conn.execute(query, ('"offline"',)).fetchall(), [("live",)])
         # Untrusted query punctuation is escaped as an FTS phrase by the backend.
         self.assertEqual(
-            self.conn.execute(query, ('"offline"" knowledge"',)).fetchall(), []
+            self.conn.execute(query, ('"inexistent"" phrase"',)).fetchall(), []
         )
 
     def test_title_is_indexable_before_body_edit(self):
