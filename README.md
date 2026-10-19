@@ -3,20 +3,52 @@
 A Windows-first, local-first knowledge workspace with **two separate systems**: Notes (primary) and Files (secondary).
 
 ## Current stage
-**Phase 0 — architecture and data design.** The app is not yet installable; the repository currently contains architecture and first-pass SQLite design.
+**Phase 0 progressing into an early desktop prototype.** A Tauri/React UI and Rust/SQLite Notes backend are committed, but the native build and GUI have **not yet been validated**. Do not store important data in this prototype.
 
-## Decisions
-- Start offline on the existing Windows desktop; no Beelink hardware required for Phase 1.
-- Later home server target: fully configured **Beelink SER8 Ryzen 7 8745HS**, Windows 11 Pro preferred.
-- Notes: Notion-style editor, hierarchy, manual sort, search and Yjs persistence.
-- Files: OneDrive-style manager with weekly verified archive to the desktop's 4 TB drive.
-- Notes backup is a **duplicate**, while Files archive is a **move**; neither substitutes for an independent backup.
+## Prototype capabilities
+- Create a page or nested subpage in the default Personal workspace.
+- Rename and manually reorder pages using up/down controls.
+- Move pages and their descendants to trash (restoration UI not yet available).
+- Keep page metadata in an offline per-user SQLite database.
+- **Not implemented:** note-body editor, search UI, file manager, server sync, backup/restore, signed installer.
 
-## Files
+## Windows development
+See [Windows setup and commands](docs/development/WINDOWS.md). After installing Node.js, Rust MSVC, Visual Studio C++ Build Tools and WebView2:
+
+```powershell
+git clone https://github.com/nicholashoominyew/project-nou.git
+cd project-nou
+npm install
+npm run tauri -- dev
+```
+
+Check build and database tests:
+```powershell
+python -m unittest discover -s tests -v
+npm run typecheck
+npm run build
+cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+```
+
+## Design decisions
+- Develop offline on the existing Windows desktop; the home server isn't needed for the initial prototype.
+- Target later deployment on a fully assembled **Beelink SER8 Ryzen 7 8745HS** with Windows 11 Pro preferred.
+- Notes: Notion-style editor, hierarchy, tags, stable manual ordering, search and Yjs persistence.
+- Files: independent OneDrive-style system with verified weekly archiving to desktop 4 TB storage.
+- Notes backup **duplicates**; Files archive **moves**; both require independent recovery coverage.
+
+## Documentation
 - [Architecture baseline](docs/architecture/PHASE-0.md)
-- [Notes persistence decision](docs/architecture/ADR-001-notes-persistence.md)
+- [Notes persistence ADR](docs/architecture/ADR-001-notes-persistence.md)
 - [Initial Notes SQLite migration](db/notes/001_initial.sql)
-- [Phase 0 backlog](https://github.com/nicholashoominyew/project-nou/issues)
+- [SQLite schema tests](tests/test_notes_schema.py)
+- [Windows development guide](docs/development/WINDOWS.md)
+- [Phase 0 issues](https://github.com/nicholashoominyew/project-nou/issues)
 
-## Next engineering milestone
-Create the Windows desktop monorepo and migration runner, then run schema + page-order integration tests against a temporary SQLite database. Do not store credentials, exports or private Notes content in this repository.
+## Next engineering milestones
+1. Verify Windows CI runs, fix native compilation and add necessary bundle assets.
+2. Add persistent block editor and Yjs update/snapshot integration.
+3. Implement Notes search and backup/restore.
+4. Design Files database and verified archive state machine separately.
+
+Never commit private note contents or credentials.
