@@ -128,5 +128,38 @@ class NotesSchemaTest(unittest.TestCase):
         ).fetchall(), [])
 
 
+    def test_search_returns_only_live_pages(self):
+        self.add_page("live", "a")
+        self.add_page("trashed", "b")
+        self.conn.execute("UPDATE pages SET title='Live note' WHERE id='live'")
+        self.conn.execute("UPDATE pages SET title='Trashed note', deleted_at='2026-10-19' WHERE id='trashed'")
+        self.conn.executemany(
+            "INSERT INTO page_search(page_id,title,body) VALUES (?,?,?)",
+            [("live", "Live note", "offline knowledge"),
+             ("trashed", "Trashed note", "offline knowledge")],
+        )
+        query = (
+            "SELECT p.id FROM page_search s JOIN pages p ON p.id=s.page_id "
+            "WHERE page_search MATCH ? AND p.workspace_id='w1' "
+            "AND p.deleted_at IS NULL ORDER BY bm25(page_search),p.title COLLATE NOCASE LIMIT 100"
+        )
+        self.assertEqual(self.conn.execute(query, ('"offline"',)).fetchall(), [("live",)])
+        # Untrusted query punctuation is escaped as an FTS phrase by the backend.
+        self.assertEqual(
+            self.conn.execute(query, ('"offline"" knowledge"',)).fetchall(), []
+        )
+
+    def test_title_is_indexable_before_body_edit(self):
+        self.add_page("new-page", "a")
+        # create_page inserts this initial FTS record without needing a body edit.
+        self.conn.execute(
+            "INSERT INTO page_search(page_id,title,body) VALUES (?,?,?)",
+            ("new-page", "Morning planning", ""),
+        )
+        self.assertEqual(
+            self.conn.execute("SELECT page_id FROM page_search WHERE page_search MATCH ?",
+                              ('"Morning"',)).fetchall(), [("new-page",)]
+        )
+
 if __name__ == "__main__":
     unittest.main()
