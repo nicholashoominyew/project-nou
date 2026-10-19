@@ -39,7 +39,7 @@ Building an installer can be attempted with `npm run tauri -- build` after compl
 - Do not use this prototype for irreplaceable data.
 - Plain-text note-body editing is present, but not yet validated end-to-end on Windows; no BlockNote-rich-text UI, encryption key handling, sync or backup UI is in place.
 - Only the single default `personal` workspace is exposed.
-- Deleting a page moves it and descendants to trash; restore UI is future work.
+- Deleting a page moves it and its active descendants to Trash. A Restore action is now in the prototype, but Windows end-to-end behavior is unverified.
 - Hierarchy cycle prevention for arbitrary reparenting will be implemented before adding drag-and-drop.
 - Network/server connectivity is **not required**.
 
@@ -99,3 +99,16 @@ After creating a verified snapshot, choose **Verify a separate recovery copy**. 
 **Not a live restore:** The application intentionally does not overwrite, import, or switch its live Notes database. Test-restore copies are for recovery rehearsals only. A future explicit restore workflow must close database connections, preserve an emergency copy of the current database and WAL/SHM, verify both source and destination, and allow a rollback on failure.
 
 **Retention warning:** Test restores and snapshots consume disk space until cleaned up. Do not delete your only verified backup.
+
+## Trash and page recovery (prototype)
+1. Create a page with a subpage and save some note text in both.
+2. Select the parent and click **Trash**; confirm the parent and child disappear from the normal sidebar and search.
+3. Open **Trash** in the sidebar. The UI lists the top-level trashed pages; nested children deleted with their parent are recovered together.
+4. Click **Restore** and verify both pages return, along with their existing SQLite Yjs update history.
+5. Test a sort-key conflict: delete a page, create a new page in its previous sibling position, then restore the original. Both pages should remain visible with unique keys.
+6. Verify an independently trashed child remains in Trash after its parent is separately trashed and restored.
+7. Exit and reopen the desktop application; confirm page hierarchy, order and note content survive.
+
+**Safety rules:** Restoration is transactional and does not erase Yjs updates. A child cannot be restored while its parent is still in Trash; restore its parent first. A restore only brings back descendants sharing the parent operation's deletion timestamp. No permanent delete button is provided in this prototype. The existing local snapshot and independent backup precautions still apply.
+
+**Verification status:** The Python test `tests/test_notes_trash_restore.py` tests SQLite restoration semantics; actual Tauri/Rust integration and Windows GUI flows are not verified yet.
