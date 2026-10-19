@@ -135,7 +135,7 @@ fn search_notes(db: State<'_, Db>, query: String) -> Result<Vec<SearchHit>, Stri
     if search.is_empty() { return Ok(Vec::new()); }
     if search.len() > 200 { return Err("Search query is too long".into()); }
     // Quote FTS5 input so user punctuation/operators cannot alter query grammar.
-    let exact = format!("\\"{}\\"", search.replace('"', "\\"\\""));
+    let exact = format!(r#""{}""#, search.replace('"', r#""""#));
     let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
     let mut statement = conn.prepare(
         "SELECT p.id,p.title,p.parent_id FROM page_search s
