@@ -28,6 +28,7 @@ export default function App() {
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [restoreCopy, setRestoreCopy] = useState<Snapshot | null>(null);
   const reload = useCallback(async () => {
     setPages(await invoke<Page[]>("list_pages"));
   }, []);
@@ -86,8 +87,14 @@ export default function App() {
           const created = await invoke<Snapshot>("create_notes_snapshot");
           await invoke("verify_notes_snapshot", { filename: created.filename });
           setSnapshot(created);
+          setRestoreCopy(null);
         })}>Create recovery snapshot</button>
         {snapshot && <p role="status">Verified: {snapshot.filename}<br />{Math.ceil(snapshot.bytes / 1024)} KB saved to:<br /><span className="snapshot-path">{snapshot.path}</span></p>}
+        {snapshot && <button disabled={busy} onClick={() => void run(async () => {
+          const copy = await invoke<Snapshot>("stage_notes_restore", { filename: snapshot.filename });
+          setRestoreCopy(copy);
+        })}>Verify a separate recovery copy</button>}
+        {restoreCopy && <p role="status">Recovery copy ready; active database unchanged. <span className="snapshot-path">{restoreCopy.path}</span></p>}
         <small>Stored on this PC. Copy the snapshot to another device for real backup protection. Wait until note edits show “Saved” first.</small>
       </div>
       <div className="sidebar-footer">Stored locally in SQLite · No account needed</div>
