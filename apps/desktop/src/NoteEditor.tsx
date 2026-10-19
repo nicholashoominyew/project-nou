@@ -43,7 +43,7 @@ export default function NoteEditor({ pageId }: { pageId: string }) {
       if (docRef.current === document) docRef.current = null;
       // Unmount does not cancel previously queued SQLite writes.
       // Keep the Y.Doc alive until any enqueued writes resolve.
-      void pendingRef.current.finally(() => document.destroy());
+      void pendingRef.current.then(() => document.destroy(), () => document.destroy());
       pendingRef.current = Promise.resolve();
     };
   }, [pageId]);
@@ -75,9 +75,11 @@ export default function NoteEditor({ pageId }: { pageId: string }) {
     );
 
     pendingRef.current = nextWrite.catch((reason: unknown) => {
-      failedRef.current = true;
-      setError("Saving failed: " + String(reason) + ". Copy your text before leaving this page.");
-      setStatus("failed");
+      if (docRef.current === document) {
+        failedRef.current = true;
+        setError("Saving failed: " + String(reason) + ". Copy your text before leaving this page.");
+        setStatus("failed");
+      }
       throw reason;
     });
 
