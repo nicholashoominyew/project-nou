@@ -1,3 +1,4 @@
+mod backup;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::Serialize;
 use std::{fs, path::PathBuf, sync::Mutex};
@@ -7,6 +8,7 @@ use uuid::Uuid;
 const MIGRATION: &str = include_str!("../../../../db/notes/001_initial.sql");
 
 struct Db(Mutex<Connection>);
+struct BackupDirectory(PathBuf);
 
 #[derive(Clone, Debug, Serialize)]
 struct Page {
@@ -262,14 +264,35 @@ fn append_note_update(
     Ok(seq)
 }
 
+#[tauri::command]
+fn create_notes_snapshot(
+    db: State<'_, Db>,
+    backup_directory: State<'_, BackupDirectory>,
+) -> Result<backup::Snapshot, String> {
+    let connection = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    backup::create_snapshot(&connection, &backup_directory.0)
+}
+
+#[tauri::command]
+fn verify_notes_snapshot(
+    backup_directory: State<'_, BackupDirectory>,
+    filename: String,
+) -> Result<backup::Snapshot, String> {
+    backup::verify_snapshot(&backup_directory.0, &filename)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let conn = get_connection(app.handle()).map_err(std::io::Error::other)?;
+            let backups = app.handle().path().app_data_dir()
+                .map_err(std::io::Error::other)?
+                .join("snapshots");
+            app.manage(BackupDirectory(backups));
             app.manage(Db(Mutex::new(conn)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update,search_notes])
+        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update,search_notes,create_notes_snapshot,verify_notes_snapshot])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");
 }
