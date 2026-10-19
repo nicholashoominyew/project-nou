@@ -17,3 +17,11 @@
 .backup-panel p{color:#315f52}
 .snapshot-path{display:block;max-height:68px;overflow:auto;font-family:monospace}
 .sidebar-footer{margin-top:0}
+
+.trash-toggle{display:block;margin:14px 12px 10px;width:calc(100% - 24px);text-align:left;padding:10px 12px;background:transparent;border:0;border-radius:8px;color:#697985;font-size:13px}
+.trash-toggle:hover,.trash-toggle.active{background:#e3e8eb;color:#263e4b}
+.trash-screen h1{font-size:29px;color:#273c46;margin:48px 0 8px}
+.trash-screen>p{font-size:14px;color:#7e8b96;margin:0 0 28px}
+.trash-row{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid #edf0f2;padding:15px 0;color:#465663;font-size:14px}
+.trash-row button{padding:8px 13px;border:1px solid #bed0d8;border-radius:8px;color:#284f60;background:#fff;font-size:12px}
+.trash-row button:hover{background:#eaf1f5}
