@@ -108,8 +108,11 @@ fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String) -> R
     tx.execute("INSERT INTO page_search(page_id,title,body) VALUES (?1,?2,'')",
         params![id,title]).map_err(|e| e.to_string())?;
     rebalance(&tx,parent_id.as_deref())?;
+    let actual_key: String = tx.query_row(
+        "SELECT sort_key FROM pages WHERE id=?1", [&id], |r| r.get(0)
+    ).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
-    Ok(Page { id,title,parent_id,sort_key:key })
+    Ok(Page { id,title,parent_id,sort_key:actual_key })
 }
 
 #[tauri::command]
