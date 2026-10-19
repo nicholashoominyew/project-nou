@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 type Page = { id: string; title: string; parent_id: string | null; sort_key: string };
 type Row = { page: Page; depth: number };
 type SearchHit = { id: string; title: string; parent_id: string | null };
+type Snapshot = { filename: string; path: string; bytes: number };
 
 function flatten(pages: Page[], parent: string | null = null, depth = 0, visited = new Set<string>()): Row[] {
   const rows: Row[] = [];
@@ -26,6 +27,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const reload = useCallback(async () => {
     setPages(await invoke<Page[]>("list_pages"));
   }, []);
@@ -79,6 +81,15 @@ export default function App() {
         </>}
       </nav>
       {pages.length === 0 && <p className="hint">Create your first note to begin.</p>}
+      <div className="backup-panel">
+        <button disabled={busy} onClick={() => void run(async () => {
+          const created = await invoke<Snapshot>("create_notes_snapshot");
+          await invoke("verify_notes_snapshot", { filename: created.filename });
+          setSnapshot(created);
+        })}>Create recovery snapshot</button>
+        {snapshot && <p role="status">Verified: {snapshot.filename}<br />{Math.ceil(snapshot.bytes / 1024)} KB saved to:<br /><span className="snapshot-path">{snapshot.path}</span></p>}
+        <small>Stored on this PC. Copy the snapshot to another device for real backup protection. Wait until note edits show “Saved” first.</small>
+      </div>
       <div className="sidebar-footer">Stored locally in SQLite · No account needed</div>
     </aside>
     <section className="workspace">
