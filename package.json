@@ -11,6 +11,6 @@
     "tauri": "npm run tauri -w @nou/desktop",
     "typecheck": "npm run typecheck -w @nou/desktop",
     "icons": "npm run tauri -- icon assets/nou-icon.svg",
-    "package:windows": "npm run icons && npm run tauri -- build --bundles nsis"
+    "package:windows": "npm run icons && npm exec --workspace=@nou/desktop -- tauri build --bundles nsis"
   }
 }
