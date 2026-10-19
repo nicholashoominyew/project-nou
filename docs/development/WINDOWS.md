@@ -67,3 +67,19 @@ Notes are Yjs documents stored as ordered updates. The current prototype uses a 
 8. Close, reopen and repeat the search while disconnected from the network.
 
 Implementation uses SQLite FTS5 over the separate Notes database. Search is a locally derived cache; the authoritative document remains Yjs update history. This milestone does **not** include backlinks or semantic/AI search.
+
+## Local recovery snapshot (prototype)
+Click **Create recovery snapshot** in the Notes sidebar **after all current note edits display Saved on this device**. The desktop issues a `VACUUM INTO` command through SQLite, creating a **new consistent standalone database** even when the main database runs in WAL mode. The application verifies `PRAGMA integrity_check` and Notes schema version before reporting success, and shows the snapshot's full Windows path.
+
+**This does not replace real backups:** by default snapshots are saved under the same Windows application-data directory as the live Notes database, in a `snapshots` subfolder. If the PC, disk or Windows profile is lost, both can disappear. Copy the snapshot file to an **independent destination** such as an external drive, then verify that copy opens and passes integrity checks. The system does not automatically send or encrypt snapshots off-device. Automated weekly server-to-desktop duplicate backup is a later phase.
+
+### Recovery procedure for an isolated test copy
+1. Exit Project NOU completely; keep the original database and its `-wal` and `-shm` files unchanged.
+2. Copy the snapshot to a separate test directory, using a separate filename such as `restore-test.sqlite3`.
+3. Open the copied database in a compatible SQLite tool, execute `PRAGMA integrity_check;` and confirm the result is `ok`.
+4. Confirm schema version is 1 and inspect `pages` and `yjs_updates` records. This does not validate editor-level reconstruction; that is a separate test.
+5. **Do not overwrite the live database while the application is open.** Full guided restore/import is not implemented; test an actual rollback before using this with personal data.
+
+The backend also supports `verify_notes_snapshot` for a snapshot filename within the application's own snapshot directory; it rejects path traversal. The Rust backup module includes tests for consistent snapshots and invalid filenames. Python `tests/test_notes_snapshot.py` independently exercises `VACUUM INTO` with WAL and confirms it refuses overwrites.
+
+**Known limitation:** each editor save writes a full Yjs state update; storage compaction, write coalescing, and comprehensive editor load/save integration testing remain future work.
