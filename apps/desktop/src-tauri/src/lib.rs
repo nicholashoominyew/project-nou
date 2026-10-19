@@ -175,6 +175,82 @@ fn trash_page(db: State<'_, Db>, page_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn list_trashed_pages(db: State<'_, Db>) -> Result<Vec<Page>, String> {
+    let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    let mut stmt = conn.prepare(
+        "SELECT p.id,p.title,p.parent_id,p.sort_key FROM pages p
+         WHERE p.workspace_id='personal' AND p.deleted_at IS NOT NULL
+           AND (p.parent_id IS NULL OR NOT EXISTS (
+             SELECT 1 FROM pages parent
+             WHERE parent.id=p.parent_id AND parent.deleted_at IS NOT NULL
+           ))
+         ORDER BY p.deleted_at DESC,p.title COLLATE NOCASE,p.id"
+    ).map_err(|e| e.to_string())?;
+    let pages = stmt.query_map([], row_page).map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?;
+    Ok(pages)
+}
+
+#[tauri::command]
+fn restore_page(db: State<'_, Db>, page_id: String) -> Result<(), String> {
+    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let (parent_id, deleted_at): (Option<String>, String) = tx.query_row(
+        "SELECT parent_id,deleted_at FROM pages
+         WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NOT NULL",
+        [&page_id],
+        |r| Ok((r.get(0)?,r.get(1)?)),
+    ).optional().map_err(|e| e.to_string())?
+        .ok_or("This page is not in trash")?;
+    if let Some(ref parent) = parent_id {
+        let active: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pages WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NULL)",
+            [parent], |r| r.get(0),
+        ).map_err(|e| e.to_string())?;
+        if !active { return Err("Restore the parent page first".into()); }
+    }
+
+    // Restore only descendants deleted in the same trash operation.
+    // Descendants independently trashed earlier retain their deleted_at and stay in trash.
+    let mut stmt = tx.prepare(
+        "WITH RECURSIVE restored(id,parent_id) AS (
+            SELECT id,parent_id FROM pages WHERE id=?1 AND deleted_at=?2
+            UNION ALL
+            SELECT child.id,child.parent_id FROM pages child
+            JOIN restored p ON child.parent_id=p.id
+            WHERE child.deleted_at=?2 AND child.workspace_id='personal'
+         )
+         SELECT id,parent_id FROM restored"
+    ).map_err(|e| e.to_string())?;
+    let restored: Vec<(String,Option<String>)> = stmt.query_map(
+        params![page_id,deleted_at],
+        |r| Ok((r.get(0)?,r.get(1)?)),
+    ).map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?;
+    drop(stmt);
+    if restored.is_empty() { return Err("Nothing eligible to restore".into()); }
+
+    // Assign collision-free temporary keys BEFORE clearing deleted_at;
+    // active sibling sort keys may have been reused while pages were in trash.
+    for (id,_) in &restored {
+        tx.execute(
+            "UPDATE pages SET sort_key=?1,deleted_at=NULL,revision=revision+1
+             WHERE id=?2 AND deleted_at=?3",
+            params![format!("~restore-{id}"),id,deleted_at],
+        ).map_err(|e| e.to_string())?;
+    }
+    let mut parents: Vec<Option<String>> = restored.iter()
+        .map(|(_,parent)| parent.clone()).collect();
+    parents.sort();
+    parents.dedup();
+    for parent in parents {
+        rebalance(&tx,parent.as_deref())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn move_page(db: State<'_, Db>, page_id: String, direction: String) -> Result<(), String> {
     if direction != "up" && direction != "down" { return Err("Invalid direction".into()); }
     let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
@@ -306,7 +382,7 @@ pub fn run() {
             app.manage(Db(Mutex::new(conn)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update,search_notes,create_notes_snapshot,verify_notes_snapshot,stage_notes_restore])
+        .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note_updates,append_note_update,search_notes,create_notes_snapshot,verify_notes_snapshot,stage_notes_restore,list_trashed_pages,restore_page])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");
 }
