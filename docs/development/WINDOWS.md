@@ -83,3 +83,19 @@ Click **Create recovery snapshot** in the Notes sidebar **after all current note
 The backend also supports `verify_notes_snapshot` for a snapshot filename within the application's own snapshot directory; it rejects path traversal. The Rust backup module includes tests for consistent snapshots and invalid filenames. Python `tests/test_notes_snapshot.py` independently exercises `VACUUM INTO` with WAL and confirms it refuses overwrites.
 
 **Known limitation:** each editor save writes a full Yjs state update; storage compaction, write coalescing, and comprehensive editor load/save integration testing remain future work.
+
+## Safe restore rehearsal (new prototype control)
+After creating a verified snapshot, choose **Verify a separate recovery copy**. The native `stage_notes_restore` command only accepts a validated snapshot filename from the controlled snapshots directory. It copies into a **new randomly named file** under the application's `restore-staging` directory, checks SQLite integrity and schema version, and leaves the active `notes.sqlite3` and its WAL files unchanged.
+
+### Acceptance test
+1. Create a page called "Recovery Test" with a paragraph of content and wait for "Saved".
+2. Create a snapshot using the sidebar button.
+3. Change the page text and wait for "Saved" again.
+4. Choose "Verify a separate recovery copy", then open the displayed staged SQLite path with a SQLite viewer and inspect the `pages` and `yjs_updates` tables.
+5. Confirm the staged file contains state from before the subsequent edit, while the live application still shows the subsequent edit.
+6. Restart Project NOU. Verify the live state is unchanged.
+7. Run Rust tests: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`. Inspect the backup test results; tests are committed but native execution is not verified in this environment.
+
+**Not a live restore:** The application intentionally does not overwrite, import, or switch its live Notes database. Test-restore copies are for recovery rehearsals only. A future explicit restore workflow must close database connections, preserve an emergency copy of the current database and WAL/SHM, verify both source and destination, and allow a rollback on failure.
+
+**Retention warning:** Test restores and snapshots consume disk space until cleaned up. Do not delete your only verified backup.
