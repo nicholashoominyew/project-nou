@@ -1,0 +1,21 @@
+# Workspace increment — alpha 0.0.4
+Requested scope: F11 fullscreen; persistent light/dark mode; top-bar page tabs; export in a top-right ellipsis beside page actions; /page with small/medium/big linked-page icons; the Japanese 脳 application icon; bookmark cards; collapsible sidebar; monochrome per-page icons; removal of editor help/original-text disclosure; image/PDF uploads; aligned left edges; drag/drop page reordering and nesting.
+
+Tabs are interpreted as multitasking within one desktop window. Closing a tab does not delete its page. The save/operation guards still apply before navigation or window close. Theme, tabs and collapsed branches are local UI preferences. Page icons are backed up in Notes schema 3. The original pre-conversion text remains preserved in storage and JSON exports; its editor disclosure is hidden.
+
+## Images and PDFs
+Use /image or /pdf to choose a local file. Supported types are PNG, JPEG, GIF, WebP and PDF, up to 20 MB each. Content is stored immutably by SHA-256 in the independent files.sqlite3 database, and notes reference stable file IDs. Images display inline. PDFs offer an embedded preview and Save a copy; WebView2 PDF behavior requires packaged acceptance. Bookmark titles/URLs are stored locally; opening an HTTP(S) bookmark is an explicit action. No metadata scraping or remote preview requests run automatically.
+
+New regular packages include notes.sqlite3, files.sqlite3 and their manifest hashes. The Notes connection/process lock serializes application file writes and backup creation. Restore verifies both databases, preserves rollback, commits needed immutable file blobs before publishing restored Notes, and keeps newer blobs for rollback. Failed/interrupted restore retains the existing barrier/review flow. No blob cleanup or destructive file archival runs in this increment. A missing Files store prevents a new schema-3 on-disk backup from being reported as complete.
+
+Portable encrypted backups now use NOUENC02, carry Notes plus Files under the existing 64 MB combined limit, and still decrypt NOUENC01 backups. The working Notes/Files databases and local staging/rollback remain plaintext unless the drive is encrypted. Recovery JSON embeds referenced files subject to the existing 40 MB JSON/20 MB raw file transfer limits; use a complete backup for larger notes. Imported transfers verify attachment hashes/content types and required IDs before adding a new note. Old schema-1/2 Notes-only packages remain supported. Standalone schema-3 SQLite files are rejected because they can omit uploads.
+
+Schema upgrades preserve a verified pre-upgrade package. Alpha 0.0.3 cannot open schema 3: keep the pre-upgrade package and preserve the entire profile if returning to an older release.
+
+## Drag/drop and navigation
+Drop in the upper quarter of a sidebar row to insert before it, the middle to nest inside it, and the lower quarter to insert after it. The root drop target moves a page back to the workspace root. Subpages move with their parent. Native SQLite transactions revalidate destinations and refuse self/descendant cycles and trashed parents. Existing up/down actions remain as keyboard-accessible alternatives.
+
+## Acceptance
+Implementation is not installation acceptance. CI must compile and test this branch before an installer is offered. On Windows test F11 twice, both themes across restart, multiple tabs and close/navigation guards, export through the ellipsis, /page insertion and all three icon sizes, page icon persistence, bookmarks, sidebar collapse/reopen, before/inside/after/root drops and cycle refusal. Verify title/body left alignment while retaining intentional nested-list/quote indentation.
+
+Upload both an image and PDF, restart, save copies, and verify content. Back up to a separate destination, then restore in a fresh disposable Windows profile with the source profile unavailable: images and PDFs must still be available. Test encrypted export/import with uploads and a wrong passphrase. Keep an earlier version while testing. Trusted signing remains separate; builds are unsigned until a real signing identity is provisioned.

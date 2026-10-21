@@ -7,3 +7,6 @@ pub mod recovery;
 pub mod schedule;
 #[path = "../../../apps/desktop/src-tauri/src/encrypted.rs"]
 pub mod encrypted;
+
+#[path = "../../../apps/desktop/src-tauri/src/attachments.rs"]
+pub mod attachments;

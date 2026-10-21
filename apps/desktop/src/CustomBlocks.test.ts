@@ -1,0 +1,11 @@
+import {expect,it} from "vitest";
+import {bookmarkUrl} from "./CustomBlocks";
+import {BlockNoteEditor} from "@blocknote/core";
+import {withCollaboration} from "@blocknote/core/yjs";
+import * as Y from "yjs";
+import {FRAGMENT,migrateLegacy,noteSchema,blocksToPlainText} from "./blockModel";
+import {parseRecovery,exportNote,documentAttachmentIds} from "./noteTransfer";
+it("permits normal bookmarks and rejects executable schemes and embedded credentials",()=>{expect(bookmarkUrl("example.com")).toBe("https://example.com/");expect(()=>bookmarkUrl("javascript:alert(1)")).toThrow();expect(()=>bookmarkUrl("file:///C:/private")).toThrow();expect(()=>bookmarkUrl("https://name:secret@example.com")).toThrow();});
+it("persists page links, icon sizes, bookmarks and file IDs in Yjs recovery",()=>{const source=new Y.Doc();const doc=migrateLegacy(source);const editor=BlockNoteEditor.create(withCollaboration({schema:noteSchema,collaboration:{fragment:doc.getXmlFragment(FRAGMENT),user:{name:"test",color:"#000000"}}}));const node=document.createElement("div");document.body.append(node);editor.mount(node);
+const id="a".repeat(64);editor.replaceBlocks(editor.document,[{type:"nouPage",props:{pageId:"child",label:"Child",iconSize:"big"}},{type:"nouBookmark",props:{title:"Saved link",url:"https://example.com"}},{type:"nouImage",props:{fileId:id,name:"photo.png"}},{type:"nouPdf",props:{fileId:id,name:"paper.pdf"}}]);
+expect(blocksToPlainText(editor.document)).toContain("Saved link https://example.com");expect(documentAttachmentIds(doc,"blocknote-v1")).toEqual([id]);const data=parseRecovery(exportNote(doc,"blocknote-v1","p","Title","json"));expect(data.plainText).toContain("paper.pdf");editor.unmount();node.remove();source.destroy();doc.destroy();});

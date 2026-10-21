@@ -5,7 +5,7 @@ import NoteEditor from "./NoteEditor";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
-vi.mock("@blocknote/react", () => ({ useCreateBlockNote: vi.fn() }));
+vi.mock("@blocknote/react", async importOriginal => ({ ...await importOriginal<typeof import("@blocknote/react")>(), useCreateBlockNote: vi.fn() }));
 vi.mock("@blocknote/mantine", () => ({ BlockNoteView: () => null }));
 beforeEach(() => {
   invoke.mockReset();

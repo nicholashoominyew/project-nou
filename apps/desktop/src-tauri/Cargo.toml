@@ -1,6 +1,6 @@
 [package]
 name = "nou-desktop"
-version = "0.0.3"
+version = "0.0.4"
 description = "Project NOU offline notes desktop"
 authors = ["Project NOU"]
 edition = "2021"

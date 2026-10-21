@@ -1,7 +1,8 @@
+import * as Y from "yjs";
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { parseRecovery, type Transfer } from "./noteTransfer";
+import { blockAttachmentIds, inspectDocument, parseRecovery, type Transfer } from "./noteTransfer";
 export default function ImportNotePanel({ onClose, onImported }: { onClose: () => void; onImported: (id: string) => void | Promise<void> }) {
   const [data, setData] = useState<Transfer>();
   const [title, setTitle] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
@@ -17,7 +18,8 @@ export default function ImportNotePanel({ onClose, onImported }: { onClose: () =
   async function restore() {
     if (!data) return; setBusy(true); setError("");
     try {
-      const page = await invoke<{ id: string }>("import_note", { title: title.trim() || "Recovered note", update: data.update, plainText: data.plainText, format: data.editorFormat, legacyText: data.legacyText ?? null });
+      const doc=new Y.Doc();let ids:string[];try{Y.applyUpdate(doc,Uint8Array.from(data.update));ids=blockAttachmentIds(inspectDocument(doc,data.editorFormat).blocks||[]);}finally{doc.destroy()}
+      const page = await invoke<{ id: string }>("import_note", { title: title.trim() || "Recovered note", update: data.update, plainText: data.plainText, format: data.editorFormat, legacyText: data.legacyText ?? null, attachmentIds:ids,files:data.files??[] });
       await onImported(page.id);
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }

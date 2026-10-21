@@ -5,7 +5,7 @@ use argon2::{Algorithm, Argon2, Params, Version};
 use crate::recovery::{self, Manifest, Verified};
 use std::{fs, io::{Read, Write}, path::{Path, PathBuf}};
 use zeroize::Zeroizing;
-const MAGIC: &[u8; 8] = b"NOUENC01";
+const MAGIC: &[u8; 8] = b"NOUENC02";
 const LIMIT: usize = 64 * 1024 * 1024;
 const HEADER: usize = 8 + 16 + 12;
 fn key(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8;32]>, String> {
@@ -25,7 +25,7 @@ fn seal(plain: &[u8], password: &str) -> Result<Vec<u8>, String> {
     let mut output = header.to_vec(); output.extend(cipher_text); Ok(output)
 }
 fn unseal(bytes: &[u8], password: &str) -> Result<Zeroizing<Vec<u8>>, String> {
-    if bytes.len() < HEADER + 16 || bytes.len() > LIMIT + 16440 || &bytes[..8] != MAGIC { return Err("Unsupported, truncated or oversized encrypted backup".into()); }
+    if bytes.len() < HEADER + 16 || bytes.len() > LIMIT + 16440 || (&bytes[..8] != MAGIC && &bytes[..8] != b"NOUENC01") { return Err("Unsupported, truncated or oversized encrypted backup".into()); }
     let key = key(password, &bytes[8..24])?;
     let cipher = Aes256Gcm::new_from_slice(key.as_ref()).map_err(|_| "Invalid encryption key")?;
     cipher.decrypt(Nonce::from_slice(&bytes[24..HEADER]), Payload { msg: &bytes[HEADER..], aad: &bytes[..HEADER] }).map(Zeroizing::new).map_err(|_| "Wrong passphrase or damaged encrypted backup; no notes were replaced".into())
@@ -39,7 +39,7 @@ fn bounded_read(path: &Path) -> Result<Vec<u8>, String> {
 }
 fn cleanup(dir: &Path) {
     // Only files in the fresh, app-generated staging package are removed; never recursive user paths.
-    for name in ["manifest.json", "notes.sqlite3"] { let _ = fs::remove_file(dir.join(name)); }
+    for name in ["manifest.json", "notes.sqlite3", "files.sqlite3"] { let _ = fs::remove_file(dir.join(name)); }
     let _ = fs::remove_dir(dir);
     if let Some(parent) = dir.parent() { let _ = fs::remove_dir(parent); }
 }
@@ -52,9 +52,10 @@ pub fn export(source: &rusqlite::Connection, data: &Path, target: &Path, passwor
     let backup = recovery::create(source, &staging)?;
     let dir = PathBuf::from(&backup.path);
     let result = (|| {
-        if backup.manifest.bytes > LIMIT as u64 { return Err("Encrypted backup limit is 64 MB; your regular backup remains available".into()); }
+        if backup.manifest.bytes + backup.manifest.files.as_ref().map_or(0,|f|f.bytes) > LIMIT as u64 { return Err("Encrypted backup limit is 64 MB; your regular backup remains available".into()); }
         let manifest = serde_json::to_vec(&backup.manifest).map_err(|e| e.to_string())?;
         let mut plain = Zeroizing::new(Vec::new()); plain.extend((manifest.len() as u32).to_le_bytes()); plain.extend(manifest); plain.extend(fs::read(dir.join("notes.sqlite3")).map_err(|e| e.to_string())?);
+        if backup.manifest.files.is_some(){plain.extend(fs::read(dir.join("files.sqlite3")).map_err(|e|e.to_string())?);}
         let encrypted = seal(&plain, &password)?;
         let mut file = fs::OpenOptions::new().create_new(true).write(true).open(target).map_err(|e| format!("Choose a new filename; existing files are preserved: {e}"))?;
         if let Err(error) = file.write_all(&encrypted).and_then(|_| file.sync_all()) { drop(file); let _ = fs::remove_file(target); return Err(error.to_string()); }
@@ -75,11 +76,15 @@ pub fn stage(source: &Path, data: &Path, password: String) -> Result<Verified, S
     if n > 16384 || plain.len() < 4+n || plain.len()-4-n > LIMIT { return Err("Invalid encrypted payload size".into()); }
     let manifest: Manifest = serde_json::from_slice(&plain[4..4+n]).map_err(|e| e.to_string())?;
     if !manifest.id.starts_with("backup-") || manifest.id.len() > 100 || !manifest.id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') { return Err("Invalid package identifier".into()); }
+    let file_bytes=manifest.files.as_ref().map_or(0,|f|f.bytes);
+    if manifest.bytes.checked_add(file_bytes)!=Some((plain.len()-4-n)as u64){return Err("Encrypted payload size does not match manifest".into());}
+    let notes_end=4+n+manifest.bytes as usize;
     let dir = data.join("restore-staging").join(uuid::Uuid::new_v4().to_string()).join(&manifest.id);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let result = (|| {
         let mut file = fs::OpenOptions::new().create_new(true).write(true).open(dir.join("notes.sqlite3")).map_err(|e| e.to_string())?;
-        file.write_all(&plain[4+n..]).and_then(|_| file.sync_all()).map_err(|e| e.to_string())?; drop(file);
+        file.write_all(&plain[4+n..notes_end]).and_then(|_| file.sync_all()).map_err(|e| e.to_string())?; drop(file);
+        if manifest.files.is_some(){let mut f=fs::OpenOptions::new().create_new(true).write(true).open(dir.join("files.sqlite3")).map_err(|e|e.to_string())?;f.write_all(&plain[notes_end..]).and_then(|_|f.sync_all()).map_err(|e|e.to_string())?;}
         recovery::write_new_json(&dir.join("manifest.json"), &manifest)?;
         recovery::verify(&dir)
     })();
@@ -113,4 +118,17 @@ mod tests {
         assert_eq!(before,recovery::hash_file(&target).unwrap());
         assert!(stage(&target,&dir,"wrong passphrase".into()).is_err()); drop(c); fs::remove_dir_all(dir).unwrap();
     }
+}
+
+#[cfg(test)]mod paired_tests{
+ use super::*;
+ #[test]fn encrypted_uploads_are_portable(){
+  let dir=std::env::temp_dir().join(format!("nou-paired-encryption-{}",uuid::Uuid::new_v4()));fs::create_dir_all(&dir).unwrap();
+  let c=rusqlite::Connection::open(dir.join("notes.sqlite3")).unwrap();c.execute_batch(include_str!("../../../../db/notes/001_initial.sql")).unwrap();c.execute_batch(include_str!("../../../../db/notes/002_editor_formats.sql")).unwrap();c.execute_batch(include_str!("../../../../db/notes/003_page_icons.sql")).unwrap();c.execute("INSERT INTO workspaces(id,title)VALUES('personal','Personal')",[]).unwrap();
+  let files=crate::attachments::open(&dir).unwrap();let info=crate::attachments::insert(&files,"readme.pdf",b"%PDF-1.7 portable").unwrap();drop(files);
+  let target=dir.join("paired.noubackup");export(&c,&dir,&target,"long recovery passphrase".into()).unwrap();let staged=stage(&target,&dir,"long recovery passphrase".into()).unwrap();assert!(staged.manifest.files.is_some());assert_eq!(crate::attachments::read(Path::new(&staged.path),&info.id).unwrap().data,b"%PDF-1.7 portable");drop(c);fs::remove_dir_all(dir).unwrap();
+ }
+ #[test]fn prior_encryption_header_remains_readable(){
+  let mut header=[0;HEADER];header[..8].copy_from_slice(b"NOUENC01");OsRng.fill_bytes(&mut header[8..]);let k=key("long recovery passphrase",&header[8..24]).unwrap();let cipher=Aes256Gcm::new_from_slice(k.as_ref()).unwrap();let mut file=header.to_vec();file.extend(cipher.encrypt(Nonce::from_slice(&header[24..]),Payload{msg:b"old payload",aad:&header}).unwrap());assert_eq!(unseal(&file,"long recovery passphrase").unwrap().as_slice(),b"old payload");
+ }
 }

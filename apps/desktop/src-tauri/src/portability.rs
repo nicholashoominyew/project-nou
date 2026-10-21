@@ -2,7 +2,7 @@
 use crate::{editor, key_for_position, rebalance, Db, Page};
 use rusqlite::params;
 use std::{fs, io::{Read, Write}, path::Path};
-use tauri::State;
+use tauri::{State,Manager};
 const MAX_IMPORT: u64 = 40 * 1024 * 1024;
 #[tauri::command]
 pub fn read_note_import(path: String) -> Result<String, String> {
@@ -29,9 +29,10 @@ pub fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     result
 }
 #[tauri::command]
-pub fn import_note(db: State<'_, Db>, title: String, update: Vec<u8>, plain_text: String, format: String, legacy_text: Option<String>) -> Result<Page, String> {
+pub fn import_note(app:tauri::AppHandle,files:Option<Vec<crate::attachments::Imported>>,attachment_ids:Option<Vec<String>>,db: State<'_, Db>, title: String, update: Vec<u8>, plain_text: String, format: String, legacy_text: Option<String>) -> Result<Page, String> {
     let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.writable()?;
+    crate::attachments::import_all(&app.path().app_data_dir().map_err(|e|e.to_string())?,&files.unwrap_or_default(),&attachment_ids.unwrap_or_default())?;
     import(&mut c, &title, &update, &plain_text, &format, legacy_text.as_deref())
 }
 pub fn import(c: &mut rusqlite::Connection, title: &str, update: &[u8], text: &str, format: &str, legacy: Option<&str>) -> Result<Page, String> {
@@ -54,5 +55,5 @@ pub fn import(c: &mut rusqlite::Connection, title: &str, update: &[u8], text: &s
     rebalance(&tx, None)?;
     let sort_key = tx.query_row("SELECT sort_key FROM pages WHERE id=?1", [&id], |r| r.get(0)).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
-    Ok(Page { id, title: title.into(), parent_id: None, sort_key })
+    Ok(Page { id, title: title.into(), parent_id: None, sort_key,icon:"document".into() })
 }

@@ -11,7 +11,7 @@ pub fn initialize_rich(tx: &rusqlite::Transaction<'_>, page: &str, update: &[u8]
 }
 pub fn upgrade(c: &Connection) -> Result<(), String> {
     let v: i64 = c.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-    match v { 1 => c.execute_batch(MIGRATION).map_err(|e| e.to_string()), 2 => Ok(()), _ => Err(format!("Unsupported Notes schema: {v}")) }
+    match v { 1 => { c.execute_batch(MIGRATION).map_err(|e| e.to_string())?; upgrade(c) }, 2 => c.execute_batch(include_str!("../../../../db/notes/003_page_icons.sql")).map_err(|e| e.to_string()), 3 => Ok(()), _ => Err(format!("Unsupported Notes schema: {v}")) }
 }
 #[derive(Serialize)]
 pub struct Note {

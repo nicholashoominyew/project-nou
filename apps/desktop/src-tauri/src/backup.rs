@@ -65,7 +65,7 @@ pub fn verify_file(path: &Path) -> Result<u64, String> {
     let version: i64 = connection
         .query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |row| row.get(0))
         .map_err(|e| format!("Snapshot missing migration metadata: {e}"))?;
-    if version != 1 && version != 2 {
+    if version != 1 && version != 2 && version != 3 {
         return Err(format!("Snapshot has unsupported Notes schema version: {version}"));
     }
     fs::metadata(path).map_err(|e| e.to_string()).map(|m| m.len())

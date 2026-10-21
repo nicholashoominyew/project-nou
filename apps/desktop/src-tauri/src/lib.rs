@@ -1,4 +1,6 @@
 mod backup;
+mod attachments;
+mod workspace_commands;
 mod schedule;
 mod encrypted;
 mod background_task;
@@ -35,6 +37,7 @@ struct Page {
     title: String,
     parent_id: Option<String>,
     sort_key: String,
+    icon: String,
 }
 
 fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
@@ -55,11 +58,11 @@ fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     } else {
         let version: i64 = conn.query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version != 1 && version != 2 { return Err(format!("Unsupported Notes database version: {version}")); }
+        if version != 1 && version != 2 && version != 3 { return Err(format!("Unsupported Notes database version: {version}")); }
     }
     conn.execute("INSERT OR IGNORE INTO workspaces (id,title) VALUES ('personal','Personal')", [])
         .map_err(|e| e.to_string())?;
-    if conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get::<_,i64>(0)).map_err(|e| e.to_string())? == 1 {
+    if conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get::<_,i64>(0)).map_err(|e| e.to_string())? < 3 {
         recovery::create(&conn, &folder.join("schema-rollback"))?;
         editor::upgrade(&conn)?;
     }
@@ -68,13 +71,13 @@ fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
 }
 
 fn row_page(row: &rusqlite::Row<'_>) -> rusqlite::Result<Page> {
-    Ok(Page { id: row.get(0)?, title: row.get(1)?, parent_id: row.get(2)?, sort_key: row.get(3)? })
+    Ok(Page { id: row.get(0)?, title: row.get(1)?, parent_id: row.get(2)?, sort_key: row.get(3)?, icon: row.get(4)? })
 }
 
 #[tauri::command]
 fn list_pages(db: State<'_, Db>) -> Result<Vec<Page>, String> {
     let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    let mut stmt = conn.prepare("SELECT id,title,parent_id,sort_key FROM pages WHERE workspace_id='personal' AND deleted_at IS NULL ORDER BY sort_key COLLATE BINARY,id").map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id,title,parent_id,sort_key,icon FROM pages WHERE workspace_id='personal' AND deleted_at IS NULL ORDER BY sort_key COLLATE BINARY,id").map_err(|e| e.to_string())?;
     let pages = stmt.query_map([], row_page).map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?;
     Ok(pages)
@@ -138,7 +141,7 @@ fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String, init
         "SELECT sort_key FROM pages WHERE id=?1", [&id], |r| r.get(0)
     ).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
-    Ok(Page { id,title,parent_id,sort_key:actual_key })
+    Ok(Page { id,title,parent_id,sort_key:actual_key,icon:"document".into() })
 }
 
 #[tauri::command]
@@ -206,7 +209,7 @@ fn trash_page(db: State<'_, Db>, page_id: String) -> Result<(), String> {
 fn list_trashed_pages(db: State<'_, Db>) -> Result<Vec<Page>, String> {
     let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
     let mut stmt = conn.prepare(
-        "SELECT p.id,p.title,p.parent_id,p.sort_key FROM pages p
+        "SELECT p.id,p.title,p.parent_id,p.sort_key,p.icon FROM pages p
          WHERE p.workspace_id='personal' AND p.deleted_at IS NOT NULL
            AND (p.parent_id IS NULL OR NOT EXISTS (
              SELECT 1 FROM pages parent
@@ -320,9 +323,10 @@ fn load_note(db: State<'_, Db>, page_id: String) -> Result<editor::Note, String>
 }
 
 #[tauri::command]
-fn save_note(db: State<'_, Db>, page_id: String, update: Vec<u8>, plain_text: String, format: String, epoch: u64) -> Result<i64, String> {
+fn save_note(app:tauri::AppHandle, attachment_ids:Option<Vec<String>>, db: State<'_, Db>, page_id: String, update: Vec<u8>, plain_text: String, format: String, epoch: u64) -> Result<i64, String> {
     let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.check_epoch(epoch)?;
+    if let Some(ids)=attachment_ids { attachments::require(&app.path().app_data_dir().map_err(|e|e.to_string())?,&ids)?; }
     editor::append(&mut c, &page_id, &update, &plain_text, &format, None)
 }
 
@@ -379,6 +383,7 @@ pub fn run() {
             lock.try_lock_exclusive().map_err(|_| std::io::Error::other("Project NOU is already running. Close the other instance first."))?;
             app.manage(InstanceLock(lock));
             let interrupted = !recovery::unresolved(&folder).map_err(std::io::Error::other)?.is_empty();
+            attachments::open(&folder).map_err(std::io::Error::other)?;
             let conn = get_connection(app.handle()).map_err(std::io::Error::other)?;
             let backups = app.handle().path().app_data_dir()
                 .map_err(std::io::Error::other)?
@@ -404,6 +409,7 @@ pub fn run() {
             recovery_commands::prepare_legacy_restore,
             recovery_commands::preview_retention,recovery_commands::apply_retention,
             recovery_commands::create_encrypted_backup,recovery_commands::prepare_encrypted_restore,recovery_commands::review_restore,recovery_commands::reset_backup_schedule,recovery_commands::backup_schedule_status,recovery_commands::configure_backup_schedule,
+            workspace_commands::notes_write_blocked,workspace_commands::relocate_page,workspace_commands::set_page_icon,workspace_commands::upload_attachment,workspace_commands::read_attachment,workspace_commands::export_attachment,workspace_commands::open_bookmark,
             background_task::background_backup_task,portability::write_note_export,portability::read_note_import,portability::import_note])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");

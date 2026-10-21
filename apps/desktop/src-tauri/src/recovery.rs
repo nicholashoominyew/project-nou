@@ -13,6 +13,8 @@ pub const MIN_KEEP: usize = 3;
 const WEEK: u64 = 7 * 24 * 60 * 60;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FilesManifest { pub bytes:u64, pub sha256:String }
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Manifest {
     pub format: u32,
     pub id: String,
@@ -21,6 +23,7 @@ pub struct Manifest {
     pub bytes: u64,
     pub sha256: String,
     pub scope: String,
+    #[serde(default, skip_serializing_if="Option::is_none")] pub files:Option<FilesManifest>,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct Verified {
@@ -92,7 +95,8 @@ pub fn validate_notes(path: &Path) -> Result<(i64, i64)> {
     // Compare schema definitions against the shipped migrations. Reject extra triggers/views/tables.
     let expected = Connection::open_in_memory().map_err(|e| e.to_string())?;
     expected.execute_batch(include_str!("../../../../db/notes/001_initial.sql")).map_err(|e| e.to_string())?;
-    if schema == 2 { expected.execute_batch(include_str!("../../../../db/notes/002_editor_formats.sql")).map_err(|e| e.to_string())?; }
+    if schema >= 2 { expected.execute_batch(include_str!("../../../../db/notes/002_editor_formats.sql")).map_err(|e| e.to_string())?; }
+    if schema >= 3 { expected.execute_batch(include_str!("../../../../db/notes/003_page_icons.sql")).map_err(|e|e.to_string())?; }
     fn definitions(c: &Connection) -> Result<Vec<(String, String, String)>> {
         let mut s = c.prepare("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").map_err(|e| e.to_string())?;
         let rows = s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, String>(2)?.split_whitespace().collect::<Vec<_>>().join(" ")))).map_err(|e| e.to_string())?;
@@ -116,7 +120,11 @@ pub fn create(source: &Connection, root: &Path) -> Result<Verified> {
     source.execute("VACUUM INTO ?1", [path.to_string_lossy().as_ref()]).map_err(|e| format!("Backup failed; previous versions retained: {e}"))?;
     fs::OpenOptions::new().write(true).open(&path).and_then(|f| f.sync_all()).map_err(|e| e.to_string())?;
     let (schema, _) = validate_notes(&path)?;
-    let manifest = Manifest { format: 1, id, created_at: now(), schema, bytes: fs::metadata(&path).map_err(|e| e.to_string())?.len(), sha256: hash_file(&path)?, scope: "notes-database-only".into() };
+    let live_path:String=source.query_row("SELECT file FROM pragma_database_list WHERE name='main'",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if schema>=3&&!live_path.is_empty()&&crate::attachments::source(source).is_none(){return Err("Files store is missing; refusing to create an incomplete backup".into());}
+    let files=if let Some(source)=crate::attachments::source(source) { let target=dir.join("files.sqlite3");crate::attachments::snapshot(&source,&target)?;Some(FilesManifest{bytes:fs::metadata(&target).map_err(|e|e.to_string())?.len(),sha256:hash_file(&target)?}) } else {None};
+    let paired=files.is_some();
+    let manifest = Manifest { files, format: if paired{2}else{1}, id, created_at: now(), schema, bytes: fs::metadata(&path).map_err(|e| e.to_string())?.len(), sha256: hash_file(&path)?, scope: if paired{"notes-with-files"}else{"notes-database-only"}.into() };
     write_new_json(&dir.join("manifest.json"), &manifest)?;
     verify(&dir)
 }
@@ -126,12 +134,13 @@ pub fn verify(dir: &Path) -> Result<Verified> {
     regular(&manifest_path)?;
     if fs::metadata(&manifest_path).map_err(|e| e.to_string())?.len() > 16384 { return Err("Oversized manifest".into()); }
     let manifest: Manifest = serde_json::from_slice(&fs::read(manifest_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    if manifest.format != 1 || manifest.scope != "notes-database-only" || !manifest.id.starts_with("backup-") || dir.file_name().and_then(|s| s.to_str()) != Some(&manifest.id) {
+    if !((manifest.format==1 && manifest.scope=="notes-database-only" && manifest.files.is_none()) || (manifest.format==2 && manifest.scope=="notes-with-files" && manifest.files.is_some())) || !manifest.id.starts_with("backup-") || dir.file_name().and_then(|s| s.to_str()) != Some(&manifest.id) {
         return Err("Unsupported backup manifest or renamed package".into());
     }
     let path = dir.join("notes.sqlite3");
     regular(&path)?;
     if fs::metadata(&path).map_err(|e| e.to_string())?.len() != manifest.bytes || hash_file(&path)? != manifest.sha256 { return Err("Backup checksum/size mismatch".into()); }
+    if let Some(files)=&manifest.files { let file=dir.join("files.sqlite3");regular(&file)?;if fs::metadata(&file).map_err(|e|e.to_string())?.len()!=files.bytes||hash_file(&file)?!=files.sha256{return Err("Files backup checksum mismatch".into());}crate::attachments::validate(&file)?; }
     let (schema, pages) = validate_notes(&path)?;
     if schema != manifest.schema { return Err("Manifest schema mismatch".into()); }
     Ok(Verified { path: dir.to_string_lossy().into(), manifest, pages })
@@ -159,7 +168,7 @@ pub fn prune(root: &Path, plan: &RetentionPlan) -> Result<usize> {
         if !fresh.remove.iter().any(|f| f.manifest.id == v.manifest.id && f.manifest.sha256 == v.manifest.sha256) { return Err("Backup inventory changed; review retention again".into()); }
         let dir = root.join(&v.manifest.id);
         let children: Vec<_> = fs::read_dir(&dir).map_err(|e| e.to_string())?.collect::<std::io::Result<Vec<_>>>().map_err(|e| e.to_string())?;
-        if children.len() != 2 { return Err("Package contains extra files; retained for safety".into()); }
+        if children.len() != if v.manifest.files.is_some(){3}else{2} { return Err("Package contains extra files; retained for safety".into()); }
         for child in children { regular(&child.path())?; }
     }
     let mut count = 0;
@@ -168,6 +177,7 @@ pub fn prune(root: &Path, plan: &RetentionPlan) -> Result<usize> {
         // Delete only these two known files. No recursive deletion of user-selected directories.
         fs::remove_file(dir.join("manifest.json")).map_err(|e| e.to_string())?;
         fs::remove_file(dir.join("notes.sqlite3")).map_err(|e| e.to_string())?;
+        if v.manifest.files.is_some(){fs::remove_file(dir.join("files.sqlite3")).map_err(|e|e.to_string())?;}
         fs::remove_dir(dir).map_err(|e| e.to_string())?;
         count += 1;
     }
@@ -182,13 +192,19 @@ pub fn stage(source: &Path, app_data: &Path) -> Result<Verified> {
     let mut output = fs::OpenOptions::new().create_new(true).write(true).open(target.join("notes.sqlite3")).map_err(|e| e.to_string())?;
     std::io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;
     output.sync_all().map_err(|e| e.to_string())?; drop(output);
+    if selected.manifest.files.is_some(){
+      let mut input=fs::File::open(source.join("files.sqlite3")).map_err(|e|e.to_string())?;
+      let mut output=fs::OpenOptions::new().create_new(true).write(true).open(target.join("files.sqlite3")).map_err(|e|e.to_string())?;
+      std::io::copy(&mut input,&mut output).and_then(|_|output.sync_all()).map_err(|e|e.to_string())?;
+    }
     write_new_json(&target.join("manifest.json"), &selected.manifest)?;
     verify(&target)
 }
 /// Wrap an alpha-0.0.1 standalone snapshot without modifying the original file.
 pub fn import_snapshot(source: &Path, app_data: &Path) -> Result<Verified> {
     let (schema, _) = validate_notes(source)?;
-    let manifest = Manifest { format: 1, id: format!("backup-{}-{}", now(), Uuid::new_v4()), created_at: now(), schema,
+    if schema>=3{return Err("Use a complete Notes + Files package for alpha 0.0.4 or newer; standalone snapshots omit uploads".into());}
+    let manifest = Manifest { files:None, format: 1, id: format!("backup-{}-{}", now(), Uuid::new_v4()), created_at: now(), schema,
         bytes: fs::metadata(source).map_err(|e| e.to_string())?.len(), sha256: hash_file(source)?, scope: "notes-database-only".into() };
     let dir = app_data.join("restore-staging").join(Uuid::new_v4().to_string()).join(&manifest.id);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -209,6 +225,7 @@ pub fn restore(connection: &mut Connection, staged: &Verified, app_data: &Path) 
     write_new_json(&journal.join(format!("{}.intent.json", record.id)), &record)?;
     #[cfg(test)]
     crash_test_hook("before-copy");
+    if checked.manifest.files.is_some(){crate::attachments::merge(&Path::new(&checked.path).join("files.sqlite3"),app_data)?;}
     let source = Connection::open_with_flags(Path::new(&checked.path).join("notes.sqlite3"), OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| e.to_string())?;
     // One SQLite transaction, including WAL commits; SQLite rolls back an incomplete copy.
     // Step all pages at once to avoid a partial restore becoming visible to another reader.

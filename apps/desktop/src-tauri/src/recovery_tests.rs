@@ -8,6 +8,7 @@ impl Fixture {
     fn new() -> Self {
         let dir = std::env::temp_dir().join(format!("nou-recovery-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
+        crate::attachments::open(&dir).unwrap();
         let db = Connection::open(dir.join("live.sqlite3")).unwrap();
         db.execute_batch(include_str!("../../../../db/notes/001_initial.sql")).unwrap();
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; INSERT INTO workspaces(id,title) VALUES('personal','Personal'); INSERT INTO pages(id,workspace_id,title,sort_key) VALUES('p','personal','Before','001'); INSERT INTO page_search VALUES('p','Before','original');").unwrap();
@@ -167,7 +168,7 @@ fn schema_and_editor_migration_keep_original_updates_and_reject_stale_conversion
     assert!(editor::append(&mut f.db,"p", &[4], "stale text", "text-v1", None).is_err());
     assert!(editor::append(&mut f.db,"p", &[4], "again", "blocknote-v1", Some((2,"original"))).is_err());
     let b = create(&f.db, &f.dir.join("backups")).unwrap();
-    assert_eq!(b.manifest.schema, 2);
+    assert_eq!(b.manifest.schema, 3);
 }
 
 #[test]
@@ -258,4 +259,32 @@ fn exports_refuse_to_replace_existing_files() {
     crate::portability::write_new(&target,b"first").unwrap();
     assert!(crate::portability::write_new(&target,b"replacement").is_err());
     assert_eq!(fs::read(&target).unwrap(),b"first");
+}
+
+#[test]
+fn paired_files_backup_restores_uploads_and_icons_without_deleting_newer_files(){
+ let mut f=Fixture::new();editor::upgrade(&f.db).unwrap();
+ f.db.execute("UPDATE pages SET icon='book' WHERE id='p'",[]).unwrap();
+ let files=crate::attachments::open(&f.dir).unwrap();let pdf=crate::attachments::insert(&files,"paper.pdf",b"%PDF-1.7 preserved PDF").unwrap();drop(files);
+ let backup=create(&f.db,&f.dir.join("paired")).unwrap();assert!(backup.manifest.files.is_some());
+ let staged=stage(Path::new(&backup.path),&f.dir).unwrap();
+ f.db.execute("UPDATE pages SET title='Later',icon='star' WHERE id='p'",[]).unwrap();
+ let files=crate::attachments::open(&f.dir).unwrap();let newer=crate::attachments::insert(&files,"newer.pdf",b"%PDF-1.7 newer PDF").unwrap();drop(files);
+ let record=restore(&mut f.db,&staged,&f.dir).unwrap();assert_eq!(f.title(),"Before");
+ let icon:String=f.db.query_row("SELECT icon FROM pages WHERE id='p'",[],|r|r.get(0)).unwrap();assert_eq!(icon,"book");
+ assert_eq!(crate::attachments::read(&f.dir,&pdf.id).unwrap().data,b"%PDF-1.7 preserved PDF");
+ assert_eq!(crate::attachments::read(&f.dir,&newer.id).unwrap().data,b"%PDF-1.7 newer PDF");
+ assert!(verify(Path::new(&record.rollback)).unwrap().manifest.files.is_some());
+ fs::write(Path::new(&staged.path).join("files.sqlite3"),b"corrupt").unwrap();assert!(restore(&mut f.db,&staged,&f.dir).is_err());assert_eq!(f.title(),"Before");
+}
+#[test]
+fn page_relocation_is_atomic_and_rejects_descendant_cycles(){
+ let mut f=Fixture::new();editor::upgrade(&f.db).unwrap();
+ f.db.execute("INSERT INTO pages(id,workspace_id,parent_id,title,sort_key) VALUES('child','personal','p','Child','001')",[]).unwrap();
+ assert!(crate::workspace_commands::relocate(&mut f.db,"p",Some("child"),None).is_err());
+ assert!(crate::workspace_commands::relocate(&mut f.db,"child",None,Some("p")).is_ok());
+ let parent:Option<String>=f.db.query_row("SELECT parent_id FROM pages WHERE id='child'",[],|r|r.get(0)).unwrap();assert!(parent.is_none());
+ crate::workspace_commands::relocate(&mut f.db,"p",Some("child"),None).unwrap();
+ assert!(crate::workspace_commands::relocate(&mut f.db,"child",Some("p"),None).is_err());
+ let parent:Option<String>=f.db.query_row("SELECT parent_id FROM pages WHERE id='p'",[],|r|r.get(0)).unwrap();assert_eq!(parent.as_deref(),Some("child"));
 }

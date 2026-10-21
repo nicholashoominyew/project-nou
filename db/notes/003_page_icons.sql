@@ -1,0 +1,4 @@
+BEGIN IMMEDIATE;
+ALTER TABLE pages ADD COLUMN icon TEXT NOT NULL DEFAULT 'document' CHECK(length(icon) BETWEEN 1 AND 40);
+INSERT INTO schema_migrations(version) VALUES(3);
+COMMIT;
