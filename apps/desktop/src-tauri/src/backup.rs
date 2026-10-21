@@ -27,6 +27,9 @@ pub fn create_snapshot(source: &Connection, directory: &Path) -> Result<Snapshot
     // Target must be a *new* file; never overwrite a previously good snapshot.
     source.execute("VACUUM INTO ?1", [target.to_string_lossy().as_ref()])
         .map_err(|e| format!("Snapshot failed: {e}"))?;
+    // VACUUM output must be durable before reporting success.
+    fs::OpenOptions::new().write(true).open(&target).and_then(|f| f.sync_all())
+        .map_err(|e| format!("Snapshot flush failed: {e}"))?;
     match verify_file(&target) {
         Ok(bytes) => Ok(Snapshot {
             filename,
@@ -41,8 +44,14 @@ pub fn create_snapshot(source: &Connection, directory: &Path) -> Result<Snapshot
     }
 }
 
-fn verify_file(path: &Path) -> Result<u64, String> {
-    // SQLite immutable read-only opening avoids creating companion WAL or SHM files.
+pub fn verify_file(path: &Path) -> Result<u64, String> {
+    // These are standalone snapshots, never live databases with uncheckpointed WAL.
+    for suffix in ["-wal", "-shm", "-journal"] {
+        if PathBuf::from(format!("{}{suffix}", path.display())).exists() {
+            return Err("Snapshot has SQLite sidecars; select a standalone NOU backup".into());
+        }
+    }
+    // READ_ONLY is not immutable mode. Do not claim it bypasses SQLite locking.
     let connection = Connection::open_with_flags(
         path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
@@ -56,7 +65,7 @@ fn verify_file(path: &Path) -> Result<u64, String> {
     let version: i64 = connection
         .query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |row| row.get(0))
         .map_err(|e| format!("Snapshot missing migration metadata: {e}"))?;
-    if version != 1 {
+    if version != 1 && version != 2 {
         return Err(format!("Snapshot has unsupported Notes schema version: {version}"));
     }
     fs::metadata(path).map_err(|e| e.to_string()).map(|m| m.len())

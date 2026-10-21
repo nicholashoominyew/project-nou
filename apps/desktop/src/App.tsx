@@ -1,11 +1,26 @@
-import NoteEditor from "./NoteEditor";
-import { useCallback, useEffect, useState } from "react";
+import type { SaveStatus } from "./NoteEditor";
+
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import * as Y from "yjs";
+const NoteEditor = lazy(() => import("./NoteEditor"));
+const BackupPanel = lazy(() => import("./BackupPanel"));
+const ImportNotePanel = lazy(() => import("./ImportNotePanel"));
 
 type Page = { id: string; title: string; parent_id: string | null; sort_key: string };
 type Row = { page: Page; depth: number };
 type SearchHit = { id: string; title: string; parent_id: string | null };
-type Snapshot = { filename: string; path: string; bytes: number };
+
+async function createRichPage(parentId: string | null, title: string): Promise<Page> {
+  const { migrateLegacy } = await import("./blockModel");
+  const empty = new Y.Doc();
+  const rich = migrateLegacy(empty);
+  try {
+    return await invoke<Page>("create_page", { parentId, title, initialUpdate: Array.from(Y.encodeStateAsUpdate(rich)) });
+  } finally { rich.destroy(); empty.destroy(); }
+}
+
 
 function flatten(pages: Page[], parent: string | null = null, depth = 0, visited = new Set<string>()): Row[] {
   const rows: Row[] = [];
@@ -29,8 +44,40 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [restoreCopy, setRestoreCopy] = useState<Snapshot | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [backupNotice, setBackupNotice] = useState("");
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryBlocked, setRecoveryBlocked] = useState(false);
+  const [editorStatus, setEditorStatus] = useState<SaveStatus>("saved");
+  const saveStatusRef = useRef<SaveStatus>("saved");
+  const onEditorStatus = useCallback((status: SaveStatus) => { saveStatusRef.current = status; setEditorStatus(status); }, []);
+  useEffect(() => {
+    const guardReload = (event: BeforeUnloadEvent) => {
+      if (saveStatusRef.current !== "saved") {
+        event.preventDefault(); event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guardReload);
+    return () => window.removeEventListener("beforeunload", guardReload);
+  }, []);
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWindow().onCloseRequested(event => {
+      if (saveStatusRef.current !== "saved") {
+        event.preventDefault(); setError("Wait for saving to finish, or retry/copy unsaved content before closing NOU.");
+      }
+    }).then(fn => { if (disposed) fn(); else unlisten = fn; }).catch(() => undefined);
+    return () => { disposed = true; unlisten?.(); };
+  }, []);
+  useEffect(() => {
+    let stopped = false;
+    const check = () => { void invoke<{ enabled: boolean; error: string | null; last_success: unknown }>("backup_schedule_status").then(s => {
+      if (!stopped) setBackupNotice(s?.error ? `Automatic backup needs attention: ${s.error}` : s?.enabled && !s.last_success ? "Weekly backups enabled — first verified copy pending." : "");
+    }).catch(e => { if (!stopped) setBackupNotice(String(e)); }); };
+    check(); const timer = window.setInterval(check, 30000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, []);
   const reload = useCallback(async () => {
     const [active, trashed] = await Promise.all([
       invoke<Page[]>("list_pages"),
@@ -38,6 +85,8 @@ export default function App() {
     ]);
     setPages(active);
     setTrashedPages(trashed);
+    const recovery = await invoke<{ interrupted: unknown[] }>("backup_status");
+    setRecoveryBlocked(recovery.interrupted.length > 0);
   }, []);
 
   useEffect(() => {
@@ -66,12 +115,19 @@ export default function App() {
 
   const current = pages.find(p => p.id === selected);
   const rows = flatten(pages);
+  if (showImport) return <Suspense fallback={<p role="status">Opening import…</p>}><ImportNotePanel onClose={() => setShowImport(false)} onImported={async id => {
+    await reload(); setShowImport(false); setShowTrash(false); setSearch(""); setSelected(id);
+  }} /></Suspense>;
+  if (showRecovery) return <Suspense fallback={<p role="status">Opening backups…</p>}><BackupPanel onBusyChange={value => onEditorStatus(value ? "saving" : "saved")} onClose={() => {
+    setShowRecovery(false); setSelected(null); setSearch(""); onEditorStatus("saved");
+    void reload().catch(e => setError(String(e)));
+  }} /></Suspense>;
   return <main className="shell">
-    <aside className="sidebar">
+    <aside className="sidebar" inert={editorStatus !== "saved" || busy}>
       <div className="brand"><span className="mark">脳</span><div><strong>Project NOU</strong><small>Offline Notes · Alpha</small></div></div>
       <div className="sidebar-heading"><span>Pages</span>
-        <button disabled={busy} aria-label="New root page" title="New root page" onClick={() => void run(async () => {
-          const page = await invoke<Page>("create_page", { parentId: null, title: "Untitled" });
+        <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} aria-label="New root page" title="New root page" onClick={() => void run(async () => {
+          const page = await createRichPage(null, "Untitled");
           setSelected(page.id);
           setShowTrash(false);
         })}>＋</button>
@@ -93,24 +149,16 @@ export default function App() {
         Trash ({trashedPages.length})
       </button>
       {pages.length === 0 && !showTrash && <p className="hint">Create your first note to begin.</p>}
+      <button className="trash-toggle" disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => setShowImport(true)}>Import recovered note…</button>
       <div className="backup-panel">
-        <button disabled={busy} onClick={() => void run(async () => {
-          const created = await invoke<Snapshot>("create_notes_snapshot");
-          await invoke("verify_notes_snapshot", { filename: created.filename });
-          setSnapshot(created);
-          setRestoreCopy(null);
-        })}>Create recovery snapshot</button>
-        {snapshot && <p role="status">Verified: {snapshot.filename}<br />{Math.ceil(snapshot.bytes / 1024)} KB saved to:<br /><span className="snapshot-path">{snapshot.path}</span></p>}
-        {snapshot && <button disabled={busy} onClick={() => void run(async () => {
-          const copy = await invoke<Snapshot>("stage_notes_restore", { filename: snapshot.filename });
-          setRestoreCopy(copy);
-        })}>Verify a separate recovery copy</button>}
-        {restoreCopy && <p role="status">Recovery copy ready; active database unchanged. <span className="snapshot-path">{restoreCopy.path}</span></p>}
-        <small>Stored on this PC. Copy the snapshot to another device for real backup protection. Wait until note edits show “Saved” first.</small>
+        <button disabled={busy || editorStatus !== "saved"} onClick={() => setShowRecovery(true)}>Backups & restore</button>
+        <small>Verified versions, guided restore and preserved rollback.</small>
       </div>
       <div className="sidebar-footer">Stored locally in SQLite · No account needed</div>
     </aside>
     <section className="workspace">
+      {backupNotice && <p className="notice" role="status">{backupNotice} Open Backups & restore for details.</p>}
+      {recoveryBlocked && <p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
       {error && <div role="alert" className="error">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
       {showTrash ? <div className="document trash-screen">
         <div className="toolbar">Knowledge / Trash</div>
@@ -119,35 +167,35 @@ export default function App() {
         {trashedPages.length === 0 && <p>Trash is empty.</p>}
         {trashedPages.map(page => <div className="trash-row" key={page.id}>
           <span>{page.title}</span>
-          <button disabled={busy} onClick={() => void run(() => invoke("restore_page", { pageId: page.id }))}>Restore</button>
+          <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => void run(() => invoke("restore_page", { pageId: page.id }))}>Restore</button>
         </div>)}
       </div> : current ? <div className="document" key={current.id}>
         <div className="toolbar">
           <span>Knowledge / Notes</span>
           <div className="actions">
-            <button disabled={busy} onClick={() => void run(async () => {
-              const p = await invoke<Page>("create_page", { parentId: current.id, title: "Untitled" });
+            <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => void run(async () => {
+              const p = await createRichPage(current.id, "Untitled");
               setSelected(p.id);
             })}>+ Subpage</button>
-            <button disabled={busy} onClick={() => void run(() => invoke("move_page", { pageId: current.id, direction: "up" }))}>↑</button>
-            <button disabled={busy} onClick={() => void run(() => invoke("move_page", { pageId: current.id, direction: "down" }))}>↓</button>
-            <button disabled={busy} className="danger" onClick={() => {
+            <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => void run(() => invoke("move_page", { pageId: current.id, direction: "up" }))}>↑</button>
+            <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => void run(() => invoke("move_page", { pageId: current.id, direction: "down" }))}>↓</button>
+            <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} className="danger" onClick={() => {
               if (window.confirm("Move this page to trash? Its subpages will not be permanently erased.")) {
                 void run(async () => { await invoke("trash_page", { pageId: current.id }); setSelected(null); });
               }
             }}>Trash</button>
           </div>
         </div>
-        <input className="title-input" aria-label="Page title" defaultValue={current.title}
+        <input readOnly={recoveryBlocked || editorStatus !== "saved"} className="title-input" aria-label="Page title" defaultValue={current.title}
           onBlur={e => { const title = e.target.value.trim() || "Untitled";
-            if (title !== current.title) void run(() => invoke("rename_page", { pageId: current.id, title }));
+            if (!recoveryBlocked && title !== current.title) void run(() => invoke("rename_page", { pageId: current.id, title }));
           }}
           onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-        <NoteEditor pageId={current.id} />
+        <Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked} /></Suspense>
       </div> : <div className="empty"><span className="big-mark">脳</span><h1>Your knowledge, your device.</h1>
         <p>Select a page or create a new one. Everything stays offline on this computer.</p>
-        <button disabled={busy} onClick={() => void run(async () => {
-          const p = await invoke<Page>("create_page", { parentId: null, title: "My first page" });
+        <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => void run(async () => {
+          const p = await createRichPage(null, "My first page");
           setSelected(p.id);
         })}>Create a page</button></div>}
     </section>

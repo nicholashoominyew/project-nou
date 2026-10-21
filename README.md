@@ -1,68 +1,62 @@
 # Project NOU (脳)
 
-A Windows-first, local-first knowledge workspace with **two separate systems**: Notes (primary) and Files (secondary).
+A Windows-first, local-first knowledge workspace with independent Notes and future Files systems.
 
-## Current stage
-**Phase 0 progressing into an early desktop prototype.** A Tauri/React UI and Rust/SQLite Notes backend are committed, but the native build and GUI have **not yet been validated**. Do not store important data in this prototype.
+## Current stage: Windows alpha 0.0.3 (acceptance pending)
 
-## Prototype capabilities
-- Create a page or nested subpage in the default Personal workspace.
-- Rename and manually reorder pages using up/down controls.
-- Move pages and descendants to Trash; recover deleted page trees through a Restore action without clearing their Yjs update history.
-- Keep page metadata in an offline per-user SQLite database.
-- Plain-text note content editor with Yjs updates saved to SQLite and local FTS5 title/body search.
-- Local **recovery snapshot creation and integrity verification** via SQLite `VACUUM INTO` (same PC by default; not independent backup).
-- Stage verified recovery copies without replacing the live database; full live-database restoration remains out of scope.
-- **Not implemented:** BlockNote rich-text blocks, file manager, server sync, automated/off-device backups, guided full-database restoration, signed installer.
+The first 0.0.1 Windows alpha was installed and manually confirmed by the user: note persistence after restart, search, Trash and restoration of preserved text. The current increment adds verified backup packages, guided Notes restore with rollback, a BlockNote editor, portable note exports/import, opt-in weekly backups and password-encrypted backup export. It remains an unsigned alpha.
 
-## Windows test installer
+### Implemented
 
-GitHub Actions is configured to run the Windows compilation, SQLite/Rust tests, and unsigned NSIS packaging. After a **successful** [Windows desktop workflow run](https://github.com/nicholashoominyew/project-nou/actions/workflows/desktop-checks.yml), download the `project-nou-windows-x64-unsigned` artifact from that run. The ZIP should contain an NSIS installer EXE and `SHA256SUMS.txt` for integrity verification. This prototype installer is **not code-signed** and is **not production-ready**. Do not test it with your real notes until backup and recovery have been confirmed.
+- Offline pages, hierarchy, rename, manual ordering, search and recoverable Trash.
+- New pages start in BlockNote rich text: headings, lists, checklists, tables, formatting, slash menu, block handles and undo; Yjs persists to the separate SQLite Notes database.
+- Existing Y.Text notes stay editable as plain text until **Convert this note to rich text**. Original text, old Yjs history and a pre-conversion database recovery package are preserved.
+- **Backups & restore**: select a destination; create uniquely versioned standalone database packages with SHA-256, integrity, exact schema and reference checks; inspect and restore a selected package; preserve verified rollback first.
+- SQLite transactional restore handles WAL without replacing open files or deleting sidecars. Interrupted operations require review before further edits. A process lock prevents two current NOU instances from using the profile.
+- Explicit retention preview/deletion: at least three verified versions and all versions younger than seven days; revalidation before deletion; unknown/corrupt packages and local rollback copies stay untouched.
+- Native TXT/Markdown/HTML/Recovery JSON export and reviewed additive JSON recovery import.
+- Opt-in weekly backup/catch-up and automatic retention; optional per-user Windows background task.
+- Password-encrypted portable Notes backup export and staged restore review.
+- Windows tests and NSIS packaging CI with JS/Rust lockfiles and installer checksums.
 
-**Release verification:** A committed GitHub Actions workflow is not itself evidence that CI passed or that an installer was successfully uploaded. See the successful run and its artifacts before treating the test build as available.
+**Choosing a destination does not prove independence.** Another folder or drive letter can share a physical disk. External-drive and remote/cloud protection are user declarations; NOU cannot verify physical separation, remote upload, provider retention or offline ransomware protection. Regular scheduled packages are not application-encrypted; manual portable encrypted exports are available. See [backup and recovery guide](docs/development/BACKUP-RESTORE.md).
+
+### Verification
+
+The [verification record](docs/development/VERIFICATION.md) separates executed tests from manual checks still needed. A generated installer is not evidence that every packaged GUI flow passed. Test with disposable notes before migration.
+
+**Not implemented:** server sync or relocation, Files storage/attachments/archive, full Notion import, integrations, encrypted unattended backup packages, automatic updates or provisioned trusted signing. Portable password-encrypted exports and a signed-release build helper are implemented; actual certificate provisioning/signing and packaged acceptance remain pending. Media blocks are disabled until their files can be stored and backed up. No external AI service is used by the editor.
 
 ## Windows development
-See [Windows setup and commands](docs/development/WINDOWS.md). After installing Node.js, Rust MSVC, Visual Studio C++ Build Tools and WebView2:
+
+Prerequisites: Node 22+, Python 3.12+, Rust MSVC, Visual Studio C++ Build Tools, WebView2 and Git. See [Windows guide](docs/development/WINDOWS.md).
 
 ```powershell
-git clone https://github.com/nicholashoominyew/project-nou.git
-cd project-nou
-npm install
+npm ci
 npm run icons
 npm run tauri -- dev
 ```
 
-Check build and database tests:
 ```powershell
-python -m unittest discover -s tests -v
-npm run typecheck
+npm test
 npm run build
-npm run icons
-cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+python -m unittest discover -s tests -v
+./tests/test_cold_recovery.ps1
+cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+npm run package:windows
 ```
 
-## Design decisions
-- Develop offline on the existing Windows desktop; the home server isn't needed for the initial prototype.
-- Target later deployment on a fully assembled **Beelink SER8 Ryzen 7 8745HS** with Windows 11 Pro preferred.
-- Notes: Notion-style editor, hierarchy, tags, stable manual ordering, search and Yjs persistence.
-- Files: independent OneDrive-style system with verified weekly archiving to desktop 4 TB storage.
-- Notes backup **duplicates**; Files archive **moves**; both require independent recovery coverage.
+The [Windows CI workflow](https://github.com/nicholashoominyew/project-nou/actions/workflows/desktop-checks.yml) uploads the unsigned NSIS installer and SHA256SUMS only after checks pass. Do not infer success from workflow configuration alone.
 
-## Documentation
-- [Architecture baseline](docs/architecture/PHASE-0.md)
-- [Notes persistence ADR](docs/architecture/ADR-001-notes-persistence.md)
-- [Initial Notes SQLite migration](db/notes/001_initial.sql)
-- [SQLite schema tests](tests/test_notes_schema.py)
-- [Snapshot safety tests](tests/test_notes_snapshot.py)
-- [Trash and Restore SQL behavior tests](tests/test_notes_trash_restore.py)
-- [Native backup implementation](apps/desktop/src-tauri/src/backup.rs)
-- [Windows development guide](docs/development/WINDOWS.md)
-- [Phase 0 issues](https://github.com/nicholashoominyew/project-nou/issues)
+## Architecture and next work
 
-## Next engineering milestones
-1. Verify Windows CI runs, fix native compilation and add necessary bundle assets.
-2. Validate offline editor persistence and SQLite search on an actual Windows machine.
-3. Verify local snapshot restore on a Windows test machine, then build independent off-device backup and guided restore; add BlockNote with explicit migration from current Y.Text.
-4. Design Files database and verified archive state machine separately.
+The [pre-server milestone and acceptance gates](docs/development/PRE-SERVER.md) track implementation separately from Windows acceptance and trusted signing.
 
-Never commit private note contents or credentials.
+- [Canonical architecture and build plan](https://app.notion.com/p/3fc9441b1f1681b6b278d7314dc5cce6)
+- [Phase 0 baseline](docs/architecture/PHASE-0.md)
+- [Notes persistence](docs/architecture/ADR-001-notes-persistence.md)
+- [Backup, restore and document migration decisions](docs/architecture/ADR-002-recovery-and-blocknote.md)
+
+The selected future server is a Beelink SER8 with Windows 11 Pro; no server is required for this offline alpha. Notes backups duplicate content. Future file archiving moves content only after verified independent backup coverage. Neither subsystem may silently delete the only recoverable copy.
+
+Never commit private notes, local backup packages or credentials.

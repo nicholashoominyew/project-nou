@@ -8,6 +8,8 @@ on:
       - 'db/notes/**'
       - 'tests/**'
       - 'package.json'
+      - 'package-lock.json'
+      - 'tools/**'
       - '.github/workflows/desktop-checks.yml'
   pull_request:
     paths:
@@ -15,6 +17,8 @@ on:
       - 'db/notes/**'
       - 'tests/**'
       - 'package.json'
+      - 'package-lock.json'
+      - 'tools/**'
       - '.github/workflows/desktop-checks.yml'
   workflow_dispatch:
 
@@ -42,21 +46,28 @@ jobs:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
       - name: Install JS dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Generate Tauri icon assets
         run: npm run icons
       - name: SQLite regression tests
         run: python -m unittest discover -s tests -v
+      - name: Cold recovery safeguards
+        shell: pwsh
+        run: ./tests/test_cold_recovery.ps1
       - name: TypeScript typecheck
         run: npm run typecheck
+      - name: Editor migration, persistence and restore UI tests
+        run: npm test
       - name: Vite production build
         run: npm run build
+      - name: Portable backup scheduling and encryption checks
+        run: cargo test --locked --manifest-path tests/native-core/Cargo.toml --lib
       - name: Rust unit tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+        run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: Rust compilation check
-        run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+        run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: Create unsigned NSIS Windows test installer
-        run: npm exec --workspace=@nou/desktop -- tauri build --bundles nsis
+        run: npm exec --workspace=@nou/desktop -- tauri build --bundles nsis -- --locked
       - name: Validate installer file and write SHA256SUMS
         shell: pwsh
         run: |
