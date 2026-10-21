@@ -2,7 +2,15 @@
 
 Scope: complete the Windows-only Notes workflow, portable recovery, unattended backups and release preparation. Home-server purchase/deployment, synchronization, Files, Android and integrations remain later work. The server is not required for this milestone.
 
-## Current gates
+## Acceptance update — 21 October 2026
+
+The user reported all checks completed successfully after testing 0.0.3. The exact-head Windows CI passed and PR #7 was merged. The offline Windows alpha is accepted. Individual hardware/fault-injection details were not separately supplied, so the checklist below remains the procedure for reproducing acceptance rather than a detailed per-test lab log.
+
+The remaining release gate is trusted Authenticode signing: the tested installer is unsigned. A signing identity and a real signed/timestamp-verified build are still required to call it a trusted signed release. Home-server setup remains the next major project phase and has not started.
+
+The implementation table below retains the detailed verification considerations; its manual-test requests predate the user's overall acceptance report.
+
+## Implementation and verification considerations
 
 | Gate | Implementation / evidence | Still required |
 | --- | --- | --- |
@@ -14,7 +22,7 @@ Scope: complete the Windows-only Notes workflow, portable recovery, unattended b
 | Releases | Locked builds, installer hashes, signed-release helper with certificate/timestamp checks | Obtain/provision a trusted code-signing identity; run the helper and verify its result |
 | Milestone acceptance | Automated checks and this repeatable procedure | User Windows acceptance and recorded results; merge/release only after checks and review |
 
-A feature being implemented does not mean its packaged Windows behavior has been accepted. Do not mark this milestone complete until the remaining gates have evidence.
+A feature being implemented does not mean its packaged Windows behavior has been accepted. The Windows alpha acceptance is now recorded above. Trusted signing remains a separate open release gate.
 
 ## Windows acceptance drill (use disposable notes first)
 

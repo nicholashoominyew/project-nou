@@ -2,7 +2,7 @@
 
 A Windows-first, local-first knowledge workspace with independent Notes and future Files systems.
 
-## Current stage: Windows alpha 0.0.3 (acceptance pending)
+## Current stage: Windows alpha 0.0.3 (user accepted)
 
 The first 0.0.1 Windows alpha was installed and manually confirmed by the user: note persistence after restart, search, Trash and restoration of preserved text. The current increment adds verified backup packages, guided Notes restore with rollback, a BlockNote editor, portable note exports/import, opt-in weekly backups and password-encrypted backup export. It remains an unsigned alpha.
 
@@ -22,6 +22,8 @@ The first 0.0.1 Windows alpha was installed and manually confirmed by the user: 
 **Choosing a destination does not prove independence.** Another folder or drive letter can share a physical disk. External-drive and remote/cloud protection are user declarations; NOU cannot verify physical separation, remote upload, provider retention or offline ransomware protection. Regular scheduled packages are not application-encrypted; manual portable encrypted exports are available. See [backup and recovery guide](docs/development/BACKUP-RESTORE.md).
 
 ### Verification
+
+On 21 October 2026 the user reported all acceptance checks completed successfully for 0.0.3. [PR #7](https://github.com/nicholashoominyew/project-nou/pull/7) was merged after the exact-head Windows CI passed. This is an accepted Windows alpha; the distributed installer is unsigned and trusted code signing remains unverified. See the verification record for the distinction between CI evidence and the user's report.
 
 The [verification record](docs/development/VERIFICATION.md) separates executed tests from manual checks still needed. A generated installer is not evidence that every packaged GUI flow passed. Test with disposable notes before migration.
 

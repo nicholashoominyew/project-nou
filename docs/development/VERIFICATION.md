@@ -41,3 +41,14 @@ Executed locally in Linux: 25 Vitest/jsdom tests passed, including rich/plain re
 Initial shell JS is approximately 336 KB versus the prior 1.3 MB entry bundle; heavy editor code/styles are loaded separately. Vite still reports a non-failing large shared editor chunk. No interactive performance/accessibility/IME result is inferred from this size measurement.
 
 Pending: the current commit's full Windows Rust/PowerShell checks and installer packaging; real WebView exports, import, Task Scheduler, login/sleep/close/catch-up and prompts; independent-media/separate-profile recovery; disk-full/device/power behavior; trusted code-signing identity and an actual signed/timestamp-verified build. The signed-release helper has not been executed with a certificate. Portable encrypted export does not encrypt unattended regular packages or the working profile. Windows acceptance, trusted signing, review/merge and release are gates, not completed tasks.
+
+
+## Accepted Windows alpha — 21 October 2026
+
+The user reported: “all checks are done and well”, following delivery of the 0.0.3 installer and PRE-SERVER.md acceptance checklist. Record this as user-reported Windows acceptance. Specific Windows versions, storage arrangements and individual fault-injection outcomes were not separately enumerated; this report is not an independent observation of those details.
+
+The exact tested PR head was `4af0eb5ee4c9c96739552b67ff295dacbf3361ee`. [Windows CI 39546508119](https://github.com/nicholashoominyew/project-nou/actions/runs/39546508119) completed successfully: 26 Vitest/jsdom tests, 16 Python SQLite tests, eight portable native-core tests, 23 full native Rust tests, PowerShell cold recovery, TypeScript, Vite, native compilation and unsigned NSIS packaging/checksums. The native-core suite overlaps production modules covered by the full native suite; these are separate runs, not 31 distinct native tests. The ignored crash worker is invoked by its parent test.
+
+[PR #7](https://github.com/nicholashoominyew/project-nou/pull/7) was merged as `010b3fa2d7fb0a6e2cc143fc820bfae1db7c168b`. The accepted code is now the main-branch Windows alpha baseline. Earlier pending-status entries above describe the evidence available when they were written and are superseded by this acceptance entry for general Windows acceptance.
+
+Trusted Authenticode signing remains open. The delivered installer was explicitly unsigned; no signing certificate, valid signer/timestamp evidence or signed artifact was supplied. The user's general acceptance report does not change that artifact's signing status. The signed-release helper is prepared but has not been run with a trusted signing identity. Home-server deployment has not started.
