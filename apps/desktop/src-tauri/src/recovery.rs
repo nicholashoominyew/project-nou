@@ -122,7 +122,7 @@ pub fn create(source: &Connection, root: &Path) -> Result<Verified> {
     let (schema, _) = validate_notes(&path)?;
     let live_path:String=source.query_row("SELECT file FROM pragma_database_list WHERE name='main'",[],|r|r.get(0)).map_err(|e|e.to_string())?;
     if schema>=3&&!live_path.is_empty()&&crate::attachments::source(source).is_none(){return Err("Files store is missing; refusing to create an incomplete backup".into());}
-    let files=if let Some(source)=crate::attachments::source(source) { let target=dir.join("files.sqlite3");crate::attachments::snapshot(&source,&target)?;Some(FilesManifest{bytes:fs::metadata(&target).map_err(|e|e.to_string())?.len(),sha256:hash_file(&target)?}) } else {None};
+    let files=if let Some(source)=crate::attachments::source(source).filter(|_|schema>=3) { let target=dir.join("files.sqlite3");crate::attachments::snapshot(&source,&target)?;Some(FilesManifest{bytes:fs::metadata(&target).map_err(|e|e.to_string())?.len(),sha256:hash_file(&target)?}) } else {None};
     let paired=files.is_some();
     let manifest = Manifest { files, format: if paired{2}else{1}, id, created_at: now(), schema, bytes: fs::metadata(&path).map_err(|e| e.to_string())?.len(), sha256: hash_file(&path)?, scope: if paired{"notes-with-files"}else{"notes-database-only"}.into() };
     write_new_json(&dir.join("manifest.json"), &manifest)?;

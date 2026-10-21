@@ -26,6 +26,14 @@ permissions:
   contents: read
 
 jobs:
+  portable-core:
+    name: Portable Files, recovery and encryption
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked --manifest-path tests/native-core/Cargo.toml --lib
   windows-build:
     name: Compile, test, package x64 Windows
     runs-on: windows-latest

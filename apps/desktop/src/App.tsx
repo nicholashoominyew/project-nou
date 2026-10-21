@@ -27,7 +27,7 @@ export default function App(){
  const [error,setError]=useState("");const [busy,setBusy]=useState(false);const busyRef=useRef(false);
  const [recoveryBlocked,setRecoveryBlocked]=useState(false);const [editorStatus,setEditorStatus]=useState<SaveStatus>("saved");
  const saveStatusRef=useRef<SaveStatus>("saved");
- const [theme,setTheme]=useState<"light"|"dark">(()=>readSetting("nou-theme","light")==="dark"?"dark":"light");
+ const [theme,setTheme]=useState<"light"|"dark">(()=>readSetting<string>("nou-theme","light")==="dark"?"dark":"light");
  const [search,setSearch]=useState("");const [hits,setHits]=useState<SearchHit[]>([]);const [searching,setSearching]=useState(false);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
  const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");
