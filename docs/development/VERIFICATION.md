@@ -25,3 +25,9 @@ New installer installation/upgrade and interactive WebView2 acceptance on the us
 Scheduled/weekly backups and catch-up, server sync/relocation, Files and attachments, encrypted backup/key management, signed releases, CRDT compaction, multi-device migration coordination, full Notion import, integrations and production hardening remain outstanding. Independence is always unverified by NOU; users must verify their actual storage arrangement.
 
 Use the current commit's GitHub Actions result and artifacts as CI evidence. Merely committing the workflow does not constitute a passing run.
+
+## Save recovery follow-up — 21 October 2026
+
+Added single-note recovery downloads after failed persistence: exact UTF-8 text and a JSON envelope containing the page ID, editor format, current plain text and complete Yjs update. The JSON preserves the current in-memory note state, including rich formatting, but is not a verified database backup package and has no guided importer yet. The existing copy controls remain available. Read-only recovery mode disables save retries and conversion, while still allowing recovery downloads. A `beforeunload` handler requests a browser/WebView prompt during loading, pending saves and failed saves; actual prompt presentation remains host-dependent and needs Windows acceptance.
+
+Executed in the Linux development environment: 16 Vitest/jsdom tests passed (five new tests cover failed-save retention and full-state retry, download payloads, read-only retry protection, stale load cancellation, and reload guarding/cleanup); TypeScript and Vite production build passed; 16 Python SQLite tests passed. The existing editor bundle-size warning remains. Native Rust, PowerShell, Windows downloads and installer acceptance were not rerun locally for this frontend-only follow-up; use the new commit's Windows CI result for native checks and packaging.

@@ -47,6 +47,15 @@ export default function App() {
   const saveStatusRef = useRef<SaveStatus>("saved");
   const onEditorStatus = useCallback((status: SaveStatus) => { saveStatusRef.current = status; setEditorStatus(status); }, []);
   useEffect(() => {
+    const guardReload = (event: BeforeUnloadEvent) => {
+      if (saveStatusRef.current !== "saved") {
+        event.preventDefault(); event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guardReload);
+    return () => window.removeEventListener("beforeunload", guardReload);
+  }, []);
+  useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(event => {

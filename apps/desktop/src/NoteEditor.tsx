@@ -67,8 +67,20 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false }: { pag
       failed.current = true; report("failed"); setError(`Saving failed: ${String(e)}. Your current content remains here. Retry or copy it before leaving.`);
     });
   }
+  function downloadRecovery(kind: "text" | "yjs") {
+    const s = active.current; if (!s) return;
+    const content = kind === "text" ? latestText.current : JSON.stringify({
+      format: "nou-note-recovery-v1", pageId, editorFormat: s.loaded.format,
+      plainText: latestText.current, update: Array.from(Y.encodeStateAsUpdate(s.doc)),
+    });
+    const url = URL.createObjectURL(new Blob([content], { type: kind === "text" ? "text/plain;charset=utf-8" : "application/json" }));
+    const link = document.createElement("a");
+    link.href = url; link.download = `nou-note-${pageId}.${kind === "text" ? "txt" : "json"}`;
+    document.body.append(link); link.click(); link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   async function convert() {
-    const s = active.current; if (!s || status !== "saved") return;
+    const s = active.current; if (!s || status !== "saved" || readOnly) return;
     setConverting(true); report("saving"); setError("");
     let migrated: Y.Doc | undefined;
     try {
@@ -96,8 +108,11 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false }: { pag
       {!!session.loaded.legacy_text && <details><summary>Original text before conversion (preserved)</summary><textarea aria-label="Original preserved text" readOnly value={session.loaded.legacy_text} /></details>}
     </>}
     {status === "failed" && <div className="recovery-card">
-      {session ? <><button onClick={() => { session.queue.reset(); failed.current = false; setError(""); save(latestText.current); }}>Retry saving all current content</button>
+      {session ? <><button disabled={readOnly} onClick={() => { session.queue.reset(); failed.current = false; setError(""); save(latestText.current); }}>Retry saving all current content</button>
         <button onClick={() => { if (window.confirm("Only continue if you have copied your unsaved content. Leaving this note may discard unsaved edits.")) onStatus("saved"); }}>I copied my content — allow navigation</button>
+        <button onClick={() => downloadRecovery("text")}>Download recovery text</button>
+        <button onClick={() => downloadRecovery("yjs")}>Download recovery data with formatting</button>
+        <p>Recovery downloads contain this note only. Keep the JSON file for formatting recovery; it is not a full backup package and cannot be opened by Backups & restore.</p>
         <details open><summary>Copy current text for recovery</summary><textarea aria-label="Recovery text" readOnly value={text} /></details>
         <details><summary>Copy full Yjs state (preserves formatting)</summary><textarea aria-label="Recovery Yjs state" readOnly value={JSON.stringify(Array.from(Y.encodeStateAsUpdate(session.doc)))} /></details></>
         : <button onClick={() => setReload(v => v + 1)}>Retry opening note</button>}
