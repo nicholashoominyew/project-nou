@@ -24,8 +24,8 @@ export default function EncryptedBackup({ onPrepared, onBusyChange, onReviewStar
     finally { setPassword(""); setConfirm(""); setBusy(false); onBusyChange?.(false); }
   }
   return <section className="recovery-card"><h2>Password-encrypted backup</h2>
-    <p>Create a portable encrypted copy of the complete Notes database (up to 64 MB). Use a long unique passphrase and save it separately in your password manager. NOU does not store it and cannot reset or recover it.</p>
-    <p>This encrypts the exported file. Your working database, local rollback/staging copies and regular scheduled backup packages remain unencrypted by NOU. Use an encrypted drive for those. Decryption stages a local plaintext copy for the normal restore review.</p>
+    <p>Create a portable encrypted copy of the complete Notes database and uploaded files (up to 64 MB combined). Use a long unique passphrase and save it separately in your password manager. NOU does not store it and cannot reset or recover it.</p>
+    <p>This encrypts the exported file. Your working Notes/Files databases, local rollback/staging copies and regular scheduled backup packages remain unencrypted by NOU. Use an encrypted drive for those. Decryption stages a local plaintext copy for the normal restore review.</p>
     {error && <p className="error" role="alert">{error}</p>}{message && <p className="notice" role="status">{message}</p>}
     <fieldset disabled={busy}>
       <label>Backup passphrase<input aria-label="Backup passphrase" type="password" autoComplete="off" value={password} onChange={e => setPassword(e.target.value)} /></label>

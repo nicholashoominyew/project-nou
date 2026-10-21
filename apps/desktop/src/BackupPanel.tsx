@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-type Backup = { path: string; pages: number; manifest: { id: string; created_at: number; sha256: string; bytes: number; schema: number } };
+type Backup = { path: string; pages: number; manifest: { id: string; created_at: number; sha256: string; bytes: number; schema: number; files?:{bytes:number;sha256:string} } };
 type Record = { id: string; source: string; rollback: string };
 type Status = { destination: { path: string; protection: string } | null; interrupted: Record[]; rollback: Backup[] };
 type Preview = { token: string; backup: Backup };
@@ -78,7 +78,7 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
         <button disabled={!status?.destination} onClick={() => void run(async () => {
           const b = await invoke<Backup>("create_backup"); setMessage(`Backup verified: ${b.path}. ${b.pages} pages including Trash. SHA-256 ${b.manifest.sha256}`);
         })}>Create verified backup now</button>
-        <p>Includes the complete Notes database: pages, hierarchy, Trash, tags, Yjs content and search. Files and external attachments are not included. Weekly backups are available below; destination independence still needs your verification.</p>
+        <p>Includes the complete Notes database: pages, hierarchy, Trash, tags, Yjs content and search. Uploaded images and PDFs are included in new packages. External link targets are not included. Weekly backups are available below; destination independence still needs your verification.</p>
       </section>
       <BackupSchedule hasDestination={!!status?.destination} onBusyChange={markBusy} />
       <EncryptedBackup onBusyChange={markBusy} onReviewStart={() => { setPreview(undefined); setConfirmation(""); setRetention(undefined); }} onPrepared={p => { setPreview(p); setConfirmation(""); setRetention(undefined); }} />
@@ -98,10 +98,10 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
           }
         })}>Import an old .sqlite3 snapshot…</button>
         {skipped > 0 && <p role="status">{skipped} incomplete or invalid package(s) excluded and left untouched.</p>}
-        {versions.map(b => <div className="backup-version" key={b.path}><span>{date(b)} · {b.pages} pages · {Math.ceil(b.manifest.bytes / 1024)} KB<small>{b.manifest.id}</small></span><button onClick={() => void run(() => prepare(b.path))}>Verify & review</button></div>)}
+        {versions.map(b => <div className="backup-version" key={b.path}><span>{date(b)} · {b.pages} pages · {Math.ceil((b.manifest.bytes+(b.manifest.files?.bytes??0)) / 1024)} KB<small>{b.manifest.id}</small></span><button onClick={() => void run(() => prepare(b.path))}>Verify & review</button></div>)}
         {preview && <div className="restore-preview" role="region" aria-label="Restore review">
           <h3>Review the replacement</h3><p>{date(preview.backup)} · {preview.backup.pages} pages including Trash · schema {preview.backup.manifest.schema}</p>
-          <p>Verified staged package: <code>{preview.backup.path}</code></p><p>SHA-256: <code>{preview.backup.manifest.sha256}</code></p>
+          <p>Verified staged package: <code>{preview.backup.path}</code></p><p>SHA-256: <code>{preview.backup.manifest.sha256}</code></p><p>{preview.backup.manifest.files?"Notes + uploaded files":"Notes only — legacy package"}</p>
           <p>Your current database will be preserved in local rollback storage. Neither your original backup nor its older versions will be deleted.</p>
           <label>Type RESTORE to replace all notes<input aria-label="Restore confirmation" value={confirmation} onChange={e => setConfirmation(e.target.value)} /></label>
           <button className="danger" disabled={confirmation !== "RESTORE"} onClick={() => void run(async () => {

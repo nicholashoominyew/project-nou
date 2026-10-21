@@ -1,10 +1,9 @@
-import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
+import { BlockNoteEditor } from "@blocknote/core";
 import { blocksToYXmlFragment } from "@blocknote/core/yjs";
 import * as Y from "yjs";
 
-// Attachments belong to the future independent Files system, not unbacked external media.
-const { image: _image, video: _video, audio: _audio, file: _file, ...textBlocks } = defaultBlockSpecs;
-export const noteSchema = BlockNoteSchema.create({ blockSpecs: textBlocks });
+import {noteSchema} from "./schema";
+export {noteSchema} from "./schema";
 export const FRAGMENT = "nou-blocks-v1";
 /** Convert a copy only; commit its bytes and format marker in one SQLite transaction. */
 export function migrateLegacy(source: Y.Doc): Y.Doc {
@@ -25,8 +24,8 @@ function inlineText(content: unknown): string {
   if (item.rows) return item.rows.map(row => row.cells.map(inlineText).join("\t")).join("\n");
   return inlineText(item.content);
 }
-export function blocksToPlainText(blocks: readonly { content?: unknown; children?: readonly any[] }[]): string {
-  return blocks.map(b => inlineText(b.content) + (b.children?.length ? "\n" + blocksToPlainText(b.children) : "")).join("\n");
+export function blocksToPlainText(blocks: readonly { type?:string; props?:Record<string,unknown>; content?: unknown; children?: readonly any[] }[]): string {
+  return blocks.map(b => (b.type==="nouBookmark" ? String(b.props?.title||"")+" "+String(b.props?.url||"") : b.type==="nouPage" ? String(b.props?.label||"") : b.type==="nouImage"||b.type==="nouPdf" ? String(b.props?.name||"") : inlineText(b.content)) + (b.children?.length ? "\n" + blocksToPlainText(b.children) : "")).join("\n");
 }
 /** Failed writes stop later saves until an explicit complete-state retry. */
 export class SaveQueue {

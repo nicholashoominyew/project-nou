@@ -1,6 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect x="24" y="24" width="976" height="976" rx="230" fill="#203C49"/>
-  <path d="M292 735V285h88l261 292V285h94v450h-87L386 443v292z" fill="#F4F9FA"/>
-  <circle cx="742" cy="285" r="47" fill="#73C1C3"/>
-  <path d="M292 794h440" stroke="#73C1C3" stroke-width="24" stroke-linecap="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64"><title>脳 — Project NOU</title><rect x="2" y="2" width="60" height="60" rx="15" fill="#24443b"/><g fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 51c3-9 3-22 3-37h12v37h-6M16 26h12M15 37h13M36 14l3 7m6-9 1 9m9-7-4 8M35 29v21h20V29M39 30l12 15m0-15L39 45"/></g></svg>

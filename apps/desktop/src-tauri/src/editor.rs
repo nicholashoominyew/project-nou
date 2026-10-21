@@ -11,7 +11,7 @@ pub fn initialize_rich(tx: &rusqlite::Transaction<'_>, page: &str, update: &[u8]
 }
 pub fn upgrade(c: &Connection) -> Result<(), String> {
     let v: i64 = c.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-    match v { 1 => c.execute_batch(MIGRATION).map_err(|e| e.to_string()), 2 => Ok(()), _ => Err(format!("Unsupported Notes schema: {v}")) }
+    match v { 1 => { c.execute_batch(MIGRATION).map_err(|e| e.to_string())?; upgrade(c) }, 2 => c.execute_batch(include_str!("../../../../db/notes/003_page_icons.sql")).map_err(|e| e.to_string()), 3 => Ok(()), _ => Err(format!("Unsupported Notes schema: {v}")) }
 }
 #[derive(Serialize)]
 pub struct Note {
@@ -33,7 +33,8 @@ pub fn load(c: &Connection, page: &str, epoch: u64) -> Result<Note, String> {
     let (format, legacy_text) = match format { Some((f,t)) => (f,Some(t)), None => ("text-v1".into(),None) };
     Ok(Note { updates, format, legacy_text, seq, epoch })
 }
-pub fn append(c: &mut Connection, page: &str, update: &[u8], text: &str, format: &str, migration: Option<(i64, &str)>) -> Result<i64, String> {
+pub fn append(c: &mut Connection,page:&str,update:&[u8],text:&str,format:&str,migration:Option<(i64,&str)>)->Result<i64,String>{append_with_files(c,page,update,text,format,migration,None)}
+pub fn append_with_files(c: &mut Connection, page: &str, update: &[u8], text: &str, format: &str, migration: Option<(i64, &str)>, files:Option<&[String]>) -> Result<i64, String> {
     if update.is_empty() || update.len() > 8 * 1024 * 1024 || text.len() > 5_000_000 { return Err("Note exceeds the supported save size; copy your content before leaving".into()); }
     let tx = c.transaction().map_err(|e| e.to_string())?;
     let title: String = tx.query_row("SELECT title FROM pages WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NULL", [page], |r| r.get(0)).map_err(|e| e.to_string())?;
@@ -48,6 +49,7 @@ pub fn append(c: &mut Connection, page: &str, update: &[u8], text: &str, format:
     tx.execute("DELETE FROM page_search WHERE page_id=?1", [page]).map_err(|e| e.to_string())?;
     tx.execute("INSERT INTO page_search(page_id,title,body) VALUES (?1,?2,?3)", params![page,title,text]).map_err(|e| e.to_string())?;
     tx.execute("UPDATE pages SET revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1", [page]).map_err(|e| e.to_string())?;
+    if let Some(files)=files{tx.execute("DELETE FROM note_files WHERE page_id=?1",[page]).map_err(|e|e.to_string())?;for id in files{tx.execute("INSERT OR IGNORE INTO note_files(page_id,file_id) VALUES(?1,?2)",params![page,id]).map_err(|e|e.to_string())?;}}
     tx.commit().map_err(|e| e.to_string())?;
     Ok(seq+1)
 }
