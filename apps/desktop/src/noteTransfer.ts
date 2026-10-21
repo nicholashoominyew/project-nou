@@ -29,7 +29,7 @@ export function recoveryData(doc: Y.Doc, format: "text-v1" | "blocknote-v1", pag
 }
 /** Never trust the text cache or original page ID supplied by an imported file. */
 export function parseRecovery(json: string): Transfer {
-  if (json.length > 40*1024*1024) throw new Error("Recovery file exceeds 40 MB.");
+  if (json.length > 128*1024*1024) throw new Error("Recovery file exceeds 128 MB.");
   const value = JSON.parse(json);
   if (!value || value.format !== RECOVERY_FORMAT || !["text-v1", "blocknote-v1"].includes(value.editorFormat) ||
       !Array.isArray(value.update) || !value.update.length || value.update.length > 8*1024*1024 ||

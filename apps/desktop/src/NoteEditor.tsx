@@ -122,17 +122,20 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
     } catch (e) { setExportError(String(e)); }
     finally { setExporting(false); }
   }
-  function downloadRecovery(kind: "text" | "yjs") {
-    const s = active.current; if (!s) return;
-    const content = kind === "text" ? latestText.current : JSON.stringify({
-      format: "nou-note-recovery-v1", pageId, editorFormat: s.loaded.format,
-      plainText: latestText.current, update: Array.from(Y.encodeStateAsUpdate(s.doc)),
-    });
-    const url = URL.createObjectURL(new Blob([content], { type: kind === "text" ? "text/plain;charset=utf-8" : "application/json" }));
-    const link = document.createElement("a");
-    link.href = url; link.download = `nou-note-${pageId}.${kind === "text" ? "txt" : "json"}`;
-    document.body.append(link); link.click(); link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  async function downloadRecovery(kind: "text" | "yjs") {
+    const s=active.current;if(!s)return;
+    let content=latestText.current;
+    try {
+      if(kind==="yjs"){
+        const data=recoveryData(s.doc,s.loaded.format as "text-v1"|"blocknote-v1",pageId,title,s.loaded.legacy_text);
+        const ids=documentAttachmentIds(s.doc,s.loaded.format);
+        if(ids.length)data.files=await Promise.all(ids.map(async id=>{const file=await invoke<{info:{id:string;name:string};data:number[]}>("read_attachment",{id});return{id:file.info.id,name:file.info.name,data:file.data}}));
+        content=JSON.stringify(data);
+      }
+      if(content.length>128*1024*1024)throw Error("Recovery transfer exceeds 128 MB; use a complete backup and preserve this note state.");
+      const url=URL.createObjectURL(new Blob([content],{type:kind==="text"?"text/plain;charset=utf-8":"application/json"}));
+      const link=document.createElement("a");link.href=url;link.download=`nou-note-${pageId}.${kind==="text"?"txt":"json"}`;document.body.append(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+    } catch(error){setError(`Recovery download failed: ${String(error)}. Keep this note open; your current content remains here.`);}
   }
   async function convert() {
     const s = active.current; if (!s || status !== "saved" || readOnly) return;

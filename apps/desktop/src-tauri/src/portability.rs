@@ -3,19 +3,19 @@ use crate::{editor, key_for_position, rebalance, Db, Page};
 use rusqlite::params;
 use std::{fs, io::{Read, Write}, path::Path};
 use tauri::{State,Manager};
-const MAX_IMPORT: u64 = 40 * 1024 * 1024;
+const MAX_IMPORT: u64 = 128 * 1024 * 1024;
 #[tauri::command]
 pub fn read_note_import(path: String) -> Result<String, String> {
     let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
     if !file.metadata().map_err(|e| e.to_string())?.is_file() { return Err("Choose a regular recovery JSON file".into()); }
     let mut data = String::new();
     Read::by_ref(&mut file).take(MAX_IMPORT + 1).read_to_string(&mut data).map_err(|e| e.to_string())?;
-    if data.len() as u64 > MAX_IMPORT { return Err("Recovery JSON exceeds 40 MB".into()); }
+    if data.len() as u64 > MAX_IMPORT { return Err("Recovery JSON exceeds 128 MB".into()); }
     Ok(data)
 }
 #[tauri::command]
 pub fn write_note_export(path: String, content: String) -> Result<(), String> {
-    if content.len() as u64 > MAX_IMPORT { return Err("Export exceeds 40 MB".into()); }
+    if content.len() as u64 > MAX_IMPORT { return Err("Export exceeds 128 MB".into()); }
     if !matches!(Path::new(&path).extension().and_then(|x| x.to_str()), Some("txt" | "md" | "html" | "json")) {
         return Err("Choose a .txt, .md, .html or .json filename".into());
     }
@@ -32,10 +32,12 @@ pub fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
 pub fn import_note(app:tauri::AppHandle,files:Option<Vec<crate::attachments::Imported>>,attachment_ids:Option<Vec<String>>,db: State<'_, Db>, title: String, update: Vec<u8>, plain_text: String, format: String, legacy_text: Option<String>) -> Result<Page, String> {
     let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.writable()?;
-    crate::attachments::import_all(&app.path().app_data_dir().map_err(|e|e.to_string())?,&files.unwrap_or_default(),&attachment_ids.unwrap_or_default())?;
-    import(&mut c, &title, &update, &plain_text, &format, legacy_text.as_deref())
+    let ids=attachment_ids.unwrap_or_default();
+    crate::attachments::import_all(&app.path().app_data_dir().map_err(|e|e.to_string())?,&files.unwrap_or_default(),&ids)?;
+    import_with_files(&mut c, &title, &update, &plain_text, &format, legacy_text.as_deref(),&ids)
 }
-pub fn import(c: &mut rusqlite::Connection, title: &str, update: &[u8], text: &str, format: &str, legacy: Option<&str>) -> Result<Page, String> {
+pub fn import(c:&mut rusqlite::Connection,title:&str,update:&[u8],text:&str,format:&str,legacy:Option<&str>)->Result<Page,String>{import_with_files(c,title,update,text,format,legacy,&[])}
+pub fn import_with_files(c: &mut rusqlite::Connection, title: &str, update: &[u8], text: &str, format: &str, legacy: Option<&str>,files:&[String]) -> Result<Page, String> {
     if !["text-v1", "blocknote-v1"].contains(&format) || update.is_empty() || update.len() > 8*1024*1024 || text.len() > 5_000_000 || legacy.is_some_and(|s| s.len() > 5_000_000) || title.len() > 1000 {
         return Err("Unsupported recovery format or note size".into());
     }
@@ -52,6 +54,7 @@ pub fn import(c: &mut rusqlite::Connection, title: &str, update: &[u8], text: &s
     } else {
         tx.execute("INSERT INTO yjs_updates(page_id,seq,update_bytes) VALUES (?1,1,?2)", params![id,update]).map_err(|e| e.to_string())?;
     }
+    for file in files{tx.execute("INSERT OR IGNORE INTO note_files(page_id,file_id) VALUES(?1,?2)",params![id,file]).map_err(|e|e.to_string())?;}
     rebalance(&tx, None)?;
     let sort_key = tx.query_row("SELECT sort_key FROM pages WHERE id=?1", [&id], |r| r.get(0)).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;

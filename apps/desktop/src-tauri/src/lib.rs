@@ -326,8 +326,9 @@ fn load_note(db: State<'_, Db>, page_id: String) -> Result<editor::Note, String>
 fn save_note(app:tauri::AppHandle, attachment_ids:Option<Vec<String>>, db: State<'_, Db>, page_id: String, update: Vec<u8>, plain_text: String, format: String, epoch: u64) -> Result<i64, String> {
     let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.check_epoch(epoch)?;
-    if let Some(ids)=attachment_ids { attachments::require(&app.path().app_data_dir().map_err(|e|e.to_string())?,&ids)?; }
-    editor::append(&mut c, &page_id, &update, &plain_text, &format, None)
+    let ids=attachment_ids.unwrap_or_default();
+    attachments::require(&app.path().app_data_dir().map_err(|e|e.to_string())?,&ids)?;
+    editor::append_with_files(&mut c, &page_id, &update, &plain_text, &format, None,Some(&ids))
 }
 
 #[tauri::command]

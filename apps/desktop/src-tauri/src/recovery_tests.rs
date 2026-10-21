@@ -266,6 +266,7 @@ fn paired_files_backup_restores_uploads_and_icons_without_deleting_newer_files()
  let mut f=Fixture::new();editor::upgrade(&f.db).unwrap();
  f.db.execute("UPDATE pages SET icon='book' WHERE id='p'",[]).unwrap();
  let files=crate::attachments::open(&f.dir).unwrap();let pdf=crate::attachments::insert(&files,"paper.pdf",b"%PDF-1.7 preserved PDF").unwrap();drop(files);
+ f.db.execute("INSERT INTO note_files(page_id,file_id) VALUES('p',?1)",[&pdf.id]).unwrap();
  let backup=create(&f.db,&f.dir.join("paired")).unwrap();assert!(backup.manifest.files.is_some());
  let staged=stage(Path::new(&backup.path),&f.dir).unwrap();
  f.db.execute("UPDATE pages SET title='Later',icon='star' WHERE id='p'",[]).unwrap();
@@ -287,4 +288,11 @@ fn page_relocation_is_atomic_and_rejects_descendant_cycles(){
  crate::workspace_commands::relocate(&mut f.db,"p",Some("child"),None).unwrap();
  assert!(crate::workspace_commands::relocate(&mut f.db,"child",Some("p"),None).is_err());
  let parent:Option<String>=f.db.query_row("SELECT parent_id FROM pages WHERE id='p'",[],|r|r.get(0)).unwrap();assert_eq!(parent.as_deref(),Some("child"));
+}
+
+#[test]
+fn backup_refuses_missing_referenced_files(){
+ let mut f=Fixture::new();editor::upgrade(&f.db).unwrap();
+ f.db.execute("INSERT INTO note_files(page_id,file_id) VALUES('p',?1)",["a".repeat(64)]).unwrap();
+ assert!(create(&f.db,&f.dir.join("incomplete")).is_err());assert_eq!(f.title(),"Before");
 }

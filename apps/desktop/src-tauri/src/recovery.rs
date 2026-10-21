@@ -143,6 +143,14 @@ pub fn verify(dir: &Path) -> Result<Verified> {
     if let Some(files)=&manifest.files { let file=dir.join("files.sqlite3");regular(&file)?;if fs::metadata(&file).map_err(|e|e.to_string())?.len()!=files.bytes||hash_file(&file)?!=files.sha256{return Err("Files backup checksum mismatch".into());}crate::attachments::validate(&file)?; }
     let (schema, pages) = validate_notes(&path)?;
     if schema != manifest.schema { return Err("Manifest schema mismatch".into()); }
+    if schema>=3{
+      let notes=Connection::open_with_flags(&path,OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e|e.to_string())?;
+      let mut q=notes.prepare("SELECT DISTINCT file_id FROM note_files").map_err(|e|e.to_string())?;
+      let ids=q.query_map([],|r|r.get::<_,String>(0)).map_err(|e|e.to_string())?.collect::<rusqlite::Result<Vec<_>>>().map_err(|e|e.to_string())?;
+      if !ids.is_empty()&&manifest.files.is_none(){return Err("Notes reference files but this package omits Files storage".into());}
+      if manifest.files.is_some(){let files=Connection::open_with_flags(dir.join("files.sqlite3"),OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e|e.to_string())?;
+      for id in ids{let present:bool=files.query_row("SELECT EXISTS(SELECT 1 FROM file_blobs WHERE id=?1)",[id],|r|r.get(0)).map_err(|e|e.to_string())?;if !present{return Err("Backup is missing a file referenced by Notes".into());}}}
+    }
     Ok(Verified { path: dir.to_string_lossy().into(), manifest, pages })
 }
 pub fn list(root: &Path) -> Result<(Vec<Verified>, usize)> {
