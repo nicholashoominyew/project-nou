@@ -81,7 +81,7 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
         <p>Includes the complete Notes database: pages, hierarchy, Trash, tags, Yjs content and search. Files and external attachments are not included. Weekly backups are available below; destination independence still needs your verification.</p>
       </section>
       <BackupSchedule hasDestination={!!status?.destination} onBusyChange={markBusy} />
-      <EncryptedBackup onBusyChange={markBusy} onPrepared={p => { setPreview(p); setConfirmation(""); setRetention(undefined); }} />
+      <EncryptedBackup onBusyChange={markBusy} onReviewStart={() => { setPreview(undefined); setConfirmation(""); setRetention(undefined); }} onPrepared={p => { setPreview(p); setConfirmation(""); setRetention(undefined); }} />
       <section className="recovery-card">
         <h2>2. Verify and restore a version</h2>
         <p>Restore replaces <strong>all current notes and Trash</strong>. A verified rollback copy is kept locally first. The selected package is copied into staging and checked again before replacement.</p>

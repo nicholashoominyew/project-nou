@@ -2,7 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 type Backup = { path: string; pages: number; manifest: { id: string; created_at: number; sha256: string; bytes: number; schema: number } };
-export default function EncryptedBackup({ onPrepared, onBusyChange }: { onBusyChange?: (busy: boolean) => void; onPrepared: (preview: { token: string; backup: Backup }) => void }) {
+export default function EncryptedBackup({ onPrepared, onBusyChange, onReviewStart }: { onReviewStart?: () => void; onBusyChange?: (busy: boolean) => void; onPrepared: (preview: { token: string; backup: Backup }) => void }) {
   const [password, setPassword] = useState(""); const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [message, setMessage] = useState("");
   async function run(mode: "export" | "restore") {
@@ -16,6 +16,7 @@ export default function EncryptedBackup({ onPrepared, onBusyChange }: { onBusyCh
       } else {
         const path = await open({ multiple: false, filters: [{ name: "Encrypted NOU backup", extensions: ["noubackup"] }] });
         if (typeof path !== "string") return;
+        onReviewStart?.();
         onPrepared(await invoke("prepare_encrypted_restore", { path, password }));
         setMessage("Passphrase accepted and Notes database verified. Review the replacement below; no notes have been replaced yet.");
       }

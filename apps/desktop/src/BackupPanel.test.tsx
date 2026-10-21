@@ -39,3 +39,18 @@ it("displays failed verification and never offers a replacement", async () => {
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Error: checksum mismatch");
   expect(screen.queryByText("Restore all notes")).toBeNull();
 });
+
+it("clears an earlier restore preview when encrypted backup verification fails", async () => {
+  const impl = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (...args) => { if (args[0] === "prepare_encrypted_restore") throw new Error("Wrong passphrase"); return impl(...args); });
+  open.mockResolvedValue("D:/other.noubackup");
+  render(<BackupPanel onClose={() => {}} />);
+  fireEvent.click(await screen.findByText("Verify & review"));
+  await screen.findByText("Restore all notes");
+  fireEvent.change(screen.getByLabelText("Restore confirmation"), { target: { value: "RESTORE" } });
+  fireEvent.change(screen.getByLabelText("Backup passphrase"), { target: { value: "wrong passphrase" } });
+  fireEvent.click(screen.getByText("Open encrypted backup for review…"));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Error: Wrong passphrase");
+  expect(screen.queryByText("Restore all notes")).toBeNull();
+  expect(invoke.mock.calls.some(([c]) => c === "execute_restore")).toBe(false);
+});
