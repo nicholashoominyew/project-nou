@@ -59,3 +59,27 @@ Rollback, migration and staging copies consume local space indefinitely in this 
 Create notes A and B, nested rich blocks and a trashed page. Back up to a separate destination. Change A and create C. Verify/stage the earlier package and cancel once, confirming C remains. Restore it with confirmation: A/B/Trash should match the earlier state, and C should disappear from active notes. Restart. Restore the generated rollback: C and the newer A should return. Repeat with an unplugged destination and a deliberately damaged **duplicate** package; expect visible errors without losing live notes or prior valid versions.
 
 Automated process-crash tests are not a physical power-cut, cloud service, removable-media or actual-user-data recovery drill. Record those manual outcomes separately.
+
+## Alpha 0.0.3 additions
+
+### Weekly schedule and background checks
+
+Weekly backups are opt-in under **Backups & restore**. A verified manual copy also resets the seven-day interval for that destination. The open application checks once a minute and immediately after startup; missed weeks produce one catch-up copy. A failed destination is retried after 15 minutes and never falls back to local profile storage. The sidebar reports errors; the panel shows last attempt and last verified success. Settings are written by atomic replacement. An unreadable schedule stops automatic work; the reset control preserves the original file before disabling the schedule and cleanup.
+
+Install the per-user Windows task to check hourly and at sign-in while NOU is closed. It runs as the signed-in user, without storing an account password or requesting administrator rights. An open GUI owns the profile lock and performs its own checks; the headless task exits instead of opening a second writer. The PC must be on, the user signed in and the destination unlocked/available. Reinstall the task if the executable moves; remove it from the panel before uninstalling NOU. It does not wake a powered-off PC. Windows task failures/status and real catch-up behavior still require the packaged acceptance drill.
+
+Automatic retention is a separate explicit opt-in, default off. It runs only after a newly verified scheduled backup, preserving the manual retention safety floors. Manual backup creation does not automatically delete versions. Local rollback/migration/staging copies are still not automatically pruned.
+
+### Encrypted portable backup
+
+Use a new `.noubackup` filename and matching passphrases (minimum 12 characters) to export an encrypted complete Notes snapshot, up to 64 MB. Encryption is AES-256-GCM with a fresh 16-byte salt and 12-byte nonce; the fixed version-one KDF is Argon2id v1.3, 64 MiB memory, three passes, one lane, 32-byte output. Header bytes are authenticated. Export reads the written file back and decrypts it before reporting success. Import authenticates/decrypts before creating a staged package, then applies the existing hash/schema/reference checks and explicit full-restore confirmation.
+
+Keep the passphrase in a separate password manager/recovery record and test it in another disposable profile. NOU has no reset/backdoor and does not save passphrases. Passphrase strings necessarily exist temporarily in WebView/native memory; derived native keys/plaintext buffers use zeroizing storage where practical. This does not encrypt the live database, regular scheduled packages or local rollback/staging. Export temporarily creates a plaintext snapshot in the profile; its known files are removed after the operation, but crashes/failures may leave local plaintext staging and deletion is not guaranteed secure erasure. Decrypted restore staging remains local for review. Use device encryption for the profile and an encrypted destination for unattended backups. No passphrase is stored to automate portable encrypted exports.
+
+### Note-level exports and recovery
+
+**Export this note** saves TXT, Markdown, HTML or complete-state Recovery JSON using the native save dialog. Existing destination files are never overwritten. TXT/Markdown/HTML can simplify formatting; HTML exports block scripts and remote resources with a restrictive CSP. JSON is the fidelity-preserving note transfer format.
+
+**Import recovered note…** validates a NOU recovery JSON file and previews its text. It reconstructs the Yjs document rather than trusting its supplied text cache; unsupported/incomplete updates are rejected. Import adds a new root page with a new ID in one transaction, preserving the source and existing notes. It is not a workspace restore or a general Notion/HTML/Markdown importer. Recovery files are plaintext. A schema change was not needed for this increment.
+
+Follow PRE-SERVER.md for the Windows acceptance procedure and release gates.

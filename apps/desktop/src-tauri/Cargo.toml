@@ -1,6 +1,6 @@
 [package]
 name = "nou-desktop"
-version = "0.0.2"
+version = "0.0.3"
 description = "Project NOU offline notes desktop"
 authors = ["Project NOU"]
 edition = "2021"
@@ -21,3 +21,6 @@ serde_json = "1"
 sha2 = "0.10"
 fs2 = "0.4"
 tauri-plugin-dialog = "2"
+aes-gcm = "0.10"
+argon2 = "0.5"
+zeroize = "1"

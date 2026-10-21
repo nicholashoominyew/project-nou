@@ -1,3 +1,5 @@
+import EncryptedBackup from "./EncryptedBackup";
+import BackupSchedule from "./BackupSchedule";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -9,7 +11,7 @@ type Preview = { token: string; backup: Backup };
 type Retention = { token: string; remove: Backup[]; retained: number; skipped: number };
 const date = (b: Backup) => new Date(b.manifest.created_at * 1000).toLocaleString();
 
-export default function BackupPanel({ onClose }: { onClose: () => void }) {
+export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => void; onBusyChange?: (busy: boolean) => void }) {
   const [status, setStatus] = useState<Status>();
   const [versions, setVersions] = useState<Backup[]>([]);
   const [skipped, setSkipped] = useState(0);
@@ -31,11 +33,12 @@ export default function BackupPanel({ onClose }: { onClose: () => void }) {
     }
   }
   useEffect(() => { void refresh().catch(e => setError(String(e))); }, []);
+  function markBusy(value: boolean) { setBusy(value); onBusyChange?.(value); }
   async function run(action: () => Promise<void>) {
-    setBusy(true); setError(""); setMessage("");
+    markBusy(true); setError(""); setMessage("");
     try { await action(); await refresh(); }
     catch (e) { setError(String(e)); try { setStatus(await invoke<Status>("backup_status")); } catch { /* Keep the actionable first error. */ } }
-    finally { setBusy(false); }
+    finally { markBusy(false); }
   }
   async function prepare(path: string) {
     setPreview(undefined); setConfirmation("");
@@ -75,8 +78,10 @@ export default function BackupPanel({ onClose }: { onClose: () => void }) {
         <button disabled={!status?.destination} onClick={() => void run(async () => {
           const b = await invoke<Backup>("create_backup"); setMessage(`Backup verified: ${b.path}. ${b.pages} pages including Trash. SHA-256 ${b.manifest.sha256}`);
         })}>Create verified backup now</button>
-        <p>Includes the complete Notes database: pages, hierarchy, Trash, tags, Yjs content and search. Files and external attachments are not included. Backups are manual in this alpha.</p>
+        <p>Includes the complete Notes database: pages, hierarchy, Trash, tags, Yjs content and search. Files and external attachments are not included. Weekly backups are available below; destination independence still needs your verification.</p>
       </section>
+      <BackupSchedule hasDestination={!!status?.destination} onBusyChange={markBusy} />
+      <EncryptedBackup onBusyChange={markBusy} onPrepared={p => { setPreview(p); setConfirmation(""); setRetention(undefined); }} />
       <section className="recovery-card">
         <h2>2. Verify and restore a version</h2>
         <p>Restore replaces <strong>all current notes and Trash</strong>. A verified rollback copy is kept locally first. The selected package is copied into staging and checked again before replacement.</p>

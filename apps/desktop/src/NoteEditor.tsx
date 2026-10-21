@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { save as chooseSavePath } from "@tauri-apps/plugin-dialog";
+import { exportNote } from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
@@ -19,12 +21,15 @@ function RichEditor({ session, disabled, onChange }: { session: Session; disable
   return <BlockNoteView editor={editor} theme="light" editable={!disabled} onChange={() => onChange(blocksToPlainText(editor.document))} />;
 }
 
-export default function NoteEditor({ pageId, onStatus, readOnly = false }: { pageId: string; onStatus: (status: SaveStatus) => void; readOnly?: boolean }) {
+export default function NoteEditor({ pageId, onStatus, readOnly = false, title = "Untitled" }: { pageId: string; title?: string; onStatus: (status: SaveStatus) => void; readOnly?: boolean }) {
   const [session, setSession] = useState<Session>();
   const [text, setText] = useState("");
   const [status, setStatus] = useState<SaveStatus>("loading");
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState("");
+  const [exportError, setExportError] = useState("");
   const [converting, setConverting] = useState(false);
   const active = useRef<Session | undefined>(undefined);
   const failed = useRef(false);
@@ -67,6 +72,20 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false }: { pag
       failed.current = true; report("failed"); setError(`Saving failed: ${String(e)}. Your current content remains here. Retry or copy it before leaving.`);
     });
   }
+  async function exportCurrent(kind: "txt" | "md" | "html" | "json") {
+    const s = active.current; if (!s) return;
+    setExporting(true); setExportError(""); setExportMessage("");
+    try {
+      const content = exportNote(s.doc, s.loaded.format as "text-v1" | "blocknote-v1", pageId, title, kind, s.loaded.legacy_text);
+      const filename = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").slice(0, 80).replace(/[. ]+$/, "") || "note";
+      const path = await chooseSavePath({ defaultPath: `${filename}.${kind}`, filters: [{ name: `Note ${kind.toUpperCase()}`, extensions: [kind] }] });
+      if (path) {
+        await invoke("write_note_export", { path, content });
+        setExportMessage(`Export saved: ${path}`);
+      }
+    } catch (e) { setExportError(String(e)); }
+    finally { setExporting(false); }
+  }
   function downloadRecovery(kind: "text" | "yjs") {
     const s = active.current; if (!s) return;
     const content = kind === "text" ? latestText.current : JSON.stringify({
@@ -93,6 +112,11 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false }: { pag
   }
   return <section className="note-editor">
     <div className="save-status" aria-live="polite">{status === "loading" ? "Opening note…" : status === "saving" ? "Saving locally…" : status === "saved" ? "Saved on this device" : "Save error — content retained in this window"}</div>
+    {session && <details className="note-export"><summary>Export this note</summary>
+      <p>Text and Markdown may simplify formatting. Recovery JSON preserves the complete note state. Choose a new filename; existing files are kept.</p>
+      {(["txt", "md", "html", "json"] as const).map(kind => <button key={kind} disabled={exporting || converting} onClick={() => void exportCurrent(kind)}>{kind === "json" ? "Recovery JSON" : kind.toUpperCase()}</button>)}
+      {exportMessage && <p role="status">{exportMessage}</p>}{exportError && <p role="alert">{exportError}</p>}
+    </details>}
     {error && <p className="editor-error" role="alert">{error}</p>}
     {session?.loaded.format === "text-v1" && <>
       <div className="migration-notice"><strong>Original plain-text note</strong><p>Convert this note to rich-text blocks when you are ready. NOU preserves the exact original text and creates a local recovery copy first. Plain text stays literal; Markdown is not interpreted.</p>

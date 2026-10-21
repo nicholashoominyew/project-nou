@@ -240,3 +240,22 @@ fn new_page_rich_state_and_format_commit_together() {
     assert_eq!(note.format,"blocknote-v1"); assert_eq!(note.seq,1);
     assert_eq!(note.updates,vec![vec![1,2,3]]);
 }
+
+#[test]
+fn recovery_import_is_additive_searchable_and_transactional() {
+    let mut f = Fixture::new(); editor::upgrade(&f.db).unwrap();
+    let page = crate::portability::import(&mut f.db, "Recovered", &[1,2,3], "recovered searchable text", "blocknote-v1", Some("old original")).unwrap();
+    assert_ne!(page.id,"p"); assert_eq!(f.title(),"Before");
+    let note = editor::load(&f.db,&page.id,0).unwrap(); assert_eq!(note.format,"blocknote-v1"); assert_eq!(note.legacy_text.as_deref(),Some("old original"));
+    let count: i64 = f.db.query_row("SELECT COUNT(*) FROM page_search WHERE page_search MATCH 'searchable'", [], |r|r.get(0)).unwrap(); assert_eq!(count,1);
+    assert!(crate::portability::import(&mut f.db,"Broken",&[],"invalid","blocknote-v1",None).is_err());
+    let pages: i64 = f.db.query_row("SELECT COUNT(*) FROM pages", [], |r|r.get(0)).unwrap(); assert_eq!(pages,2);
+    assert!(create(&f.db,&f.dir.join("backups")).is_ok());
+}
+#[test]
+fn exports_refuse_to_replace_existing_files() {
+    let f=Fixture::new(); let target=f.dir.join("export.txt");
+    crate::portability::write_new(&target,b"first").unwrap();
+    assert!(crate::portability::write_new(&target,b"replacement").is_err());
+    assert_eq!(fs::read(&target).unwrap(),b"first");
+}

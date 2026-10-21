@@ -17,7 +17,7 @@ it("guards reload during pending and failed saves, then permits it after persist
   fireEvent.click(await screen.findByText("Test note"));
   const reload = () => { const event = new Event("beforeunload", { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; };
   expect(reload()).toBe(false);
-  fireEvent.click(screen.getByText("Simulate pending save")); expect(reload()).toBe(true);
+  fireEvent.click(await screen.findByText("Simulate pending save")); expect(reload()).toBe(true);
   fireEvent.click(screen.getByText("Simulate failed save")); expect(reload()).toBe(true);
   fireEvent.click(screen.getByText("Simulate durable save")); expect(reload()).toBe(false);
   fireEvent.click(screen.getByText("Simulate failed save")); view.unmount(); expect(reload()).toBe(false);

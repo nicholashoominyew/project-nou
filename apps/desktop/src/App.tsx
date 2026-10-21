@@ -1,16 +1,19 @@
-import NoteEditor, { type SaveStatus } from "./NoteEditor";
-import BackupPanel from "./BackupPanel";
+import type { SaveStatus } from "./NoteEditor";
+
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import * as Y from "yjs";
-import { migrateLegacy } from "./blockModel";
+const NoteEditor = lazy(() => import("./NoteEditor"));
+const BackupPanel = lazy(() => import("./BackupPanel"));
+const ImportNotePanel = lazy(() => import("./ImportNotePanel"));
 
 type Page = { id: string; title: string; parent_id: string | null; sort_key: string };
 type Row = { page: Page; depth: number };
 type SearchHit = { id: string; title: string; parent_id: string | null };
 
 async function createRichPage(parentId: string | null, title: string): Promise<Page> {
+  const { migrateLegacy } = await import("./blockModel");
   const empty = new Y.Doc();
   const rich = migrateLegacy(empty);
   try {
@@ -41,6 +44,8 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [backupNotice, setBackupNotice] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryBlocked, setRecoveryBlocked] = useState(false);
   const [editorStatus, setEditorStatus] = useState<SaveStatus>("saved");
@@ -64,6 +69,14 @@ export default function App() {
       }
     }).then(fn => { if (disposed) fn(); else unlisten = fn; }).catch(() => undefined);
     return () => { disposed = true; unlisten?.(); };
+  }, []);
+  useEffect(() => {
+    let stopped = false;
+    const check = () => { void invoke<{ enabled: boolean; error: string | null; last_success: unknown }>("backup_schedule_status").then(s => {
+      if (!stopped) setBackupNotice(s?.error ? `Automatic backup needs attention: ${s.error}` : s?.enabled && !s.last_success ? "Weekly backups enabled — first verified copy pending." : "");
+    }).catch(e => { if (!stopped) setBackupNotice(String(e)); }); };
+    check(); const timer = window.setInterval(check, 30000);
+    return () => { stopped = true; window.clearInterval(timer); };
   }, []);
   const reload = useCallback(async () => {
     const [active, trashed] = await Promise.all([
@@ -102,10 +115,13 @@ export default function App() {
 
   const current = pages.find(p => p.id === selected);
   const rows = flatten(pages);
-  if (showRecovery) return <BackupPanel onClose={() => {
+  if (showImport) return <Suspense fallback={<p role="status">Opening import…</p>}><ImportNotePanel onClose={() => setShowImport(false)} onImported={async id => {
+    await reload(); setShowImport(false); setShowTrash(false); setSearch(""); setSelected(id);
+  }} /></Suspense>;
+  if (showRecovery) return <Suspense fallback={<p role="status">Opening backups…</p>}><BackupPanel onBusyChange={value => onEditorStatus(value ? "saving" : "saved")} onClose={() => {
     setShowRecovery(false); setSelected(null); setSearch(""); onEditorStatus("saved");
     void reload().catch(e => setError(String(e)));
-  }} />;
+  }} /></Suspense>;
   return <main className="shell">
     <aside className="sidebar" inert={editorStatus !== "saved" || busy}>
       <div className="brand"><span className="mark">脳</span><div><strong>Project NOU</strong><small>Offline Notes · Alpha</small></div></div>
@@ -133,6 +149,7 @@ export default function App() {
         Trash ({trashedPages.length})
       </button>
       {pages.length === 0 && !showTrash && <p className="hint">Create your first note to begin.</p>}
+      <button className="trash-toggle" disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => setShowImport(true)}>Import recovered note…</button>
       <div className="backup-panel">
         <button disabled={busy || editorStatus !== "saved"} onClick={() => setShowRecovery(true)}>Backups & restore</button>
         <small>Verified versions, guided restore and preserved rollback.</small>
@@ -140,6 +157,7 @@ export default function App() {
       <div className="sidebar-footer">Stored locally in SQLite · No account needed</div>
     </aside>
     <section className="workspace">
+      {backupNotice && <p className="notice" role="status">{backupNotice} Open Backups & restore for details.</p>}
       {recoveryBlocked && <p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
       {error && <div role="alert" className="error">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
       {showTrash ? <div className="document trash-screen">
@@ -173,7 +191,7 @@ export default function App() {
             if (!recoveryBlocked && title !== current.title) void run(() => invoke("rename_page", { pageId: current.id, title }));
           }}
           onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-        <NoteEditor pageId={current.id} onStatus={onEditorStatus} readOnly={recoveryBlocked} />
+        <Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked} /></Suspense>
       </div> : <div className="empty"><span className="big-mark">脳</span><h1>Your knowledge, your device.</h1>
         <p>Select a page or create a new one. Everything stays offline on this computer.</p>
         <button disabled={busy || editorStatus !== "saved" || recoveryBlocked} onClick={() => void run(async () => {

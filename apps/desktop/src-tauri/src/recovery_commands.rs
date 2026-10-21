@@ -1,6 +1,7 @@
 use crate::{editor, recovery::{self, RestoreRecord, RetentionPlan, Verified}, Db};
-use serde::{Deserialize, Serialize};
-use std::{fs, path::{Path, PathBuf}, sync::{Mutex, atomic::Ordering}};
+use serde::Serialize;
+pub use crate::schedule::Destination;
+use std::{path::{Path, PathBuf}, sync::{Mutex, atomic::Ordering}};
 use tauri::{Manager, State};
 
 #[derive(Default)]
@@ -10,17 +11,13 @@ struct Plans {
     staged: Option<(String, Verified)>,
     retention: Option<(PathBuf, RetentionPlan)>,
 }
-#[derive(Serialize, Deserialize)]
-pub struct Destination { path: String, protection: String }
 #[derive(Serialize)]
 pub struct Status { destination: Option<Destination>, interrupted: Vec<RestoreRecord>, rollback: Vec<Verified> }
 #[derive(Serialize)]
 pub struct Preview { token: String, backup: Verified }
 fn folder(app: &tauri::AppHandle) -> Result<PathBuf, String> { app.path().app_data_dir().map_err(|e| e.to_string()) }
 fn settings(app: &tauri::AppHandle) -> Result<Option<Destination>, String> {
-    let path = folder(app)?.join("backup-destination.json");
-    if !path.exists() { return Ok(None); }
-    serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?).map(Some).map_err(|e| format!("Backup settings unreadable; choose a destination again: {e}"))
+    crate::schedule::destination(&folder(app)?)
 }
 fn root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let chosen = settings(app)?.ok_or("Choose a backup destination first")?;
@@ -37,21 +34,21 @@ pub fn backup_status(app: tauri::AppHandle) -> Result<Status, String> {
     Ok(Status { destination: settings(&app)?, interrupted: recovery::unresolved(&data)?, rollback })
 }
 #[tauri::command]
-pub fn set_backup_destination(app: tauri::AppHandle, state: State<'_, RecoveryState>, path: String, protection: String) -> Result<Destination, String> {
+pub fn set_backup_destination(app: tauri::AppHandle, state: State<'_, RecoveryState>, db: State<'_, Db>, path: String, protection: String) -> Result<Destination, String> {
+    let _guard = db.0.lock().map_err(|_| "Database lock poisoned")?;
     if !["local-or-unknown", "external-user-declared", "remote-user-declared"].contains(&protection.as_str()) { return Err("Choose the destination protection description".into()); }
     recovery::destination(Path::new(&path), &folder(&app)?)?;
     let chosen = Destination { path, protection };
-    let data = serde_json::to_vec_pretty(&chosen).map_err(|e| e.to_string())?;
-    use std::io::Write;
-    let mut f = fs::OpenOptions::new().create(true).truncate(true).write(true).open(folder(&app)?.join("backup-destination.json")).map_err(|e| e.to_string())?;
-    f.write_all(&data).and_then(|_| f.sync_all()).map_err(|e| e.to_string())?;
+    crate::schedule::atomic_json(&folder(&app)?.join("backup-destination.json"), &chosen)?;
     state.0.lock().map_err(|_| "Recovery lock poisoned")?.retention = None;
     Ok(chosen)
 }
 #[tauri::command]
 pub fn create_backup(app: tauri::AppHandle, db: State<'_, Db>) -> Result<Verified, String> {
     let c = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    recovery::create(&c, &root(&app)?)
+    let backup = recovery::create(&c, &root(&app)?)?;
+    crate::schedule::record_success(&folder(&app)?, &backup, recovery::now())?;
+    Ok(backup)
 }
 #[tauri::command]
 pub fn list_backups(app: tauri::AppHandle) -> Result<(Vec<Verified>, usize), String> { recovery::list(&root(&app)?) }
@@ -120,4 +117,38 @@ pub fn review_restore(app: tauri::AppHandle, db: State<'_, Db>, confirmation: St
     }
     db.2.store(false, Ordering::SeqCst);
     Ok(())
+}
+
+#[tauri::command]
+pub fn backup_schedule_status(app: tauri::AppHandle) -> Result<crate::schedule::Schedule, String> {
+    crate::schedule::load(&folder(&app)?)
+}
+#[tauri::command]
+pub fn configure_backup_schedule(app: tauri::AppHandle, db: State<'_, Db>, enabled: bool, auto_keep: Option<usize>) -> Result<crate::schedule::Schedule, String> {
+    let _guard = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    crate::schedule::configure(&folder(&app)?, enabled, auto_keep)
+}
+
+#[tauri::command]
+pub async fn create_encrypted_backup(app: tauri::AppHandle, path: String, password: String) -> Result<crate::encrypted::Export, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<Db>();
+        let c = db.0.lock().map_err(|_| "Database lock poisoned")?;
+        crate::encrypted::export(&c, &folder(&app)?, Path::new(&path), password)
+    }).await.map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn prepare_encrypted_restore(app: tauri::AppHandle, path: String, password: String) -> Result<Preview, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let backup = crate::encrypted::stage(Path::new(&path), &folder(&app)?, password)?;
+        let token = uuid::Uuid::new_v4().to_string();
+        app.state::<RecoveryState>().0.lock().map_err(|_| "Recovery lock poisoned")?.staged = Some((token.clone(), backup.clone()));
+        Ok(Preview { token, backup })
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn reset_backup_schedule(app: tauri::AppHandle, db: State<'_, Db>) -> Result<crate::schedule::Schedule, String> {
+    let _guard = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    crate::schedule::reset(&folder(&app)?)
 }

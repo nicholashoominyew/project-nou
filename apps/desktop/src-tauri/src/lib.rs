@@ -1,4 +1,8 @@
 mod backup;
+mod schedule;
+mod encrypted;
+mod background_task;
+mod portability;
 mod recovery;
 mod editor;
 mod recovery_commands;
@@ -360,6 +364,11 @@ fn stage_notes_restore(
 }
 
 pub fn run() {
+    if std::env::args().any(|arg| arg == "--backup-if-due") {
+        let result = run_headless_backup();
+        if let Err(error) = &result { eprintln!("{error}"); }
+        std::process::exit(if result.is_ok() { 0 } else { 1 });
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -377,6 +386,15 @@ pub fn run() {
             app.manage(BackupDirectory(backups));
             app.manage(Db(Mutex::new(conn), AtomicU64::new(0), AtomicBool::new(interrupted)));
             app.manage(recovery_commands::RecoveryState::default());
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                if let Some(db) = handle.try_state::<Db>() {
+                    if let Ok(connection) = db.0.lock() {
+                        if let Err(error) = schedule::tick(&connection, &folder, recovery::now()) { eprintln!("Automatic backup: {error}"); }
+                    };
+                }
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![list_pages,create_page,rename_page,trash_page,move_page,load_note,save_note,migrate_note,search_notes,create_notes_snapshot,verify_notes_snapshot,stage_notes_restore,list_trashed_pages,restore_page,
@@ -385,7 +403,27 @@ pub fn run() {
             recovery_commands::prepare_restore,recovery_commands::execute_restore,
             recovery_commands::prepare_legacy_restore,
             recovery_commands::preview_retention,recovery_commands::apply_retention,
-            recovery_commands::review_restore])
+            recovery_commands::create_encrypted_backup,recovery_commands::prepare_encrypted_restore,recovery_commands::review_restore,recovery_commands::reset_backup_schedule,recovery_commands::backup_schedule_status,recovery_commands::configure_backup_schedule,
+            background_task::background_backup_task,portability::write_note_export,portability::read_note_import,portability::import_note])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");
+}
+
+/// Task Scheduler uses the same profile lock as the GUI. Never create a fresh database here.
+fn run_headless_backup() -> Result<(), String> {
+    #[cfg(not(target_os = "windows"))]
+    { Err("The headless scheduled runner is supported on Windows only".into()) }
+    #[cfg(target_os = "windows")]
+    {
+        use fs2::FileExt;
+        let data = PathBuf::from(std::env::var_os("APPDATA").ok_or("APPDATA unavailable")?).join("app.projectnou.desktop");
+        if !data.join("notes.sqlite3").is_file() { return Err("Open NOU and configure backups first".into()); }
+        let lock = fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(data.join("nou.lock")).map_err(|e| e.to_string())?;
+        if lock.try_lock_exclusive().is_err() { return Ok(()); } // GUI worker handles the same schedule.
+        let c = Connection::open_with_flags(data.join("notes.sqlite3"), rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE).map_err(|e| e.to_string())?;
+        c.busy_timeout(std::time::Duration::from_secs(5)).map_err(|e| e.to_string())?;
+        c.pragma_update(None, "synchronous", "FULL").map_err(|e| e.to_string())?;
+        let state = schedule::tick(&c, &data, recovery::now())?;
+        state.error.map_or(Ok(()), Err)
+    }
 }
