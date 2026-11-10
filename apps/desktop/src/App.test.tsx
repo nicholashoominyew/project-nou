@@ -10,6 +10,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   if (command === "search_notes") return [{ id: "page", title: "Test note", parent_id: null }];
   if (command === "list_pages") return [{ id: "page", title: "Test note", parent_id: null, sort_key: "1" },{ id:"second",title:"Second note",parent_id:null,sort_key:"2"},{ id:"child",title:"Child note",parent_id:"page",sort_key:"1"}];
   if (command === "list_trashed_pages") return [];
+  if (command === "list_tags") return [{ name: "research", count: 2 }];
+  if (command === "list_recent_pages") return [];
   if (command === "backup_status") return { interrupted: [] };
 } }));
 vi.mock("./NoteEditor", () => ({ default: ({ onStatus }: { onStatus: (status: string) => void }) => <>
@@ -112,6 +114,18 @@ it("Ctrl+Shift+F enters focus mode, Esc leaves it, and the Exit button always wo
  fireEvent.keyDown(window,{key:"Escape"});expect(shell().classList.contains("focus")).toBe(false);
  fireEvent.click(screen.getByLabelText("Focus mode"));expect(shell().classList.contains("focus")).toBe(true);
  fireEvent.click(screen.getByText("Exit focus mode"));expect(shell().classList.contains("focus")).toBe(false);
+});
+it("shows Home when no page is open, a tag there opens Quick find pre-filled, and the sidebar Home row returns to it",async()=>{
+ render(<App/>);
+ expect(await screen.findByLabelText("Home")).toBeTruthy();
+ fireEvent.click(await screen.findByText("#research"));
+ const dialog=await screen.findByRole("dialog",{name:"Quick find"});
+ expect((within(dialog).getByLabelText("Find a page") as HTMLInputElement).value).toBe("#research");
+ fireEvent.keyDown(document,{key:"Escape"});
+ fireEvent.click(screen.getByText("Test note",{selector:".tree-page span"}));await screen.findByText("Simulate pending save");
+ expect(screen.queryByLabelText("Home")).toBeNull();
+ fireEvent.click(screen.getByText("Home",{selector:".sb-item span"}));
+ expect(await screen.findByLabelText("Home")).toBeTruthy();
 });
 it("ignores shortcuts while an input method is composing",async()=>{
  render(<App/>);await screen.findByText("Test note");

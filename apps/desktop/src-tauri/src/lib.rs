@@ -10,6 +10,7 @@ mod editor;
 mod databases;
 mod links;
 mod tags;
+mod home;
 mod recovery_commands;
 #[cfg(test)]
 mod recovery_tests;
@@ -428,7 +429,7 @@ pub fn run() {
             recovery_commands::preview_retention,recovery_commands::apply_retention,
             recovery_commands::create_encrypted_backup,recovery_commands::prepare_encrypted_restore,recovery_commands::review_restore,recovery_commands::reset_backup_schedule,recovery_commands::backup_schedule_status,recovery_commands::configure_backup_schedule,
             workspace_commands::notes_write_blocked,workspace_commands::relocate_page,workspace_commands::set_page_icon,workspace_commands::set_page_favorite,workspace_commands::upload_attachment,workspace_commands::upload_attachment_bytes,workspace_commands::read_attachment,workspace_commands::export_attachment,workspace_commands::open_bookmark,
-            databases::create_database,databases::get_database,databases::add_property,databases::rename_property,databases::delete_property,databases::change_property_type,databases::duplicate_property,databases::update_select_option,databases::delete_select_option,databases::list_databases,links::set_page_links,links::list_backlinks,tags::set_page_tags,tags::get_page_tags,tags::list_tags,tags::find_pages_by_tag,databases::list_rows,databases::add_relation,databases::add_rollup,databases::add_select_option,databases::add_view,databases::update_view,databases::delete_view,databases::add_row,databases::set_value,
+            databases::create_database,databases::get_database,databases::add_property,databases::rename_property,databases::delete_property,databases::change_property_type,databases::duplicate_property,databases::update_select_option,databases::delete_select_option,databases::list_databases,links::set_page_links,links::list_backlinks,tags::set_page_tags,tags::get_page_tags,tags::list_tags,tags::find_pages_by_tag,home::list_recent_pages,databases::list_rows,databases::add_relation,databases::add_rollup,databases::add_select_option,databases::add_view,databases::update_view,databases::delete_view,databases::add_row,databases::set_value,
             background_task::background_backup_task,portability::write_note_export,portability::read_note_import,portability::import_note])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");

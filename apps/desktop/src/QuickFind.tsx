@@ -6,8 +6,8 @@ import type { PageInfo } from "./EditorContext";
 type Hit = { id: string; title: string };
 
 /** Ctrl+P page switcher: instant title matches first, then note-body matches from the local search index. */
-export default function QuickFind({ pages, onOpen, onClose }: { pages: PageInfo[]; onOpen: (id: string) => void; onClose: () => void }) {
-  const [query, setQuery] = useState("");
+export default function QuickFind({ pages, onOpen, onClose, initialQuery = "" }: { pages: PageInfo[]; onOpen: (id: string) => void; onClose: () => void; initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery);
   const [bodyHits, setBodyHits] = useState<Hit[]>([]);
   const [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null);

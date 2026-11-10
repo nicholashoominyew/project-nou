@@ -10,6 +10,7 @@ import {pageDrop,type DropPosition} from "./workspaceModel";
 import ShortcutsHelp from "./ShortcutsHelp";
 import Backlinks from "./Backlinks";
 import PageTags from "./PageTags";
+import Home from "./Home";
 import QuickFind from "./QuickFind";
 import {DismissibleDetails,useDismiss} from "./Dismissible";
 const NoteEditor=lazy(()=>import("./NoteEditor"));
@@ -41,7 +42,7 @@ export default function App(){
  useDismiss(menu!==null,()=>setMenu(null),menuRef);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [showShortcuts,setShowShortcuts]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -174,7 +175,8 @@ export default function App(){
    <div className="sb-header"><span className="mark">脳</span><strong className="sb-name">Project NOU</strong>
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>
      <button aria-label="New page" title="New page (Ctrl+N)" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="compose" size={16}/></button></div></div>
-   <button className="sb-item" disabled={guard} onClick={()=>setQuickFind(true)}><Icon name="search" size={17}/><span>Search</span><kbd>Ctrl+Q</kbd></button>
+   <button className={"sb-item"+(!current&&!showTrash?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false)}}><Icon name="home" size={17}/><span>Home</span></button>
+   <button className="sb-item" disabled={guard} onClick={()=>{setQuickFindText("");setQuickFind(true)}}><Icon name="search" size={17}/><span>Search</span><kbd>Ctrl+Q</kbd></button>
    <div className="sb-scroll">
     {favorites.length>0&&<section aria-label="Favorites"><div className="sb-section"><button className="sb-section-title" aria-expanded={favoritesOpen} onClick={()=>setFavoritesOpen(v=>!v)}>Favorites</button></div>
      {favoritesOpen&&<nav aria-label="Favorite pages">{favorites.map(page=><div key={page.id}>{pageRow(page,0,true)}</div>)}</nav>}</section>}
@@ -211,7 +213,7 @@ export default function App(){
    <div className="document-heading"><div className="page-icon-picker" ref={iconPickerRef}><button className="document-icon" aria-label="Assign page icon" disabled={guard||recoveryBlocked} onClick={()=>setIconPicker(v=>!v)}><Icon name={current.icon} size={32}/></button>{iconPicker&&<div className="icon-picker-popover" role="group" aria-label="Monochrome page icons">{iconNames.map(icon=><button key={icon} aria-label={icon+" icon"} aria-pressed={current.icon===icon} disabled={guard} onClick={()=>void run(async()=>{await invoke("set_page_icon",{pageId:current.id,icon});setIconPicker(false)})}><Icon name={icon} size={22}/></button>)}</div>}</div>
     <input className="title-input" aria-label="Page title" readOnly={guard||recoveryBlocked} defaultValue={current.title} onBlur={e=>{const title=e.target.value.trim()||"Untitled";if(!recoveryBlocked&&title!==current.title)void run(()=>invoke("rename_page",{pageId:current.id,title}))}} onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur()}}/>
    </div><PageTags pageId={current.id} readOnly={guard||recoveryBlocked} onError={e=>setError(String(e))}/><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense><Backlinks pageId={current.id} refreshKey={editorStatus} onOpen={openPage}/></div>
-   :<div className="empty"><span className="big-mark">脳</span><h1>Your knowledge, your device.</h1><p>Select a page or create a new one.</p><button disabled={guard||recoveryBlocked} onClick={()=>void run(async()=>{const page=await createRichPage(null,"My first page");setTabs(old=>[...old,page.id]);setSelected(page.id)})}>Create a page</button></div>}
+   :<Home pages={pages} open={openPage} searchTag={tag=>{setQuickFindText("#"+tag);setQuickFind(true)}} newPage={()=>void newRootPage()} disabled={guard||recoveryBlocked}/>}
   </section>
  {menu&&menuPage&&<div className="row-menu" role="menu" ref={menuRef} style={{left:Math.min(menu.x,window.innerWidth-230),top:Math.min(menu.y,window.innerHeight-190)}}>
   <button role="menuitem" onClick={()=>{setMenu(null);void toggleFavorite(menuPage)}}>{menuPage.is_favorite?"Remove from Favorites":"Add to Favorites"}</button>
@@ -220,6 +222,6 @@ export default function App(){
   <hr/><button role="menuitem" className="danger" onClick={()=>{setMenu(null);trashPage(menuPage)}}>Move to Trash</button></div>}
  {focus&&<button className="focus-exit" onClick={()=>setFocus(false)} title="Leave focus mode (Esc)">Exit focus mode</button>}
  {showShortcuts&&<ShortcutsHelp onClose={()=>setShowShortcuts(false)}/>}
- {quickFind&&<QuickFind pages={pages} onOpen={id=>{setQuickFind(false);openPage(id)}} onClose={()=>setQuickFind(false)}/>}
+ {quickFind&&<QuickFind initialQuery={quickFindText} pages={pages} onOpen={id=>{setQuickFind(false);openPage(id)}} onClose={()=>{setQuickFind(false);setQuickFindText("")}}/>}
  </main></EditorFeatures.Provider>;
 }
