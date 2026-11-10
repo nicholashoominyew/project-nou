@@ -168,7 +168,7 @@ fn schema_and_editor_migration_keep_original_updates_and_reject_stale_conversion
     assert!(editor::append(&mut f.db,"p", &[4], "stale text", "text-v1", None).is_err());
     assert!(editor::append(&mut f.db,"p", &[4], "again", "blocknote-v1", Some((2,"original"))).is_err());
     let b = create(&f.db, &f.dir.join("backups")).unwrap();
-    assert_eq!(b.manifest.schema, 5);
+    assert_eq!(b.manifest.schema, 6);
 }
 
 #[test]
@@ -302,7 +302,7 @@ fn databases_survive_backup_and_restore_and_upgrade_from_v3(){
  f.db.execute_batch(include_str!("../../../../db/notes/002_editor_formats.sql")).unwrap();
  f.db.execute_batch(include_str!("../../../../db/notes/003_page_icons.sql")).unwrap();
  editor::upgrade(&f.db).unwrap();
- let v:i64=f.db.query_row("SELECT MAX(version) FROM schema_migrations",[],|r|r.get(0)).unwrap();assert_eq!(v,5);
+ let v:i64=f.db.query_row("SELECT MAX(version) FROM schema_migrations",[],|r|r.get(0)).unwrap();assert_eq!(v,6);
  f.db.execute_batch("INSERT INTO pages(id,workspace_id,title,sort_key) VALUES('d','personal','Projects','b'),('r','personal','Row','c'); INSERT INTO databases(page_id) VALUES('d'); INSERT INTO db_properties(id,database_id,name,type,position) VALUES('q','d','Hours','number',1); INSERT INTO db_rows(page_id,database_id) VALUES('r','d'); INSERT INTO db_values(row_id,property_id,value) VALUES('r','q','4');").unwrap();
  let backup=create(&f.db,&f.dir.join("db-backup")).unwrap();
  let staged=stage(Path::new(&backup.path),&f.dir).unwrap();
