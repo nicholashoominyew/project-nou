@@ -53,6 +53,8 @@ export default function App(){
  const onEditorStatus=useCallback((s:SaveStatus)=>{saveStatusRef.current=s;setEditorStatus(s)},[]);
  function markBusy(value:boolean){busyRef.current=value;setBusy(value)}
  const guard=busy||editorStatus!=="saved"||peekBusy;
+ // Saving after a pause in typing briefly sets the guard on every few keystrokes. That must not be visible: the sidebar and toolbar keep their normal look.
+ const typing=!busy&&!peekBusy&&(editorStatus==="saving"||editorStatus==="loading");
  const current=pages.find(p=>p.id===selected);
  const reload=useCallback(async()=>{
   const [active,deleted,status]=await Promise.all([invoke<Page[]>("list_pages"),invoke<Page[]>("list_trashed_pages"),invoke<boolean>("notes_write_blocked")]);
@@ -172,7 +174,7 @@ export default function App(){
  if(showGateway)return <Suspense fallback={<p role="status">Opening AI access…</p>}><GatewayPanel onClose={()=>setShowGateway(false)}/></Suspense>;
  if(showImport)return <Suspense fallback={<p role="status">Opening import…</p>}><ImportNotePanel onClose={()=>setShowImport(false)} onImported={async id=>{await reload();setShowImport(false);setShowTrash(false);openPage(id)}}/></Suspense>;
  return <EditorFeatures.Provider value={{pages,theme,canNavigate:!guard,open:openPage,create:createChild,upload,uploadFile,onError:e=>setError(String(e)),setPeekBusy:reportPeekBusy}}>
- <main className={"shell"+(focus?" focus":"")}>
+ <main className={"shell"+(focus?" focus":"")+(typing?" typing":"")}>
   {sidebarOpen&&<aside className="sidebar" style={{width:sidebarWidth}} aria-label="Sidebar">
    <div className="sb-header"><span className="mark">脳</span><strong className="sb-name">Project NOU</strong>
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>

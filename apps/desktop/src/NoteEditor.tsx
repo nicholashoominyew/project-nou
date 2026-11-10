@@ -9,6 +9,7 @@ import {getDefaultReactSlashMenuItems,SuggestionMenuController} from "@blocknote
 import {blockAttachmentIds,documentAttachmentIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
+import { shouldTrapTab } from "./editorKeys";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { withCollaboration } from "@blocknote/core/yjs";
@@ -78,7 +79,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     {title:"PDF",aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
     {title:"File",aliases:["file","attachment","html","upload"],group:"NOU",onItemClick:()=>void create("file")}
   ];
-  return <div className={"editor-drop"+(over?" over":"")} onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateBlock()}}}
+  return <div className={"editor-drop"+(over?" over":"")} onKeyDown={e=>{if(shouldTrapTab(e))e.preventDefault()}} onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateBlock()}}}
     onDragOverCapture={e=>{if(hasFiles(e)){e.preventDefault();e.dataTransfer.dropEffect=disabled?"none":"copy";setOver(!disabled)}}}
     onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
     onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
@@ -206,7 +207,7 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
     {(["txt","md","html","json"] as const).map(kind=><button key={kind} disabled={exporting||converting} onClick={()=>void exportCurrent(kind)}>{kind==="json"?"Recovery JSON":kind.toUpperCase()}</button>)}
     {exportMessage&&<p role="status">{exportMessage}</p>}{exportError&&<p role="alert">{exportError}</p>}</div></DismissibleDetails>;
   return <section className="note-editor">
-    <div className="save-status" aria-live="polite">{status === "loading" ? "Opening note…" : status === "saving" ? "Saving locally…" : status === "saved" ? "Saved on this device" : "Save error — content retained in this window"}</div>
+    <div className={"save-status "+(status === "failed" ? "save-failed" : "save-quiet")} aria-live="polite">{status === "loading" ? "Opening note…" : status === "saving" ? "Saving locally…" : status === "saved" ? "Saved on this device" : "Save error — content retained in this window"}</div>
     {document.getElementById("note-export-host") ? createPortal(exportMenu,document.getElementById("note-export-host")!) : exportMenu}
     {error && <p className="editor-error" role="alert">{error}</p>}
     {session?.loaded.format === "text-v1" && <>

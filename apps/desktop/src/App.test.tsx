@@ -140,6 +140,15 @@ it("typing does not make the tag row or the Linked-from panel vanish and reappea
  expect((screen.getByLabelText("Add a tag") as HTMLInputElement).disabled).toBe(false);
  expect(backlinkCalls()).toBe(before);
 });
+it("a save in progress marks the shell as typing (so disabled sidebar buttons keep their normal look)",async()=>{
+ const {container}=render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByText("Simulate pending save");
+ const shell=()=>container.querySelector("main.shell")!;
+ expect(shell().classList.contains("typing")).toBe(false);
+ fireEvent.click(screen.getByText("Simulate pending save"));
+ expect(shell().classList.contains("typing")).toBe(true);
+ // the sidebar is still locked for navigation, it just does not change appearance
+ expect((screen.getByText("Second note",{selector:".tree-page span"}).closest("button") as HTMLButtonElement).disabled).toBe(true);
+});
 it("ignores shortcuts while an input method is composing",async()=>{
  render(<App/>);await screen.findByText("Test note");
  const event=new KeyboardEvent("keydown",{key:"q",ctrlKey:true,isComposing:true,bubbles:true,cancelable:true});window.dispatchEvent(event);
