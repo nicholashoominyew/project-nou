@@ -84,3 +84,19 @@ body{background:var(--bg);color:var(--text)}button,input,select,textarea{color:i
 @media(max-width:850px){.sidebar{width:210px}.document{padding:24px 32px 80px}.document-heading{margin-top:28px}.toolbar{align-items:flex-start;flex-wrap:wrap}.actions{margin-left:0}.empty{padding-left:32px}.title-input{font-size:30px}}
 
 :root{--muted:#697166}:root[data-theme=dark]{--muted:#a4ada1}:root[data-theme=dark] .actions button.danger{color:#f2aaaa}
+
+/* Left-align the Backups & restore and Import screens like the note pages (they were centred). */
+.recovery-screen{margin:0;max-width:1040px;text-align:left}
+.recovery-screen header{justify-content:flex-start}
+
+/* Ctrl+P quick find */
+.quick-find-backdrop{position:fixed;inset:0;z-index:100;display:flex;justify-content:center;align-items:flex-start;padding-top:12vh;background:#0006}
+.quick-find{width:min(560px,92vw);max-height:70vh;display:flex;flex-direction:column;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 50px #0004;overflow:hidden}
+.quick-find input{border:0;border-bottom:1px solid var(--line);padding:14px 16px;font-size:15px;background:transparent;color:var(--text);outline:none}
+.quick-find ul{list-style:none;margin:0;padding:6px;overflow:auto;min-height:0}
+.quick-find li{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;font-size:13px;cursor:pointer}
+.quick-find li span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.quick-find li.selected{background:var(--hover)}
+.quick-find li svg{flex-shrink:0;color:var(--muted)}
+.quick-find .quick-find-empty{color:var(--muted);cursor:default}
+.quick-find-help{margin:0;padding:9px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}

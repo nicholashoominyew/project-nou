@@ -7,6 +7,7 @@ import * as Y from "yjs";
 import {EditorFeatures,type PageInfo,type FileInfo} from "./EditorContext";
 import {Icon,iconNames} from "./Icons";
 import {pageDrop,type DropPosition} from "./workspaceModel";
+import QuickFind from "./QuickFind";
 const NoteEditor=lazy(()=>import("./NoteEditor"));
 const BackupPanel=lazy(()=>import("./BackupPanel"));
 const ImportNotePanel=lazy(()=>import("./ImportNotePanel"));
@@ -30,7 +31,7 @@ export default function App(){
  const [theme,setTheme]=useState<"light"|"dark">(()=>readSetting<string>("nou-theme","light")==="dark"?"dark":"light");
  const [search,setSearch]=useState("");const [hits,setHits]=useState<SearchHit[]>([]);const [searching,setSearching]=useState(false);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);
  const onEditorStatus=useCallback((s:SaveStatus)=>{saveStatusRef.current=s;setEditorStatus(s)},[]);
  function markBusy(value:boolean){busyRef.current=value;setBusy(value)}
  const guard=busy||editorStatus!=="saved";
@@ -65,6 +66,20 @@ export default function App(){
  async function run(action:()=>Promise<unknown>){markBusy(true);setError("");try{await action();await reload()}catch(e){setError(String(e))}finally{markBusy(false)}}
  function openPage(id:string){if(busyRef.current||saveStatusRef.current!=="saved")return;setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setIconPicker(false)}
  function closeTab(id:string){if(guard)return;const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
+ function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
+ // Keyboard shortcuts. Ctrl+C/V/X/A and Ctrl+Z/Y are handled natively by the editor and text fields.
+ // Ctrl+P is claimed here so WebView2 does not open its print preview.
+ useEffect(()=>{
+  const onKey=(event:KeyboardEvent)=>{
+   if(event.isComposing||!(event.ctrlKey||event.metaKey)||event.altKey||showRecovery||showImport)return;
+   const key=event.key.toLowerCase();
+   if(key==="p"&&!event.shiftKey){event.preventDefault();setQuickFind(open=>open?false:!guard)}
+   else if(key==="n"&&!event.shiftKey){event.preventDefault();if(!event.repeat&&!guard&&!recoveryBlocked){setQuickFind(false);void newRootPage()}}
+   else if(key==="w"&&!event.shiftKey){event.preventDefault();if(!event.repeat&&selected&&tabs.includes(selected))closeTab(selected)}
+   else if(event.key==="Tab"&&tabs.length>1){event.preventDefault();if(guard)return;const at=tabs.indexOf(selected??"");openPage(tabs[(at+(event.shiftKey?-1:1)+tabs.length)%tabs.length])}
+  };
+  window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);
+ },[guard,recoveryBlocked,showRecovery,showImport,tabs,selected]);
  async function createChild(){if(!current)throw Error("Select a page first.");markBusy(true);try{const page=await createRichPage(current.id,"Untitled");await reload();setCollapsed(old=>old.filter(id=>id!==current.id));return page}finally{markBusy(false)}}
  async function upload(kind:"image"|"pdf"):Promise<FileInfo|null>{
   markBusy(true);try{const path=await chooseFile({multiple:false,title:kind==="image"?"Upload an image":"Upload a PDF",filters:[{name:kind==="image"?"Images":"PDF",extensions:kind==="image"?["png","jpg","jpeg","gif","webp"]:["pdf"]}]});if(typeof path!=="string")return null;const file=await invoke<FileInfo>("upload_attachment",{path});if(kind==="pdf"&&file.mime!=="application/pdf"||kind==="image"&&!file.mime.startsWith("image/"))throw Error("Selected content does not match this block type.");return file}finally{markBusy(false)}
@@ -96,7 +111,7 @@ export default function App(){
    <input className="search-input" aria-label="Search notes" placeholder="Search notes…" disabled={guard} value={search} onChange={e=>{setSearch(e.target.value);setShowTrash(false)}}/>
    <div className="sidebar-heading" onDragOver={e=>{if(dragged){e.preventDefault();setDropHint("root")}}} onDrop={e=>void move(e,null,"inside")}>
     <button className="section-toggle" aria-expanded={pagesOpen} onClick={()=>setPagesOpen(v=>!v)}> {pagesOpen?"⌄":"›"} Workspace</button>
-    <button disabled={guard||recoveryBlocked} aria-label="New root page" onClick={()=>void run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}>＋</button>
+    <button disabled={guard||recoveryBlocked} aria-label="New root page" title="New page (Ctrl+N)" onClick={()=>void newRootPage()}>＋</button>
    </div>
    {dragged&&<div className={"root-drop "+(dropHint==="root"?"over":"")} onDragOver={e=>{e.preventDefault();setDropHint("root")}} onDrop={e=>void move(e,null,"inside")}>Drop here to move to root</div>}
    <nav className="page-tree" aria-label={search.trim()?"Search results":"Pages"}>
@@ -126,5 +141,6 @@ export default function App(){
    </div><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense></div>
    :<div className="empty"><span className="big-mark">脳</span><h1>Your knowledge, your device.</h1><p>Select a page or create a new one.</p><button disabled={guard||recoveryBlocked} onClick={()=>void run(async()=>{const page=await createRichPage(null,"My first page");setTabs(old=>[...old,page.id]);setSelected(page.id)})}>Create a page</button></div>}
   </section>
+ {quickFind&&<QuickFind pages={pages} onOpen={id=>{setQuickFind(false);openPage(id)}} onClose={()=>setQuickFind(false)}/>}
  </main></EditorFeatures.Provider>;
 }
