@@ -9,8 +9,6 @@ import {Icon,iconNames} from "./Icons";
 import {pageDrop,type DropPosition} from "./workspaceModel";
 import QuickFind from "./QuickFind";
 import {DismissibleDetails,useDismiss} from "./Dismissible";
-import PageBody from "./DatabaseView";
-import {newRichUpdate} from "./richUpdate";
 const NoteEditor=lazy(()=>import("./NoteEditor"));
 const BackupPanel=lazy(()=>import("./BackupPanel"));
 const ImportNotePanel=lazy(()=>import("./ImportNotePanel"));
@@ -71,7 +69,6 @@ export default function App(){
  async function run(action:()=>Promise<unknown>){markBusy(true);setError("");try{await action();await reload()}catch(e){setError(String(e))}finally{markBusy(false)}}
  function openPage(id:string){if(busyRef.current||saveStatusRef.current!=="saved")return;setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setIconPicker(false)}
  function closeTab(id:string){if(guard)return;const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
- function newDatabase(){return run(async()=>{const page=await invoke<Page>("create_database",{parentId:null,title:"Untitled database",initialUpdate:await newRichUpdate()});setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
  function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
  // Keyboard shortcuts. Ctrl+C/V/X/A and Ctrl+Z/Y are handled natively by the editor and text fields.
  // Ctrl+P prints the open page (print styles hide the app chrome); Ctrl+Q opens Quick find.
@@ -160,8 +157,7 @@ export default function App(){
       <button className="sb-add" aria-label="New root page" title="New page (Ctrl+N)" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}>+</button></div>
      {dragged&&<div className={"root-drop "+(dropHint==="root"?"over":"")} onDragOver={e=>{e.preventDefault();setDropHint("root")}} onDrop={e=>void move(e,null,"inside")}>Drop here to move to the top level</div>}
      <nav className="page-tree" aria-label="Pages">{pagesOpen&&tree()}{!pages.length&&<p className="hint">No pages yet.</p>}</nav>
-     <button className="sb-item sb-add-page" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="plus" size={17}/><span>Add a page</span></button>
-     <button className="sb-item sb-add-page" disabled={guard||recoveryBlocked} onClick={()=>void newDatabase()}><Icon name="plus" size={17}/><span>Add a database</span></button></section>
+     <button className="sb-item sb-add-page" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="plus" size={17}/><span>Add a page</span></button></section>
    </div>
    <div className="sb-bottom">
     <button className={"sb-item"+(showTrash?" active":"")} disabled={guard} onClick={()=>{setShowTrash(v=>!v);onEditorStatus("saved")}}><Icon name="trash" size={17}/><span>Trash</span><em>{trashed.length}</em></button>
@@ -187,7 +183,7 @@ export default function App(){
    </div></div>
    <div className="document-heading"><div className="page-icon-picker" ref={iconPickerRef}><button className="document-icon" aria-label="Assign page icon" disabled={guard||recoveryBlocked} onClick={()=>setIconPicker(v=>!v)}><Icon name={current.icon} size={32}/></button>{iconPicker&&<div className="icon-picker-popover" role="group" aria-label="Monochrome page icons">{iconNames.map(icon=><button key={icon} aria-label={icon+" icon"} aria-pressed={current.icon===icon} disabled={guard} onClick={()=>void run(async()=>{await invoke("set_page_icon",{pageId:current.id,icon});setIconPicker(false)})}><Icon name={icon} size={22}/></button>)}</div>}</div>
     <input className="title-input" aria-label="Page title" readOnly={guard||recoveryBlocked} defaultValue={current.title} onBlur={e=>{const title=e.target.value.trim()||"Untitled";if(!recoveryBlocked&&title!==current.title)void run(()=>invoke("rename_page",{pageId:current.id,title}))}} onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur()}}/>
-   </div><PageBody pageId={current.id} readOnly={recoveryBlocked} onError={e=>setError(String(e))} renderNote={(id,title)=><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={id} title={title||current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense>}/></div>
+   </div><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense></div>
    :<div className="empty"><span className="big-mark">脳</span><h1>Your knowledge, your device.</h1><p>Select a page or create a new one.</p><button disabled={guard||recoveryBlocked} onClick={()=>void run(async()=>{const page=await createRichPage(null,"My first page");setTabs(old=>[...old,page.id]);setSelected(page.id)})}>Create a page</button></div>}
   </section>
  {menu&&menuPage&&<div className="row-menu" role="menu" ref={menuRef} style={{left:Math.min(menu.x,window.innerWidth-230),top:Math.min(menu.y,window.innerHeight-190)}}>

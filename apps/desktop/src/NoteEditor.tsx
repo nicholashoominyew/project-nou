@@ -8,6 +8,7 @@ import {filterSuggestionItems,insertOrUpdateBlockForSlashMenu} from "@blocknote/
 import {getDefaultReactSlashMenuItems,SuggestionMenuController} from "@blocknote/react";
 import {blockAttachmentIds,documentAttachmentIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
+import { newRichUpdate } from "./richUpdate";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { withCollaboration } from "@blocknote/core/yjs";
@@ -20,7 +21,7 @@ export type SaveStatus = "loading" | "saved" | "saving" | "failed";
 type Loaded = { updates: number[][]; format: string; legacy_text: string | null; seq: number; epoch: number };
 type Session = { doc: Y.Doc; loaded: Loaded; queue: SaveQueue };
 
-function RichEditor({ session, disabled, onChange }: { session: Session; disabled: boolean; onChange: (text: string, ids?:string[]) => void }) {
+function RichEditor({ session, pageId, disabled, onChange }: { session: Session; pageId: string; disabled: boolean; onChange: (text: string, ids?:string[]) => void }) {
   const context=useEditorFeatures();const [pending,setPending]=useState(false);
   const editor = useCreateBlockNote(withCollaboration({ schema: noteSchema, collaboration: {
     fragment: session.doc.getXmlFragment(FRAGMENT), user: { name: "Local user", color: "#52675a" },
@@ -37,13 +38,17 @@ function RichEditor({ session, disabled, onChange }: { session: Session; disable
       for(const file of files){const info=await context.uploadFile(file);const [block]=editor.insertBlocks([blockFor(info)],anchor,"after");anchor=block.id}
     }catch(error){context.onError(error)}finally{setPending(false)}
   }
-  async function create(kind:"page"|"image"|"pdf"|"file"){
+  async function create(kind:"page"|"database"|"image"|"pdf"|"file"){
     const anchor=editor.getTextCursorPosition().block.id;setPending(true);
     try{
       if(kind==="page"){
         const page=await context.create();
         if(!editor.getBlock(anchor))throw Error("Insertion point changed; the new page is available in the sidebar.");
         editor.setTextCursorPosition(anchor,"end");insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium"}});
+      }else if(kind==="database"){
+        const database=await invoke<{id:string}>("create_database",{parentId:pageId,title:"Untitled database",initialUpdate:await newRichUpdate()});
+        if(!editor.getBlock(anchor))throw Error("Insertion point changed. Choose Database again to insert it.");
+        editor.setTextCursorPosition(anchor,"end");insertOrUpdateBlockForSlashMenu(editor,{type:"nouDatabase",props:{databaseId:database.id}} as never);
       }else{
         const file=await context.upload(kind);if(!file)return;
         if(!editor.getBlock(anchor))throw Error("Insertion point changed. Choose the file again to insert it.");
@@ -53,6 +58,7 @@ function RichEditor({ session, disabled, onChange }: { session: Session; disable
   }
   const items=()=>[...getDefaultReactSlashMenuItems(editor),
     {title:"Page",aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
+    {title:"Database",aliases:["database","table","board","calendar","timeline","gallery","list"],group:"NOU",onItemClick:()=>void create("database")},
     {title:"Bookmark",aliases:["bookmark","link"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouBookmark"})},
     {title:"Image",aliases:["image","photo","upload"],group:"NOU",onItemClick:()=>void create("image")},
     {title:"PDF",aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
@@ -184,7 +190,7 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
       }} spellCheck />
     </>}
     {session?.loaded.format === "blocknote-v1" && <>
-      <RichEditor session={session} disabled={status === "failed" || readOnly} onChange={save} />
+      <RichEditor session={session} pageId={pageId} disabled={status === "failed" || readOnly} onChange={save} />
     </>}
     {status === "failed" && <div className="recovery-card">
       {session ? <><button disabled={readOnly} onClick={() => { session.queue.reset(); failed.current = false; setError(""); save(latestText.current,latestFiles.current); }}>Retry saving all current content</button>

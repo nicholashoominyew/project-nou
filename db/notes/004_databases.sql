@@ -42,5 +42,17 @@ CREATE TABLE db_relations (
  PRIMARY KEY(property_id,from_row,to_page)
 );
 CREATE INDEX db_relations_target ON db_relations(to_page);
+-- Saved views of one database (table, board, list, gallery, calendar, timeline). config holds the view's settings
+-- (e.g. which property groups a board or places items on a calendar).
+CREATE TABLE db_views (
+ id TEXT PRIMARY KEY,
+ database_id TEXT NOT NULL REFERENCES databases(page_id) ON DELETE CASCADE,
+ name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
+ type TEXT NOT NULL CHECK(type IN ('table','board','list','gallery','calendar','timeline')),
+ position INTEGER NOT NULL,
+ config TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(config)),
+ deleted_at TEXT
+);
+CREATE INDEX db_views_database ON db_views(database_id,position);
 INSERT INTO schema_migrations(version) VALUES(4);
 COMMIT;

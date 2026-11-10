@@ -29,6 +29,7 @@ export const bookmarkBlock=createReactBlockSpec({type:"nouBookmark",propSchema:{
   </div><button disabled={!normalized} onClick={()=>void invoke("open_bookmark",{url:normalized}).catch(context.onError)}>Open ↗</button></div>;
  }
 });
+import Database from "./DatabaseView";
 const MIN_IMAGE_WIDTH=80;
 function useBlobUrl(id:string){
  const [url,setUrl]=useState("");const [error,setError]=useState("");
@@ -73,4 +74,9 @@ export const pdfBlock=createReactBlockSpec({type:"nouPdf",propSchema:{fileId:{de
 export const fileBlock=createReactBlockSpec({type:"nouFile",propSchema:{fileId:{default:""},name:{default:"File"}},content:"none"},{render:({block})=>{
  const context=useEditorFeatures();
  return <div className="stored-file file-card" contentEditable={false}><Icon name="document" size={22}/><strong>{block.props.name}</strong><button onClick={()=>void saveCopy(block.props.fileId,block.props.name,false).catch(context.onError)}>Save a copy</button></div>;
+}});
+/** An inline database: the block only stores the id; rows, columns and views live in the Notes database (ADR-003). */
+export const databaseBlock=createReactBlockSpec({type:"nouDatabase",propSchema:{databaseId:{default:""}},content:"none"},{render:({block,editor})=>{
+ const context=useEditorFeatures();
+ return <div className="db-block" contentEditable={false}><Database databaseId={block.props.databaseId} readOnly={!editor.isEditable} onError={context.onError}/></div>;
 }});

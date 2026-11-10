@@ -86,7 +86,7 @@ fn row_page(row: &rusqlite::Row<'_>) -> rusqlite::Result<Page> {
 #[tauri::command]
 fn list_pages(db: State<'_, Db>) -> Result<Vec<Page>, String> {
     let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    let mut stmt = conn.prepare("SELECT id,title,parent_id,sort_key,icon,is_favorite FROM pages WHERE workspace_id='personal' AND deleted_at IS NULL AND id NOT IN (SELECT page_id FROM db_rows) ORDER BY sort_key COLLATE BINARY,id").map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id,title,parent_id,sort_key,icon,is_favorite FROM pages WHERE workspace_id='personal' AND deleted_at IS NULL AND id NOT IN (SELECT page_id FROM db_rows) AND id NOT IN (SELECT page_id FROM databases) ORDER BY sort_key COLLATE BINARY,id").map_err(|e| e.to_string())?;
     let pages = stmt.query_map([], row_page).map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?;
     Ok(pages)
@@ -426,7 +426,7 @@ pub fn run() {
             recovery_commands::preview_retention,recovery_commands::apply_retention,
             recovery_commands::create_encrypted_backup,recovery_commands::prepare_encrypted_restore,recovery_commands::review_restore,recovery_commands::reset_backup_schedule,recovery_commands::backup_schedule_status,recovery_commands::configure_backup_schedule,
             workspace_commands::notes_write_blocked,workspace_commands::relocate_page,workspace_commands::set_page_icon,workspace_commands::set_page_favorite,workspace_commands::upload_attachment,workspace_commands::upload_attachment_bytes,workspace_commands::read_attachment,workspace_commands::export_attachment,workspace_commands::open_bookmark,
-            databases::create_database,databases::get_database,databases::add_property,databases::rename_property,databases::delete_property,databases::add_select_option,databases::add_row,databases::set_value,
+            databases::create_database,databases::get_database,databases::add_property,databases::rename_property,databases::delete_property,databases::add_select_option,databases::add_view,databases::update_view,databases::delete_view,databases::add_row,databases::set_value,
             background_task::background_backup_task,portability::write_note_export,portability::read_note_import,portability::import_note])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");

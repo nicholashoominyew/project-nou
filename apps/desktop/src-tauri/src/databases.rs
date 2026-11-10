@@ -19,7 +19,37 @@ pub struct Prop { id: String, name: String, #[serde(rename = "type")] kind: Stri
 #[derive(Serialize)]
 pub struct Row { id: String, title: String, values: Map<String, Value> }
 #[derive(Serialize)]
-pub struct DatabaseView { properties: Vec<Prop>, rows: Vec<Row> }
+pub struct View { id: String, name: String, #[serde(rename = "type")] kind: String, config: Value }
+#[derive(Serialize)]
+pub struct DatabaseView { title: String, properties: Vec<Prop>, rows: Vec<Row>, views: Vec<View> }
+
+const VIEW_TYPES: [&str; 6] = ["table", "board", "list", "gallery", "calendar", "timeline"];
+/// View settings name properties by id (group-by, date, end date). Reject anything else.
+fn clean_config(c: &Connection, database: &str, config: &Value) -> Result<String, String> {
+    let Value::Object(map) = config else { return Err("View settings must be an object".into()) };
+    let mut out = Map::new();
+    for (key, value) in map {
+        if !matches!(key.as_str(), "groupBy" | "dateBy" | "endBy") { return Err("Unknown view setting".into()); }
+        match value {
+            Value::Null => {}
+            Value::String(id) => {
+                let ok: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM db_properties WHERE id=?1 AND database_id=?2 AND deleted_at IS NULL)", params![id, database], |r| r.get(0)).map_err(e)?;
+                if !ok { return Err("View setting refers to a property that is not in this database".into()); }
+                out.insert(key.clone(), value.clone());
+            }
+            _ => return Err("Invalid view setting".into()),
+        }
+    }
+    Ok(Value::Object(out).to_string())
+}
+fn insert_view(c: &Connection, database: &str, name: &str, kind: &str, config: &str) -> Result<View, String> {
+    if !VIEW_TYPES.contains(&kind) { return Err("Unsupported view type".into()); }
+    let name = clean_name(name)?;
+    let position: i64 = c.query_row("SELECT COALESCE(MAX(position),0)+1 FROM db_views WHERE database_id=?1", [database], |r| r.get(0)).map_err(e)?;
+    let id = Uuid::new_v4().to_string();
+    c.execute("INSERT INTO db_views(id,database_id,name,type,position,config) VALUES(?1,?2,?3,?4,?5,?6)", params![id, database, name, kind, position, config]).map_err(e)?;
+    Ok(View { id, name, kind: kind.into(), config: serde_json::from_str(config).unwrap_or(Value::Null) })
+}
 
 fn e(error: rusqlite::Error) -> String { error.to_string() }
 
@@ -64,6 +94,7 @@ pub fn create_database(db: State<'_, Db>, parent_id: Option<String>, title: Stri
     let page = insert_page(&tx, parent_id, title, &initial_update)?;
     tx.execute("INSERT INTO databases(page_id) VALUES(?1)", [&page.id]).map_err(e)?;
     insert_property(&tx, &page.id, "Status", "status")?;
+    insert_view(&tx, &page.id, "Table", "table", "{}")?;
     tx.commit().map_err(e)?;
     Ok(page)
 }
@@ -98,7 +129,13 @@ pub fn get_database(db: State<'_, Db>, page_id: String) -> Result<Option<Databas
         let (row, property, json) = v.map_err(e)?;
         if let (Some(i), Ok(value)) = (index.get(&row), serde_json::from_str::<Value>(&json)) { rows[*i].values.insert(property, value); }
     }
-    Ok(Some(DatabaseView { properties, rows }))
+    let views = {
+        let mut s = c.prepare("SELECT id,name,type,config FROM db_views WHERE database_id=?1 AND deleted_at IS NULL ORDER BY position").map_err(e)?;
+        let it = s.query_map([&page_id], |r| Ok(View { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, config: serde_json::from_str(&r.get::<_, String>(3)?).unwrap_or(Value::Null) })).map_err(e)?;
+        it.collect::<rusqlite::Result<Vec<_>>>().map_err(e)?
+    };
+    let title: String = c.query_row("SELECT title FROM pages WHERE id=?1", [&page_id], |r| r.get(0)).map_err(e)?;
+    Ok(Some(DatabaseView { title, properties, rows, views }))
 }
 
 #[tauri::command]
@@ -141,6 +178,41 @@ pub fn add_select_option(db: State<'_, Db>, property_id: String, name: String, c
     let option = add_option(&tx, &property_id, &name, &color)?;
     tx.commit().map_err(e)?;
     Ok(option)
+}
+
+#[tauri::command]
+pub fn add_view(db: State<'_, Db>, database_id: String, name: String, kind: String, config: Value) -> Result<View, String> {
+    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
+    if !is_database(&conn, &database_id)? { return Err("Database not found".into()); }
+    let tx = conn.transaction().map_err(e)?;
+    let json = clean_config(&tx, &database_id, &config)?;
+    let view = insert_view(&tx, &database_id, &name, &kind, &json)?;
+    tx.commit().map_err(e)?;
+    Ok(view)
+}
+
+#[tauri::command]
+pub fn update_view(db: State<'_, Db>, view_id: String, name: Option<String>, config: Option<Value>) -> Result<(), String> {
+    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
+    let tx = conn.transaction().map_err(e)?;
+    let database: String = tx.query_row("SELECT database_id FROM db_views WHERE id=?1 AND deleted_at IS NULL", [&view_id], |r| r.get(0)).optional().map_err(e)?.ok_or("View not found")?;
+    if let Some(name) = name { tx.execute("UPDATE db_views SET name=?1 WHERE id=?2", params![clean_name(&name)?, view_id]).map_err(e)?; }
+    if let Some(config) = config { let json = clean_config(&tx, &database, &config)?; tx.execute("UPDATE db_views SET config=?1 WHERE id=?2", params![json, view_id]).map_err(e)?; }
+    tx.commit().map_err(e)
+}
+
+/// Soft delete; the last remaining view cannot be removed.
+#[tauri::command]
+pub fn delete_view(db: State<'_, Db>, view_id: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
+    let database: String = conn.query_row("SELECT database_id FROM db_views WHERE id=?1 AND deleted_at IS NULL", [&view_id], |r| r.get(0)).optional().map_err(e)?.ok_or("View not found")?;
+    let remaining: i64 = conn.query_row("SELECT COUNT(*) FROM db_views WHERE database_id=?1 AND deleted_at IS NULL", [&database], |r| r.get(0)).map_err(e)?;
+    if remaining <= 1 { return Err("A database needs at least one view".into()); }
+    conn.execute("UPDATE db_views SET deleted_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1", [view_id]).map_err(e)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -252,6 +324,14 @@ mod tests {
         assert!(ok(&tags, serde_json::json!([tag.id, "nope"])).is_err());
         assert!(ok(&date, serde_json::json!("2026-02-30")).is_err());
         assert!(ok(&date, serde_json::json!("2026-11-10")).is_ok());
+        let cfg = |v: Value| clean_config(&tx, &database.id, &v);
+        assert!(cfg(serde_json::json!({"groupBy": status.id})).is_ok());
+        assert!(cfg(serde_json::json!({"groupBy": "nope"})).is_err());
+        assert!(cfg(serde_json::json!({"script": "x"})).is_err());
+        assert!(cfg(serde_json::json!([1])).is_err());
+        let view = insert_view(&tx, &database.id, "Board", "board", "{}").unwrap();
+        assert_eq!(view.kind, "board");
+        assert!(insert_view(&tx, &database.id, "Map", "map", "{}").is_err());
         // Rows are hidden children; deleting a column keeps its values.
         let row = insert_page(&tx, Some(database.id.clone()), "Row", &[1]).unwrap();
         tx.execute("INSERT INTO db_rows(page_id,database_id) VALUES(?1,?2)", params![row.id, database.id]).unwrap();
