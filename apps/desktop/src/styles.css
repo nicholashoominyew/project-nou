@@ -275,3 +275,79 @@ body{background:var(--bg);color:var(--text)}button,input,select,textarea{color:i
 .db-peek{position:fixed;top:0;right:0;bottom:0;width:min(680px,94vw);z-index:70;background:var(--bg);color:var(--text);border-left:1px solid var(--line);box-shadow:-8px 0 28px rgba(0,0,0,.18);display:flex;flex-direction:column}
 .db-peek-bar{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--line)}.db-peek-bar strong{flex:1}
 @media print{.db-tabs,.db-settings,.db-cal-day button{display:none!important}}
+
+/* Offline map view */
+.db-map{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.db-map-bar{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line)}
+.db-map-bar button{border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:5px;padding:3px 10px;font:inherit;font-size:12px;cursor:pointer}
+.db-map-bar button.active{background:var(--hover);border-color:var(--accent)}.db-map-bar .hint{margin-left:auto;font-size:11px}
+.db-map-svg{display:block;width:100%;height:auto;background:var(--panel)}
+.db-map-bg{fill:var(--panel)}.db-map-grid{stroke:var(--line);stroke-width:1}.db-map-axis{stroke:var(--muted);stroke-width:1.2;opacity:.6}
+.db-map-label{fill:var(--muted);font-size:10px}
+.db-map-pin{cursor:pointer;outline:none}.db-map-pin circle{fill:var(--accent);stroke:#fff;stroke-width:2}
+.db-map-pin text{fill:var(--text);font-size:13px;font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
+.db-map-pin:hover circle,.db-map-pin:focus-visible circle{stroke:var(--text)}
+
+/* The note editor styles every <details> as a block with 18px margins; databases live inside it, so reset that for their dropdowns. */
+.note-editor .db details,.db details{margin:0}
+.note-editor .db summary,.db summary{color:inherit;list-style:none}
+.db summary::-webkit-details-marker{display:none}
+.db-add-property{display:block}.db-add-property>summary{cursor:pointer;padding:6px 12px;font-size:18px;color:var(--muted);text-align:center}
+.db-add-property>summary:hover,.db-header>summary:hover,.db-select>summary:hover{background:var(--hover)}
+.db-table th{vertical-align:middle;line-height:1.3}.db-table td{vertical-align:middle;line-height:1.3}
+.db-table .db-input{line-height:1.3}
+
+/* Column menu, toolbar, grouping, calculations, frozen columns */
+.db-menu hr{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
+.db-menu button{justify-content:space-between}.db-menu button em{font-style:normal;color:var(--muted);font-size:12px}
+.db-menu button[disabled]{opacity:.45;cursor:default}.db-menu button.danger{color:var(--danger,#b3261e)}
+.db-rename,.db-column-menu input{width:100%;box-sizing:border-box}
+.db-back{font-weight:600}.db-menu-note{margin:6px 8px 2px;font-size:11px}
+.db-toolbar{display:flex;flex-direction:column;gap:6px;margin:0 0 8px}
+.db-toolbar-row{display:flex;align-items:center;gap:4px}
+.db-tool>summary{list-style:none;cursor:pointer;padding:3px 10px;border-radius:5px;font-size:12px;color:var(--muted)}
+.db-tool>summary:hover{background:var(--hover)}.db-count-note{margin-left:8px;font-size:12px;color:var(--muted)}
+.db-chip-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.db-pill{padding:1px 8px;border-radius:10px;background:var(--hover);color:var(--muted);font-size:11px}
+.db-chip-row select,.db-chip-row input{padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:12px}
+.db-chip-row button{border:0;background:transparent;color:var(--muted);cursor:pointer;font:inherit;font-size:12px;padding:1px 6px;border-radius:4px}.db-chip-row button:hover{background:var(--hover)}
+.db-group-row td{background:var(--panel);padding:0!important}
+.db-group-row button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;color:inherit;font:inherit;font-size:13px;padding:6px 10px;cursor:pointer;text-align:left}
+.db-table tfoot td{border-top:1px solid var(--line);border-bottom:0;font-size:12px;color:var(--muted)}
+.db-calc>summary{list-style:none;cursor:pointer;padding:6px 10px;min-height:20px;display:block}
+.db-calc-empty{opacity:0}.db-table tfoot td:hover .db-calc-empty{opacity:.8}
+.db-calc-value em{font-style:normal;color:var(--muted);margin-right:4px}.db-calc-value{color:var(--text)}
+textarea.db-wrap{resize:none;overflow:hidden;field-sizing:content;min-height:2.2em;line-height:1.35}
+.db-table th[style*="sticky"],.db-table td[style*="sticky"]{box-shadow:1px 0 0 var(--line)}
+
+/* Keyboard shortcuts list (Ctrl+/) */
+.shortcuts{width:min(760px,94vw);max-height:84vh;display:flex;flex-direction:column;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);margin:8vh auto 0}
+.shortcuts header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--line)}.shortcuts h2{margin:0;font-size:16px}
+.shortcuts header button{border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:5px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
+.shortcuts-body{overflow:auto;padding:6px 18px 16px;columns:2 300px;column-gap:28px}.shortcuts section{break-inside:avoid;margin-top:12px}
+.shortcuts h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.shortcuts dl{margin:0}.shortcuts dl div{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px}
+.shortcuts dt{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--muted);white-space:nowrap}.shortcuts dd{margin:0;text-align:right}
+@media print{.shortcuts{display:none}}
+
+/* Notion parity batch: type glyphs, resize handles, row menu, option editor, search */
+.db-kind{display:inline-block;min-width:18px;margin-right:6px;color:var(--muted);font-size:11px;text-align:center}
+.db-table th{position:relative}
+.db-resize{position:absolute;top:0;right:-3px;bottom:0;width:7px;cursor:col-resize;z-index:4;touch-action:none}
+.db-resize:hover,.db-resize:active{background:var(--accent);opacity:.45}
+.db-row-menu>summary{list-style:none;cursor:pointer;padding:6px 10px;opacity:0;border-radius:5px;color:var(--muted)}
+.db-table tr:hover .db-row-menu>summary,.db-row-menu[open]>summary,.db-row-menu>summary:focus-visible{opacity:1}
+.db-row-menu>summary:hover{background:var(--hover)}
+.db-auto{display:block;padding:8px 10px;color:var(--muted);font-size:13px;white-space:nowrap}
+.db-search{margin-left:auto;width:140px;padding:3px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:12px}
+.db-search:focus{width:200px;outline:2px solid var(--accent);outline-offset:-1px}
+.db-option-row{display:flex;align-items:center;gap:6px;padding:2px 4px}
+.db-option-row select{width:84px;padding:3px 4px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:12px}
+.db-option-row input{flex:1;min-width:0}.db-option-row button{border:0;background:transparent;color:var(--muted);cursor:pointer;padding:2px 6px;border-radius:4px;width:auto}
+.db-option-row button:hover{background:var(--hover)}
+
+/* Relations and rollups */
+.db-link-chip{display:inline-block;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 8px;border-radius:4px;font-size:12px;line-height:20px;background:var(--hover);color:var(--text);border:1px solid var(--line)}
+.db-add-wide{min-width:260px}.db-add-wide select,.db-add-wide input[type=text],.db-add-wide input:not([type]){width:100%;box-sizing:border-box}
+.db-inline{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.db-options>input[type=text],.db-options>input:not([type]){margin:2px 2px 4px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:inherit;font:inherit}

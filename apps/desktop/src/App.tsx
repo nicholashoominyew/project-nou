@@ -7,6 +7,7 @@ import * as Y from "yjs";
 import {EditorFeatures,type PageInfo,type FileInfo} from "./EditorContext";
 import {Icon,iconNames} from "./Icons";
 import {pageDrop,type DropPosition} from "./workspaceModel";
+import ShortcutsHelp from "./ShortcutsHelp";
 import QuickFind from "./QuickFind";
 import {DismissibleDetails,useDismiss} from "./Dismissible";
 const NoteEditor=lazy(()=>import("./NoteEditor"));
@@ -38,7 +39,12 @@ export default function App(){
  useDismiss(menu!==null,()=>setMenu(null),menuRef);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const iconPickerRef=useRef<HTMLDivElement>(null);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [showShortcuts,setShowShortcuts]=useState(false);
+ const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
+ const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
+ useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
+ useEffect(()=>{const n=nav.current;if(!selected)return;if(n.skip){n.skip=false;return}if(n.stack[n.index]===selected)return;n.stack=n.stack.slice(0,n.index+1);n.stack.push(selected);n.index=n.stack.length-1;if(n.stack.length>100){n.stack.shift();n.index--}},[selected]);
+ function goHistory(step:-1|1){const n=nav.current;if(guard)return;let i=n.index+step;while(i>=0&&i<n.stack.length&&!pagesRef.current.some(p=>p.id===n.stack[i]))i+=step;if(i<0||i>=n.stack.length)return;const id=n.stack[i];n.index=i;if(id!==selected)n.skip=true;openPage(id)}const iconPickerRef=useRef<HTMLDivElement>(null);
  useDismiss(iconPicker,()=>setIconPicker(false),iconPickerRef);
  const onEditorStatus=useCallback((s:SaveStatus)=>{saveStatusRef.current=s;setEditorStatus(s)},[]);
  function markBusy(value:boolean){busyRef.current=value;setBusy(value)}
@@ -68,7 +74,8 @@ export default function App(){
  },[]);
  async function run(action:()=>Promise<unknown>){markBusy(true);setError("");try{await action();await reload()}catch(e){setError(String(e))}finally{markBusy(false)}}
  function openPage(id:string){if(busyRef.current||saveStatusRef.current!=="saved")return;setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setIconPicker(false)}
- function closeTab(id:string){if(guard)return;const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
+ function closeTab(id:string){if(guard)return;closedTabs.current.push(id);const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
+ function reopenTab(){if(guard)return;while(closedTabs.current.length){const id=closedTabs.current.pop()!;if(!tabs.includes(id)&&pagesRef.current.some(p=>p.id===id)){openPage(id);return}}}
  function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
  // Keyboard shortcuts. Ctrl+C/V/X/A and Ctrl+Z/Y are handled natively by the editor and text fields.
  // Ctrl+P prints the open page (print styles hide the app chrome); Ctrl+Q opens Quick find.
@@ -81,6 +88,15 @@ export default function App(){
    else if(key==="p"&&!event.shiftKey){event.preventDefault();if(!event.repeat)window.print()}
    else if(key==="n"&&!event.shiftKey){event.preventDefault();if(!event.repeat&&!guard&&!recoveryBlocked){setQuickFind(false);void newRootPage()}}
    else if(key==="w"&&!event.shiftKey){event.preventDefault();if(!event.repeat&&selected&&tabs.includes(selected))closeTab(selected)}
+   else if(event.key==="/"){event.preventDefault();setShowShortcuts(open=>!open)}
+   else if(event.key==="["||event.key==="]"){event.preventDefault();goHistory(event.key==="["?-1:1)}
+   else if(key==="t"&&event.shiftKey){event.preventDefault();if(!event.repeat)reopenTab()}
+   else if(key==="l"&&event.shiftKey){event.preventDefault();if(!event.repeat)setTheme(v=>v==="light"?"dark":"light")}
+   else if(key==="u"&&event.shiftKey){event.preventDefault();const parent=pagesRef.current.find(p=>p.id===selected)?.parent_id;if(parent&&!event.repeat)openPage(parent)}
+   else if(event.key==="="||event.key==="+"){event.preventDefault();setZoom(z=>Math.min(2,Math.round((z+0.1)*10)/10))}
+   else if(event.key==="-"||event.key==="_"){event.preventDefault();setZoom(z=>Math.max(0.5,Math.round((z-0.1)*10)/10))}
+   else if(event.key==="0"){event.preventDefault();setZoom(1)}
+   else if(/^[1-9]$/.test(event.key)&&!event.shiftKey&&tabs.length){event.preventDefault();const target=event.key==="9"?tabs[tabs.length-1]:tabs[Number(event.key)-1];if(target&&!guard)openPage(target)}
    else if(event.key==="Tab"&&tabs.length>1){event.preventDefault();if(guard)return;const at=tabs.indexOf(selected??"");openPage(tabs[(at+(event.shiftKey?-1:1)+tabs.length)%tabs.length])}
   };
   window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);
@@ -191,6 +207,7 @@ export default function App(){
   <button role="menuitem" onClick={()=>{setMenu(null);setRenaming(menuPage.id)}}>Rename</button>
   <button role="menuitem" onClick={()=>{setMenu(null);void addSubpage(menuPage)}}>Add subpage</button>
   <hr/><button role="menuitem" className="danger" onClick={()=>{setMenu(null);trashPage(menuPage)}}>Move to Trash</button></div>}
+ {showShortcuts&&<ShortcutsHelp onClose={()=>setShowShortcuts(false)}/>}
  {quickFind&&<QuickFind pages={pages} onOpen={id=>{setQuickFind(false);openPage(id)}} onClose={()=>setQuickFind(false)}/>}
  </main></EditorFeatures.Provider>;
 }

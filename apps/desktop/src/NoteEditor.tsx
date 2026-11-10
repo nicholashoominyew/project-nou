@@ -56,6 +56,13 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
       }
     }catch(error){context.onError(error)}finally{setPending(false)}
   }
+  function duplicateBlock(){
+    if(disabled)return;
+    const block=editor.getTextCursorPosition().block;
+    const copy=(b:any):any=>({type:b.type,props:b.props,content:b.content,children:(b.children??[]).map(copy)});
+    editor.insertBlocks([copy(block)],block,"after");
+  }
+  const pageItems=(query:string)=>filterSuggestionItems(context.pages.map(page=>({title:page.title,aliases:[],group:"Pages",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium"}} as never)})),query).slice(0,12);
   const items=()=>[...getDefaultReactSlashMenuItems(editor),
     {title:"Page",aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
     {title:"Database",aliases:["database","table","board","calendar","timeline","gallery","list"],group:"NOU",onItemClick:()=>void create("database")},
@@ -64,12 +71,13 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     {title:"PDF",aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
     {title:"File",aliases:["file","attachment","html","upload"],group:"NOU",onItemClick:()=>void create("file")}
   ];
-  return <div className={"editor-drop"+(over?" over":"")}
+  return <div className={"editor-drop"+(over?" over":"")} onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateBlock()}}}
     onDragOverCapture={e=>{if(hasFiles(e)){e.preventDefault();e.dataTransfer.dropEffect=disabled?"none":"copy";setOver(!disabled)}}}
     onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
     onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
   <BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
     <SuggestionMenuController triggerCharacter="/" getItems={async query=>filterSuggestionItems(items(),query)}/>
+    <SuggestionMenuController triggerCharacter="@" getItems={async query=>pageItems(query)}/>
   </BlockNoteView></div>;
 }
 

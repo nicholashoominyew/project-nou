@@ -72,6 +72,27 @@ it("Ctrl+N creates a page, Ctrl+Tab cycles tabs and Ctrl+W closes the current ta
  // Creating a page lazily loads the heavy editor schema, which is slow under jsdom.
  await waitFor(()=>expect(calls).toContain("create_page"),{timeout:20000});
 },30000);
+it("Ctrl+1 and Ctrl+9 jump between tabs, Ctrl+[ and Ctrl+] walk back and forward, Ctrl+Shift+T reopens a closed tab",async()=>{
+ render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByText("Simulate pending save");
+ fireEvent.click(screen.getByText("Second note"));
+ const selected=()=>screen.getAllByRole("tab").find(t=>t.getAttribute("aria-selected")==="true")?.textContent;
+ expect(selected()).toBe("Second note");
+ fireEvent.keyDown(window,{key:"1",ctrlKey:true});expect(selected()).toBe("Test note");
+ fireEvent.keyDown(window,{key:"9",ctrlKey:true});expect(selected()).toBe("Second note");
+ fireEvent.keyDown(window,{key:"[",ctrlKey:true});expect(selected()).toBe("Test note");
+ fireEvent.keyDown(window,{key:"]",ctrlKey:true});expect(selected()).toBe("Second note");
+ fireEvent.keyDown(window,{key:"w",ctrlKey:true});expect(screen.getAllByRole("tab")).toHaveLength(1);
+ fireEvent.keyDown(window,{key:"T",ctrlKey:true,shiftKey:true});expect(screen.getAllByRole("tab")).toHaveLength(2);expect(selected()).toBe("Second note");
+});
+it("Ctrl+Shift+L toggles dark mode, Ctrl+= zooms, and Ctrl+/ opens the shortcuts list",async()=>{
+ render(<App/>);await screen.findByText("Test note");
+ expect(document.documentElement.dataset.theme).toBe("light");
+ fireEvent.keyDown(window,{key:"L",ctrlKey:true,shiftKey:true});expect(document.documentElement.dataset.theme).toBe("dark");
+ fireEvent.keyDown(window,{key:"=",ctrlKey:true});expect(localStorage.getItem("nou-zoom")).toBe("1.1");
+ fireEvent.keyDown(window,{key:"0",ctrlKey:true});expect(localStorage.getItem("nou-zoom")).toBe("1");
+ fireEvent.keyDown(window,{key:"/",ctrlKey:true});expect(screen.getByRole("dialog",{name:"Keyboard shortcuts"})).toBeTruthy();
+ fireEvent.keyDown(document,{key:"Escape"});expect(screen.queryByRole("dialog",{name:"Keyboard shortcuts"})).toBeNull();
+});
 it("ignores shortcuts while an input method is composing",async()=>{
  render(<App/>);await screen.findByText("Test note");
  const event=new KeyboardEvent("keydown",{key:"q",ctrlKey:true,isComposing:true,bubbles:true,cancelable:true});window.dispatchEvent(event);

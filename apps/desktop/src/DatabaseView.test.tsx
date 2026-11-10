@@ -5,8 +5,15 @@ import Database from "./DatabaseView";
 const { calls, view } = vi.hoisted(() => ({ calls: [] as { command: string; args: any }[], view: { current: null as any } }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
   calls.push({ command, args });
+  if (command === "get_database" && args.pageId === "db2") return { title: "Tasks", properties: [{ id: "eff", name: "Effort", type: "number", options: [] }, { id: "stat", name: "Stage", type: "status", options: [] }], rows: [], views: [], linked: {} };
   if (command === "get_database") return view.current;
   if (command === "add_row") return { id: "new-row", title: "Untitled", values: {} };
+  if (command === "load_note") return { updates: [] };
+  if (command === "list_databases") return [{ id: "db", title: "Projects" }, { id: "db2", title: "Tasks" }];
+  if (command === "list_rows") return [{ id: "t1", title: "Write" }, { id: "t2", title: "Ship" }];
+  if (command === "add_relation") return { id: "rel-new", name: args.name, type: "relation", options: [], config: { target: args.targetId, reverse: null } };
+  if (command === "add_rollup") return { id: "roll-new", name: args.name, type: "rollup", options: [], config: {} };
+  if (command === "add_property") return { id: "new-prop", name: args.name, type: args.kind, options: [] };
   if (command === "add_view") return { id: "v-new", name: args.name, type: args.kind, config: args.config };
 } }));
 vi.mock("./richUpdate", () => ({ newRichUpdate: async () => [1] }));
@@ -19,8 +26,9 @@ const base = () => ({
     { id: "hours", name: "Hours", type: "number", options: [] },
     { id: "state", name: "State", type: "status", options: [{ id: "o1", name: "Not started", color: "gray" }, { id: "o2", name: "Shipped", color: "green" }] },
     { id: "due", name: "Due", type: "date", options: [] },
+    { id: "where", name: "Where", type: "place", options: [] },
   ],
-  rows: [{ id: "r1", title: "Write ADR", values: { hours: 3, state: "o1", due: "2026-11-10" } }, { id: "r2", title: "Loose end", values: {} }],
+  rows: [{ id: "r1", title: "Write ADR", values: { hours: 3, state: "o1", due: "2026-11-10", where: { lat: 35.68, lng: 139.69, name: "Tokyo" } } }, { id: "r2", title: "Loose end", values: {} }],
   views: [{ id: "v1", name: "Table", type: "table", config: {} }],
 });
 const show = (readOnly = false) => render(<Database databaseId="db" readOnly={readOnly} onError={() => {}} />);
@@ -79,14 +87,218 @@ describe("Database", () => {
     expect((await screen.findAllByText("Write ADR")).length).toBeGreaterThan(0);
     expect(screen.getByText("No date (1)")).toBeTruthy();
   });
-  it("asks for a property when a view has none to use", async () => {
+  it("calendar with no setting uses the database's first Date property", async () => {
     withView("calendar", {}); show();
+    expect((await screen.findAllByRole("gridcell")).length).toBeGreaterThan(27);
+    expect(screen.queryByText(/Choose a Date property/)).toBeNull();
+  });
+  it("asks for a Date property only when the database has none", async () => {
+    view.current = { ...base(), properties: base().properties.filter(p => p.type !== "date"), views: [{ id: "v1", name: "Calendar", type: "calendar", config: {} }] };
+    show();
     expect((await screen.findByText(/Choose a Date property/)).textContent).toBeTruthy();
+  });
+  it("adding a Calendar view to a database without a date column creates the Date column first", async () => {
+    view.current = { ...base(), properties: base().properties.filter(p => p.type !== "date"), views: [{ id: "v1", name: "Table", type: "table", config: {} }] };
+    show();
+    await screen.findByDisplayValue("Projects");
+    fireEvent.click(screen.getByText("Calendar"));
+    await waitFor(() => expect(calls.some(c => c.command === "add_property" && c.args.kind === "date" && c.args.name === "Date")).toBe(true));
+    await waitFor(() => expect(calls.some(c => c.command === "add_view" && c.args.kind === "calendar")).toBe(true));
   });
   it("adds a view of the chosen type with sensible default settings", async () => {
     show();
     await screen.findByDisplayValue("Projects");
     fireEvent.click(screen.getByText("Board"));
     await waitFor(() => expect(calls).toContainEqual({ command: "add_view", args: { databaseId: "db", name: "Board", kind: "board", config: { groupBy: "state" } } }));
+  });
+  it("map plots rows with a place as pins and lists rows without one", async () => {
+    withView("map", { placeBy: "where" }); show();
+    const pin = await screen.findByRole("button", { name: "Write ADR at 35.68, 139.69" });
+    expect(pin).toBeTruthy();
+    expect(screen.getByText("No place (1)")).toBeTruthy();
+    fireEvent.click(pin);
+    expect((await screen.findByTestId("note")).textContent).toBe("r1");
+  });
+  it("place cells accept 'lat, lng, name' and reject nonsense without writing", async () => {
+    const errors: unknown[] = [];
+    render(<Database databaseId="db" readOnly={false} onError={e => errors.push(e)} />);
+    const cells = await screen.findAllByLabelText("Where");
+    const empty = cells[1] as HTMLInputElement;
+    fireEvent.change(empty, { target: { value: "91, 10" } }); fireEvent.blur(empty);
+    await waitFor(() => expect(errors.length).toBe(1));
+    expect(calls.some(c => c.command === "set_value" && c.args.propertyId === "where")).toBe(false);
+    fireEvent.change(empty, { target: { value: "48.8566, 2.3522, Paris" } }); fireEvent.blur(empty);
+    await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "r2", propertyId: "where", value: { lat: 48.8566, lng: 2.3522, name: "Paris" } } }));
+  });
+  it("map asks for a Place property only when the database has none", async () => {
+    view.current = { ...base(), properties: base().properties.filter(p => p.type !== "place"), views: [{ id: "v1", name: "Map", type: "map", config: {} }] };
+    show();
+    expect((await screen.findByText(/Choose a Place property/)).textContent).toBeTruthy();
+  });
+  const menuItem = async (column: string, label: string | RegExp) => {
+    await screen.findByDisplayValue("Projects");
+    const summary = screen.getAllByLabelText("Column " + column)[0];
+    fireEvent.click(summary);
+    fireEvent.click(within(summary.parentElement!).getByText(label));
+  };
+  it("column menu: insert right asks the server to add a property beside this one", async () => {
+    show(); await menuItem("Hours", "Insert right");
+    await waitFor(() => expect(calls).toContainEqual({ command: "add_property", args: { databaseId: "db", name: "Property", kind: "text", near: "hours", side: "right" } }));
+  });
+  it("column menu: duplicate and change type go to the server", async () => {
+    show(); await menuItem("Hours", "Duplicate property");
+    await waitFor(() => expect(calls).toContainEqual({ command: "duplicate_property", args: { propertyId: "hours" } }));
+    calls.length = 0; await menuItem("Hours", "Change type");
+    fireEvent.click(screen.getAllByText("Text").find(el => el.closest(".db-column-menu") !== null)!);
+    await waitFor(() => expect(calls).toContainEqual({ command: "change_property_type", args: { propertyId: "hours", kind: "text" } }));
+  });
+  it("column menu: sort, hide and freeze save one complete view config", async () => {
+    show(); await menuItem("Hours", "Sort");
+    fireEvent.click(screen.getAllByText("Descending")[0]);
+    await waitFor(() => expect(calls).toContainEqual({ command: "update_view", args: { viewId: "v1", config: { sorts: [{ p: "hours", dir: "desc" }] } } }));
+    calls.length = 0; await menuItem("Hours", "Freeze up to here");
+    await waitFor(() => expect(calls).toContainEqual({ command: "update_view", args: { viewId: "v1", config: { frozen: "hours" } } }));
+    calls.length = 0; await menuItem("Hours", "Hide");
+    await waitFor(() => expect(calls).toContainEqual({ command: "update_view", args: { viewId: "v1", config: { hidden: ["hours"] } } }));
+  });
+  it("a saved filter hides rows, shows a chip, and removing it saves the config", async () => {
+    view.current = { ...base(), views: [{ id: "v1", name: "Table", type: "table", config: { filters: [{ p: "state", op: "is", v: "o1" }] } }] };
+    show();
+    await screen.findByDisplayValue("Write ADR");
+    expect(screen.queryByDisplayValue("Loose end")).toBeNull();
+    expect(screen.getByText("1 row shown")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Remove filter on State"));
+    await waitFor(() => expect(calls).toContainEqual({ command: "update_view", args: { viewId: "v1", config: {} } }));
+  });
+  it("hidden columns disappear from the table and can be shown again", async () => {
+    view.current = { ...base(), views: [{ id: "v1", name: "Table", type: "table", config: { hidden: ["hours"] } }] };
+    show();
+    await screen.findByDisplayValue("Write ADR");
+    expect(screen.queryByLabelText("Column Hours")).toBeNull();
+    fireEvent.click(screen.getByText("Show all"));
+    await waitFor(() => expect(calls).toContainEqual({ command: "update_view", args: { viewId: "v1", config: {} } }));
+  });
+  it("calculate shows the result under the column", async () => {
+    view.current = { ...base(), views: [{ id: "v1", name: "Table", type: "table", config: { calc: { hours: "sum" } } }] };
+    show();
+    await screen.findByDisplayValue("Write ADR");
+    expect(document.querySelector(".db-calc-value")!.textContent).toContain("3");
+  });
+  it("grouping a table by status shows group headers with counts", async () => {
+    view.current = { ...base(), views: [{ id: "v1", name: "Table", type: "table", config: { groupBy: "state" } }] };
+    show();
+    await screen.findByDisplayValue("Write ADR");
+    expect(screen.getAllByRole("button", { expanded: true }).some(b => b.textContent?.includes("Not started"))).toBe(true);
+  });
+  it("search narrows the rows in every view", async () => {
+    show();
+    await screen.findByDisplayValue("Write ADR");
+    fireEvent.change(screen.getByLabelText("Search rows"), { target: { value: "loose" } });
+    expect(screen.queryByDisplayValue("Write ADR")).toBeNull();
+    expect(screen.getByDisplayValue("Loose end")).toBeTruthy();
+    expect(screen.getByText("1 row shown")).toBeTruthy();
+  });
+  it("two filters show a match-mode switch that saves 'or'", async () => {
+    view.current = { ...base(), views: [{ id: "v1", name: "Table", type: "table", config: { filters: [{ p: "state", op: "is", v: "o1" }, { p: "hours", op: "gt", v: 100 }] } }] };
+    show();
+    await screen.findByLabelText("Filter match mode");
+    expect(screen.queryByDisplayValue("Write ADR")).toBeNull(); // "and": nothing satisfies both
+    fireEvent.change(screen.getByLabelText("Filter match mode"), { target: { value: "or" } });
+    await waitFor(() => expect(calls.some(c => c.command === "update_view" && c.args.config.filterMode === "or")).toBe(true));
+  });
+  it("row menu duplicates a row's values and page body", async () => {
+    show();
+    await screen.findByDisplayValue("Write ADR");
+    fireEvent.click(screen.getByLabelText("Row options for Write ADR"));
+    fireEvent.click(within(screen.getByLabelText("Row options for Write ADR").parentElement!).getByText("Duplicate"));
+    await waitFor(() => expect(calls.some(c => c.command === "set_value" && c.args.rowId === "new-row" && c.args.propertyId === "hours" && c.args.value === 3)).toBe(true));
+    expect(calls.some(c => c.command === "load_note" && c.args.pageId === "r1")).toBe(true);
+    expect(calls.some(c => c.command === "rename_page" && c.args.pageId === "new-row" && c.args.title === "Write ADR")).toBe(true);
+  });
+  it("edits select options: rename, recolour and delete", async () => {
+    show();
+    await screen.findByDisplayValue("Write ADR");
+    fireEvent.click(screen.getAllByLabelText("Column State")[0]);
+    const menu = screen.getAllByLabelText("Column State")[0].parentElement!;
+    fireEvent.click(within(menu).getByText("Edit options"));
+    fireEvent.change(within(menu).getByLabelText("Colour of Shipped"), { target: { value: "purple" } });
+    await waitFor(() => expect(calls).toContainEqual({ command: "update_select_option", args: { optionId: "o2", color: "purple" } }));
+    const name = within(menu).getByLabelText("Name of option Shipped");
+    fireEvent.change(name, { target: { value: "Launched" } }); fireEvent.blur(name);
+    await waitFor(() => expect(calls).toContainEqual({ command: "update_select_option", args: { optionId: "o2", name: "Launched" } }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(within(menu).getByLabelText("Delete option Shipped"));
+    await waitFor(() => expect(calls).toContainEqual({ command: "delete_select_option", args: { optionId: "o2" } }));
+  });
+  it("shows the new property types with their glyph and fills automatic columns in read-only", async () => {
+    view.current = { ...base(), properties: [...base().properties, { id: "made", name: "Created", type: "created_time", options: [] }, { id: "mail", name: "Mail", type: "email", options: [] }],
+      rows: [{ id: "r1", title: "Write ADR", values: { made: "2026-11-09T20:30:00.000Z", mail: "ann@example.com" } }], views: [{ id: "v1", name: "Table", type: "table", config: {} }] };
+    show();
+    await screen.findByDisplayValue("Write ADR");
+    expect(screen.getByDisplayValue("ann@example.com")).toBeTruthy();
+    expect(screen.getByLabelText("Created").getAttribute("title")).toBe("Filled in automatically");
+    expect(screen.getByLabelText("Column Created").textContent).toContain("◷");
+  });
+  const withRelation = (extra: object = {}) => ({
+    ...base(), properties: [...base().properties, { id: "rel", name: "Tasks", type: "relation", options: [], config: { target: "db2", reverse: "back" } }, ...(extra as any).properties ?? []],
+    rows: [{ id: "r1", title: "Write ADR", values: { rel: ["t1"], ...((extra as any).values ?? {}) } }, { id: "r2", title: "Loose end", values: {} }],
+    linked: { t1: "Write", t2: "Ship" }, views: [{ id: "v1", name: "Table", type: "table", config: {} }],
+  });
+  it("relation cells show the linked page titles and the picker saves the chosen page ids", async () => {
+    view.current = withRelation(); show();
+    await screen.findByDisplayValue("Write ADR");
+    expect(within(screen.getAllByLabelText("Tasks")[0]).getByText("Write")).toBeTruthy();
+    fireEvent.click(screen.getAllByLabelText("Tasks")[0]);
+    const picker = await screen.findByRole("group", { name: "Linked pages" });
+    fireEvent.click(await within(picker).findByLabelText("Ship"));
+    await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "r1", propertyId: "rel", value: ["t1", "t2"] } }));
+    expect(calls).toContainEqual({ command: "list_rows", args: { databaseId: "db2" } });
+  });
+  it("rollup cells are read-only and show the calculated text", async () => {
+    view.current = withRelation({ properties: [{ id: "sum", name: "Total effort", type: "rollup", options: [], config: { relation: "rel", property: "eff", fn: "sum" } }], values: { sum: "16" } }); show();
+    await screen.findByDisplayValue("Write ADR");
+    const cell = screen.getAllByLabelText("Total effort")[0];
+    expect(cell.textContent).toBe("16");
+    expect(cell.getAttribute("title")).toBe("Calculated from linked rows");
+  });
+  it("adding a relation column asks for the related database and whether it is two-way", async () => {
+    show();
+    await screen.findByDisplayValue("Projects");
+    fireEvent.click(screen.getByLabelText("Add a property"));
+    const menu = screen.getByLabelText("Add a property").parentElement!;
+    fireEvent.change(within(menu).getByLabelText("Property name"), { target: { value: "Tasks" } });
+    fireEvent.change(within(menu).getByLabelText("Property type"), { target: { value: "relation" } });
+    await waitFor(() => expect((within(menu).getByLabelText("Related database") as HTMLSelectElement).value).toBe("db2"));
+    fireEvent.click(within(menu).getByText("Add property"));
+    await waitFor(() => expect(calls).toContainEqual({ command: "add_relation", args: { databaseId: "db", name: "Tasks", targetId: "db2", twoWay: true } }));
+  });
+  it("adding a rollup picks a relation, a property of the related database and a calculation", async () => {
+    view.current = withRelation(); show();
+    await screen.findByDisplayValue("Write ADR");
+    fireEvent.click(screen.getByLabelText("Add a property"));
+    const menu = screen.getByLabelText("Add a property").parentElement!;
+    fireEvent.change(within(menu).getByLabelText("Property name"), { target: { value: "Effort sum" } });
+    fireEvent.change(within(menu).getByLabelText("Property type"), { target: { value: "rollup" } });
+    await waitFor(() => expect(within(menu).getByLabelText("Property to roll up").textContent).toContain("Effort"));
+    fireEvent.change(within(menu).getByLabelText("Property to roll up"), { target: { value: "eff" } });
+    fireEvent.change(within(menu).getByLabelText("Calculation"), { target: { value: "sum" } });
+    fireEvent.click(within(menu).getByText("Add property"));
+    await waitFor(() => expect(calls).toContainEqual({ command: "add_rollup", args: { databaseId: "db", name: "Effort sum", relationId: "rel", property: "eff", function: "sum" } }));
+  });
+  it("a rollup needs a relation column first", async () => {
+    show();
+    await screen.findByDisplayValue("Projects");
+    fireEvent.click(screen.getByLabelText("Add a property"));
+    const menu = screen.getByLabelText("Add a property").parentElement!;
+    fireEvent.change(within(menu).getByLabelText("Property type"), { target: { value: "rollup" } });
+    expect(within(menu).getByText(/Add a relation column first/)).toBeTruthy();
+  });
+  it("duplicating a row copies its relation links but not rollups", async () => {
+    view.current = withRelation({ properties: [{ id: "sum", name: "Total", type: "rollup", options: [], config: {} }], values: { sum: "3" } }); show();
+    await screen.findByDisplayValue("Write ADR");
+    fireEvent.click(screen.getByLabelText("Row options for Write ADR"));
+    fireEvent.click(within(screen.getByLabelText("Row options for Write ADR").parentElement!).getByText("Duplicate"));
+    await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "new-row", propertyId: "rel", value: ["t1"] } }));
+    expect(calls.some(c => c.command === "set_value" && c.args.propertyId === "sum")).toBe(false);
   });
 });

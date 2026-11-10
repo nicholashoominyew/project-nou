@@ -8,7 +8,7 @@ CREATE TABLE db_properties (
  id TEXT PRIMARY KEY,
  database_id TEXT NOT NULL REFERENCES databases(page_id) ON DELETE CASCADE,
  name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
- type TEXT NOT NULL CHECK(type IN ('text','number','select','multi_select','status','date','checkbox','url','relation')),
+ type TEXT NOT NULL CHECK(type IN ('text','number','select','multi_select','status','date','checkbox','url','place','email','phone','created_time','last_edited_time','relation','rollup')),
  position INTEGER NOT NULL,
  config TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(config)),
  deleted_at TEXT
@@ -48,7 +48,7 @@ CREATE TABLE db_views (
  id TEXT PRIMARY KEY,
  database_id TEXT NOT NULL REFERENCES databases(page_id) ON DELETE CASCADE,
  name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
- type TEXT NOT NULL CHECK(type IN ('table','board','list','gallery','calendar','timeline')),
+ type TEXT NOT NULL CHECK(type IN ('table','board','list','gallery','calendar','timeline','map')),
  position INTEGER NOT NULL,
  config TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(config)),
  deleted_at TEXT
