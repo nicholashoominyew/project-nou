@@ -403,3 +403,21 @@ body:has(.shell.focus) .focus-exit:hover,body:has(.shell.focus) .focus-exit:focu
 .home-tags button{border:0;background:var(--hover);color:var(--text);font:inherit;font-size:12px;padding:2px 10px;border-radius:12px;cursor:pointer}.home-tags button em{font-style:normal;color:var(--muted);margin-left:6px}
 .home-hidden{margin-top:18px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}.home-hidden h2{margin-right:6px}
 @media print{.home{display:none}}
+
+/* Approvals and AI access */
+.approvals{display:flex;flex-direction:column;gap:10px}
+.approvals-note{margin:0;padding:6px 10px;border-radius:6px;background:var(--hover);font-size:13px}
+.approval{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--panel)}
+.approval>header{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}
+.approval-fields{margin:0 0 8px;display:grid;gap:3px;font-size:13px}.approval-fields div{display:grid;grid-template-columns:110px 1fr;gap:8px}
+.approval-fields dt{color:var(--muted)}.approval-fields dd{margin:0;word-break:break-word;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.approval-claim{margin:0 0 8px;padding:4px 10px;border-left:3px solid var(--line);font-size:13px;color:var(--muted)}
+.approval-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.approval-actions button{border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit;font-size:13px;padding:5px 12px;border-radius:6px;cursor:pointer}
+.approval-actions button:first-child:not(:disabled){border-color:var(--accent)}.approval-actions button:disabled{opacity:.5;cursor:default}
+.gateway-panel label{display:block;margin:6px 0}.gateway-panel input[type=text],.gateway-panel input:not([type]){display:block;width:100%;max-width:420px;box-sizing:border-box;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);font:inherit}
+.gateway-panel fieldset{border:1px solid var(--line);border-radius:8px;margin:10px 0;padding:6px 12px}
+.scope-row{display:flex!important;gap:10px;align-items:flex-start}.scope-row span{display:flex;flex-direction:column}.scope-row em{font-style:normal;color:var(--muted);font-size:12px}
+.token-secret{display:block;padding:10px;margin:8px 0;border:1px dashed var(--accent);border-radius:6px;word-break:break-all;font-size:13px;user-select:all}
+.token-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}.token-revoked{color:var(--danger,#b3261e);font-size:12px}
+.audit-list{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:13px}

@@ -334,7 +334,12 @@ pub fn add_rollup(db: State<'_, Db>, database_id: String, name: String, relation
 #[tauri::command]
 pub fn get_database(db: State<'_, Db>, page_id: String) -> Result<Option<DatabaseView>, String> {
     let c = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    if !is_database(&c, &page_id)? { return Ok(None); }
+    database_view(&c, &page_id)
+}
+
+/// Everything the UI and the local API show for a database, read in one go.
+pub fn database_view(c: &Connection, page_id: &str) -> Result<Option<DatabaseView>, String> {
+    if !is_database(c, page_id)? { return Ok(None); }
     let mut options: HashMap<String, Vec<Opt>> = HashMap::new();
     {
         let mut s = c.prepare("SELECT o.property_id,o.id,o.name,o.color FROM db_options o JOIN db_properties p ON p.id=o.property_id WHERE p.database_id=?1 ORDER BY o.position").map_err(e)?;

@@ -50,17 +50,17 @@ describe("Home", () => {
     expect(screen.queryByLabelText("Favorites")).toBeNull();
     fireEvent.click(screen.getByLabelText("Move Tags up"));
     const order = () => screen.getAllByRole("heading", { level: 2 }).map(h => h.textContent);
-    expect(order().slice(0, 2)).toEqual(["Tags", "Recently edited"]);
+    expect(order().slice(0, 3)).toEqual(["Waiting for your approval", "Tags", "Recently edited"]);
     unmount();
     show(); // a fresh mount reads the saved layout
     expect(screen.queryByLabelText("Favorites")).toBeNull();
-    expect(screen.getAllByRole("heading", { level: 2 })[0].textContent).toBe("Tags");
+    expect(screen.getAllByRole("heading", { level: 2 })[1].textContent).toBe("Tags");
     fireEvent.click(screen.getByText("Customize"));
     fireEvent.click(screen.getByText("Show Favorites"));
     expect(screen.getByLabelText("Favorites")).toBeTruthy();
   });
   it("shows a message when every widget is hidden", () => {
-    localStorage.setItem("nou-home-layout", JSON.stringify({ order: ["recent", "favorites", "tags"], hidden: ["recent", "favorites", "tags"] }));
+    localStorage.setItem("nou-home-layout", JSON.stringify({ order: ["approvals", "recent", "favorites", "tags"], hidden: ["approvals", "recent", "favorites", "tags"] }));
     show();
     expect(screen.getByText(/All widgets are hidden/)).toBeTruthy();
   });

@@ -1,6 +1,6 @@
 # ADR-004: Approval gateway (Phase 3 foundation)
 
-Status: proposed, core in progress (branch `feature/approval-gateway`). Nothing here is merged.
+Status: core, local API and approval UI implemented on branch `feature/approval-gateway` (see `docs/development/GATEWAY.md` for what is built and verified); MCP transport and the remaining appliers are not built. Nothing here is merged.
 
 ## Context
 The plan requires that **every AI- or bot-requested write is explicitly approved by the human**, with an audit log and revocable tokens, and that scheduled jobs and bots cannot write without it. The same gateway must later serve Claude, ChatGPT, Grok and a self-hosted AI, so it cannot be tied to one provider. Today NOU is a single-process desktop app with one SQLite Notes database; the Bot Queue, daily page and housekeeping scripts live in Notion and need an equivalent write path.
@@ -13,7 +13,7 @@ The plan requires that **every AI- or bot-requested write is explicitly approved
 5. **Proposals are inert data.** The `op` is one of a fixed allow-list; payloads are size-limited and validated again when applied. The approval screen shows the exact change, never a model-written description alone (the `summary` is shown but labelled as the client's claim).
 6. **Duplicate protection.** An identical pending proposal from the same token returns the existing one instead of creating another (the "AI posted the same checklist item twice" problem). Similar-item checks are added per feature.
 7. **Expiry.** Pending proposals expire after 7 days; expired proposals cannot be approved.
-8. **Scope of this ADR's first step:** storage, token and proposal rules, audit log, and the commands the app UI uses. The local HTTP/MCP listener, the approval UI on the home page, and the per-operation appliers are separate steps.
+8. **Built so far:** storage, token and proposal rules, audit log, a loopback-only opt-in HTTP API, the approval widget and token screen, and appliers for `create_page`, `rename_page`, `set_value` and `create_row`. An MCP transport and the appliers for note-body edits are separate steps.
 
 ## Threat model (summary)
 - **Prompt injection:** content read through the gateway may contain instructions aimed at the model. Defences: reads are data only; no tool can write without a human decision; the approval screen shows the real operation and target; payload limits; op allow-list.
@@ -25,5 +25,5 @@ The plan requires that **every AI- or bot-requested write is explicitly approved
 ## Consequences
 Schema 6 (`db/notes/006_gateway.sql`), another one-way schema step. Providers that cannot work with a human-approval loop (fully autonomous agents) are intentionally unsupported.
 
-## Not in this step
-Listener/MCP transport, approval UI, appliers for each op, per-provider setup, rate limiting, and a self-hosted-AI runner.
+## Not built yet
+MCP transport, appliers for `append_text` and `add_checklist_item`, per-provider setup, per-token rate limits, and a self-hosted-AI runner.
