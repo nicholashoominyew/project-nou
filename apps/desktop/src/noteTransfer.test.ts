@@ -33,3 +33,13 @@ it("rejects unsupported formats, missing rich fragments, invalid bytes and incom
   expect(() => parseRecovery(JSON.stringify({...data,update:Array.from(Y.encodeStateAsUpdate(doc,vector))}))).toThrow(/incomplete/);
   doc.destroy();
 });
+
+it("tracks images, PDFs and other dropped files as note attachments and rejects malformed ids", async () => {
+  const { blockAttachmentIds } = await import("./noteTransfer");
+  const a = "a".repeat(64), b = "b".repeat(64), c = "c".repeat(64);
+  expect(blockAttachmentIds([
+    { type: "nouImage", props: { fileId: a } },
+    { type: "paragraph", children: [{ type: "nouPdf", props: { fileId: b } }, { type: "nouFile", props: { fileId: c } }, { type: "nouFile", props: { fileId: c } }] },
+  ]).sort()).toEqual([a, b, c]);
+  expect(() => blockAttachmentIds([{ type: "nouFile", props: { fileId: "../../secret" } }])).toThrow(/Invalid attachment reference/);
+});

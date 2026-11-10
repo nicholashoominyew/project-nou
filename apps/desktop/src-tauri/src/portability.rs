@@ -58,5 +58,5 @@ pub fn import_with_files(c: &mut rusqlite::Connection, title: &str, update: &[u8
     rebalance(&tx, None)?;
     let sort_key = tx.query_row("SELECT sort_key FROM pages WHERE id=?1", [&id], |r| r.get(0)).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
-    Ok(Page { id, title: title.into(), parent_id: None, sort_key,icon:"document".into() })
+    Ok(Page { id, title: title.into(), parent_id: None, sort_key,icon:"document".into(),is_favorite:false })
 }

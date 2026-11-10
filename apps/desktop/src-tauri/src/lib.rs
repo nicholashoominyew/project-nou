@@ -38,6 +38,7 @@ struct Page {
     parent_id: Option<String>,
     sort_key: String,
     icon: String,
+    is_favorite: bool,
 }
 
 fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
@@ -71,13 +72,13 @@ fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
 }
 
 fn row_page(row: &rusqlite::Row<'_>) -> rusqlite::Result<Page> {
-    Ok(Page { id: row.get(0)?, title: row.get(1)?, parent_id: row.get(2)?, sort_key: row.get(3)?, icon: row.get(4)? })
+    Ok(Page { id: row.get(0)?, title: row.get(1)?, parent_id: row.get(2)?, sort_key: row.get(3)?, icon: row.get(4)?, is_favorite: row.get::<_, i64>(5)? != 0 })
 }
 
 #[tauri::command]
 fn list_pages(db: State<'_, Db>) -> Result<Vec<Page>, String> {
     let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    let mut stmt = conn.prepare("SELECT id,title,parent_id,sort_key,icon FROM pages WHERE workspace_id='personal' AND deleted_at IS NULL ORDER BY sort_key COLLATE BINARY,id").map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id,title,parent_id,sort_key,icon,is_favorite FROM pages WHERE workspace_id='personal' AND deleted_at IS NULL ORDER BY sort_key COLLATE BINARY,id").map_err(|e| e.to_string())?;
     let pages = stmt.query_map([], row_page).map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?;
     Ok(pages)
@@ -141,7 +142,7 @@ fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String, init
         "SELECT sort_key FROM pages WHERE id=?1", [&id], |r| r.get(0)
     ).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
-    Ok(Page { id,title,parent_id,sort_key:actual_key,icon:"document".into() })
+    Ok(Page { id,title,parent_id,sort_key:actual_key,icon:"document".into(),is_favorite:false })
 }
 
 #[tauri::command]
@@ -209,7 +210,7 @@ fn trash_page(db: State<'_, Db>, page_id: String) -> Result<(), String> {
 fn list_trashed_pages(db: State<'_, Db>) -> Result<Vec<Page>, String> {
     let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
     let mut stmt = conn.prepare(
-        "SELECT p.id,p.title,p.parent_id,p.sort_key,p.icon FROM pages p
+        "SELECT p.id,p.title,p.parent_id,p.sort_key,p.icon,p.is_favorite FROM pages p
          WHERE p.workspace_id='personal' AND p.deleted_at IS NOT NULL
            AND (p.parent_id IS NULL OR NOT EXISTS (
              SELECT 1 FROM pages parent
@@ -410,7 +411,7 @@ pub fn run() {
             recovery_commands::prepare_legacy_restore,
             recovery_commands::preview_retention,recovery_commands::apply_retention,
             recovery_commands::create_encrypted_backup,recovery_commands::prepare_encrypted_restore,recovery_commands::review_restore,recovery_commands::reset_backup_schedule,recovery_commands::backup_schedule_status,recovery_commands::configure_backup_schedule,
-            workspace_commands::notes_write_blocked,workspace_commands::relocate_page,workspace_commands::set_page_icon,workspace_commands::upload_attachment,workspace_commands::read_attachment,workspace_commands::export_attachment,workspace_commands::open_bookmark,
+            workspace_commands::notes_write_blocked,workspace_commands::relocate_page,workspace_commands::set_page_icon,workspace_commands::set_page_favorite,workspace_commands::upload_attachment,workspace_commands::upload_attachment_bytes,workspace_commands::read_attachment,workspace_commands::export_attachment,workspace_commands::open_bookmark,
             background_task::background_backup_task,portability::write_note_export,portability::read_note_import,portability::import_note])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");

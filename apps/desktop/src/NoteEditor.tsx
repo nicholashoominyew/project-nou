@@ -3,6 +3,7 @@ import { save as chooseSavePath } from "@tauri-apps/plugin-dialog";
 import { exportNote } from "./noteTransfer";
 import { createPortal } from "react-dom";
 import {useEditorFeatures} from "./EditorContext";
+import {DismissibleDetails} from "./Dismissible";
 import {filterSuggestionItems,insertOrUpdateBlockForSlashMenu} from "@blocknote/core/extensions";
 import {getDefaultReactSlashMenuItems,SuggestionMenuController} from "@blocknote/react";
 import {blockAttachmentIds,documentAttachmentIds,recoveryData} from "./noteTransfer";
@@ -24,7 +25,19 @@ function RichEditor({ session, disabled, onChange }: { session: Session; disable
   const editor = useCreateBlockNote(withCollaboration({ schema: noteSchema, collaboration: {
     fragment: session.doc.getXmlFragment(FRAGMENT), user: { name: "Local user", color: "#52675a" },
   } }), [session]);
-  async function create(kind:"page"|"image"|"pdf"){
+  const blockFor=(info:{id:string;name:string;mime:string})=>({type:info.mime.startsWith("image/")?"nouImage":info.mime==="application/pdf"?"nouPdf":"nouFile",props:{fileId:info.id,name:info.name}}) as never;
+  const [over,setOver]=useState(false);
+  const hasFiles=(event:React.DragEvent)=>Array.from(event.dataTransfer.types).includes("Files");
+  /** Dropped files become blocks after the block under the pointer (or at the end of the page). */
+  async function insertDropped(files:File[],x:number,y:number){
+    setPending(true);
+    try{
+      const under=document.elementFromPoint?.(x,y)?.closest<HTMLElement>('[data-node-type="blockOuter"]')?.getAttribute("data-id");
+      let anchor=under&&editor.getBlock(under)?under:editor.document[editor.document.length-1].id;
+      for(const file of files){const info=await context.uploadFile(file);const [block]=editor.insertBlocks([blockFor(info)],anchor,"after");anchor=block.id}
+    }catch(error){context.onError(error)}finally{setPending(false)}
+  }
+  async function create(kind:"page"|"image"|"pdf"|"file"){
     const anchor=editor.getTextCursorPosition().block.id;setPending(true);
     try{
       if(kind==="page"){
@@ -34,7 +47,7 @@ function RichEditor({ session, disabled, onChange }: { session: Session; disable
       }else{
         const file=await context.upload(kind);if(!file)return;
         if(!editor.getBlock(anchor))throw Error("Insertion point changed. Choose the file again to insert it.");
-        editor.setTextCursorPosition(anchor,"end");insertOrUpdateBlockForSlashMenu(editor,{type:kind==="image"?"nouImage":"nouPdf",props:{fileId:file.id,name:file.name}});
+        editor.setTextCursorPosition(anchor,"end");insertOrUpdateBlockForSlashMenu(editor,kind==="file"?blockFor(file):{type:kind==="image"?"nouImage":"nouPdf",props:{fileId:file.id,name:file.name}});
       }
     }catch(error){context.onError(error)}finally{setPending(false)}
   }
@@ -42,11 +55,16 @@ function RichEditor({ session, disabled, onChange }: { session: Session; disable
     {title:"Page",aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
     {title:"Bookmark",aliases:["bookmark","link"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouBookmark"})},
     {title:"Image",aliases:["image","photo","upload"],group:"NOU",onItemClick:()=>void create("image")},
-    {title:"PDF",aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")}
+    {title:"PDF",aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
+    {title:"File",aliases:["file","attachment","html","upload"],group:"NOU",onItemClick:()=>void create("file")}
   ];
-  return <BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
+  return <div className={"editor-drop"+(over?" over":"")}
+    onDragOverCapture={e=>{if(hasFiles(e)){e.preventDefault();e.dataTransfer.dropEffect=disabled?"none":"copy";setOver(!disabled)}}}
+    onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
+    onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
+  <BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
     <SuggestionMenuController triggerCharacter="/" getItems={async query=>filterSuggestionItems(items(),query)}/>
-  </BlockNoteView>;
+  </BlockNoteView></div>;
 }
 
 export default function NoteEditor({ pageId, onStatus, readOnly = false, title = "Untitled" }: { pageId: string; title?: string; onStatus: (status: SaveStatus) => void; readOnly?: boolean }) {
@@ -149,10 +167,10 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
     } catch (e) { setError(`Conversion did not complete: ${String(e)}. Your original note is retained. Reopen to check the saved format before retrying.`); report("saved"); }
     finally { migrated?.destroy(); setConverting(false); }
   }
-  const exportMenu=session&&<details className="note-export"><summary aria-label="Page options">⋯</summary><div className="export-dropdown"><strong>Export this note</strong>
+  const exportMenu=session&&<DismissibleDetails className="note-export" summary="⋯" summaryLabel="Page options"><div className="export-dropdown"><strong>Export this note</strong>
     <p>Choose a new filename. JSON includes uploaded files; use a complete backup if it exceeds the transfer size limit.</p>
     {(["txt","md","html","json"] as const).map(kind=><button key={kind} disabled={exporting||converting} onClick={()=>void exportCurrent(kind)}>{kind==="json"?"Recovery JSON":kind.toUpperCase()}</button>)}
-    {exportMessage&&<p role="status">{exportMessage}</p>}{exportError&&<p role="alert">{exportError}</p>}</div></details>;
+    {exportMessage&&<p role="status">{exportMessage}</p>}{exportError&&<p role="alert">{exportError}</p>}</div></DismissibleDetails>;
   return <section className="note-editor">
     <div className="save-status" aria-live="polite">{status === "loading" ? "Opening note…" : status === "saving" ? "Saving locally…" : status === "saved" ? "Saved on this device" : "Save error — content retained in this window"}</div>
     {document.getElementById("note-export-host") ? createPortal(exportMenu,document.getElementById("note-export-host")!) : exportMenu}

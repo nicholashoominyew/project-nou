@@ -26,9 +26,19 @@ fn mime(bytes:&[u8])->Result<&'static str,String>{
 }
 fn id(bytes:&[u8])->String{format!("{:x}",Sha256::digest(bytes))}
 fn check_id(value:&str)->Result<(),String>{if value.len()!=64||!value.bytes().all(|b|b.is_ascii_hexdigit()){Err("Invalid file ID".into())}else{Ok(())}}
+/// Any file may be stored. Known image/PDF signatures keep their specific media type; everything else (HTML,
+/// documents, archives, ...) is stored as opaque bytes and is never rendered or executed by the application.
+pub const GENERIC:&str="application/octet-stream";
+fn media_of(bytes:&[u8])->&'static str{mime(bytes).unwrap_or(GENERIC)}
+/// Keep only a plain file name: no directories, control characters or excessive length.
+pub fn clean_name(raw:&str)->String{
+ let base=raw.rsplit(|c:char|c=='/'||c=='\\').next().unwrap_or("");
+ let cleaned:String=base.chars().filter(|c|!c.is_control()).collect();let cleaned=cleaned.trim().trim_matches('.').to_string();
+ let cut:String=cleaned.chars().take(180).collect();if cut.is_empty(){"File".into()}else{cut}
+}
 pub fn insert(c:&Connection,name:&str,data:&[u8])->Result<Info,String>{
- if data.is_empty()||data.len()>LIMIT{return Err("Each image or PDF must be no larger than 20 MB".into());}
- let media=mime(data)?;let hash=id(data);
+ if data.is_empty()||data.len()>LIMIT{return Err("Each file must be between 1 byte and 20 MB".into());}
+ let media=media_of(data);let hash=id(data);let name=clean_name(name);let name=name.as_str();
  c.execute("INSERT OR IGNORE INTO file_blobs(id,name,mime,data) VALUES(?1,?2,?3,?4)",params![hash,name,media,data]).map_err(|e|e.to_string())?;
  Ok(Info{id:hash,name:name.into(),mime:media.into(),bytes:data.len()})
 }
@@ -38,10 +48,12 @@ pub fn upload(profile:&Path,path:&Path)->Result<Info,String>{
  let mut bytes=Vec::new();file.take((LIMIT+1)as u64).read_to_end(&mut bytes).map_err(|e|e.to_string())?;
  insert(&open(profile)?,path.file_name().and_then(|s|s.to_str()).unwrap_or("Upload"),&bytes)
 }
+/// Store bytes received from the UI (drag and drop). The name is untrusted and is reduced to a plain file name.
+pub fn upload_bytes(profile:&Path,name:&str,data:&[u8])->Result<Info,String>{insert(&open(profile)?,name,data)}
 pub fn read(profile:&Path,value:&str)->Result<File,String>{
  check_id(value)?; let c=open(profile)?;
  let (name,media,bytes):(String,String,Vec<u8>)=c.query_row("SELECT name,mime,data FROM file_blobs WHERE id=?1",[value],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(|e|e.to_string())?.ok_or("File unavailable. Restore a Notes + Files backup.")?;
- if bytes.len()>LIMIT||id(&bytes)!=value||mime(&bytes)?!=media{return Err("File integrity check failed".into());}
+ if bytes.len()>LIMIT||id(&bytes)!=value||media_of(&bytes)!=media{return Err("File integrity check failed".into());}
  Ok(File{info:Info{id:value.into(),name,mime:media,bytes:bytes.len()},data:bytes})
 }
 pub fn require(profile:&Path,ids:&[String])->Result<(),String>{let c=open(profile)?;for value in ids{check_id(value)?;let found:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM file_blobs WHERE id=?1)",[value],|r|r.get(0)).map_err(|e|e.to_string())?;if !found{return Err("Missing attachment: restore a Notes + Files backup".into());}}Ok(())}
@@ -59,7 +71,7 @@ pub fn validate(path:&Path)->Result<(),String>{
  if definitions(&c)?!=definitions(&expected)?{return Err("Unsupported Files schema".into());}
  let mut q=c.prepare("SELECT id,mime,data FROM file_blobs").map_err(|e|e.to_string())?;
  let mut rows=q.query([]).map_err(|e|e.to_string())?;
- while let Some(row)=rows.next().map_err(|e|e.to_string())?{let key:String=row.get(0).map_err(|e|e.to_string())?;let media:String=row.get(1).map_err(|e|e.to_string())?;let bytes:Vec<u8>=row.get(2).map_err(|e|e.to_string())?;if bytes.is_empty()||bytes.len()>LIMIT||id(&bytes)!=key||mime(&bytes)?!=media{return Err("Files content verification failed".into());}}
+ while let Some(row)=rows.next().map_err(|e|e.to_string())?{let key:String=row.get(0).map_err(|e|e.to_string())?;let media:String=row.get(1).map_err(|e|e.to_string())?;let bytes:Vec<u8>=row.get(2).map_err(|e|e.to_string())?;if bytes.is_empty()||bytes.len()>LIMIT||id(&bytes)!=key||media_of(&bytes)!=media{return Err("Files content verification failed".into());}}
  Ok(())
 }
 pub fn snapshot(source:&Path,target:&Path)->Result<(),String>{
@@ -75,13 +87,13 @@ pub fn merge(source:&Path,profile:&Path)->Result<(),String>{
  tx.commit().map_err(|e|e.to_string())
 }
 #[cfg(test)]mod tests{use super::*;
- #[test]fn immutable_files_verify_restore_and_reject_spoofed_uploads(){let dir=std::env::temp_dir().join(format!("nou-files-{}",uuid::Uuid::new_v4()));fs::create_dir_all(&dir).unwrap();let c=open(&dir).unwrap();let a=insert(&c,"a.pdf",b"%PDF-1.7 test").unwrap();assert!(insert(&c,"fake.pdf",b"executable").is_err());drop(c);let snapshot_path=dir.join("copy.sqlite3");snapshot(&dir.join("files.sqlite3"),&snapshot_path).unwrap();validate(&snapshot_path).unwrap();let other=dir.join("other");fs::create_dir(&other).unwrap();merge(&snapshot_path,&other).unwrap();assert_eq!(read(&other,&a.id).unwrap().data,b"%PDF-1.7 test");let c=Connection::open(&snapshot_path).unwrap();c.execute("UPDATE file_blobs SET data=x'01'",[]).unwrap();drop(c);assert!(validate(&snapshot_path).is_err());fs::remove_dir_all(dir).unwrap();}
+ #[test]fn immutable_files_verify_restore_and_reject_spoofed_uploads(){let dir=std::env::temp_dir().join(format!("nou-files-{}",uuid::Uuid::new_v4()));fs::create_dir_all(&dir).unwrap();let c=open(&dir).unwrap();let a=insert(&c,"a.pdf",b"%PDF-1.7 test").unwrap();let other_kind=insert(&c,"page.html",b"<html><script>alert(1)</script></html>").unwrap();assert_eq!(other_kind.mime,GENERIC);let spoof=insert(&c,"fake.pdf",b"not really a pdf").unwrap();assert_eq!(spoof.mime,GENERIC);assert_eq!(clean_name("C:\\x\\..\\evil/..\\a b.txt"),"a b.txt");assert_eq!(clean_name("..."),"File");assert!(insert(&c,"empty.bin",b"").is_err());drop(c);let snapshot_path=dir.join("copy.sqlite3");snapshot(&dir.join("files.sqlite3"),&snapshot_path).unwrap();validate(&snapshot_path).unwrap();let other=dir.join("other");fs::create_dir(&other).unwrap();merge(&snapshot_path,&other).unwrap();assert_eq!(read(&other,&a.id).unwrap().data,b"%PDF-1.7 test");let c=Connection::open(&snapshot_path).unwrap();c.execute("UPDATE file_blobs SET data=x'01'",[]).unwrap();drop(c);assert!(validate(&snapshot_path).is_err());fs::remove_dir_all(dir).unwrap();}
 }
 
 #[derive(Deserialize)]pub struct Imported{pub id:String,pub name:String,pub data:Vec<u8>}
 pub fn import_all(profile:&Path,files:&[Imported],required:&[String])->Result<(),String>{
  if files.len()>100||files.iter().map(|f|f.data.len()).sum::<usize>()>LIMIT{return Err("Note transfer files exceed 20 MB; use a complete backup".into());}
- for f in files{if id(&f.data)!=f.id||f.data.is_empty()||f.data.len()>LIMIT{ return Err("Recovery attachment hash/size mismatch".into()); }mime(&f.data)?;}
+ for f in files{if id(&f.data)!=f.id||f.data.is_empty()||f.data.len()>LIMIT{ return Err("Recovery attachment hash/size mismatch".into()); }}
  let mut c=open(profile)?;let tx=c.transaction().map_err(|e|e.to_string())?;
  for f in files{insert(&tx,&f.name,&f.data)?;}
  for value in required{check_id(value)?;let exists:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM file_blobs WHERE id=?1)",[value],|r|r.get(0)).map_err(|e|e.to_string())?;if !exists{return Err("Recovery file is missing an attachment. Use a complete Notes + Files backup.".into());}}

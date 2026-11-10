@@ -57,7 +57,7 @@ export default function QuickFind({ pages, onOpen, onClose }: { pages: PageInfo[
         </li>)}
         {!results.length && <li className="quick-find-empty" role="presentation">No matching pages</li>}
       </ul>
-      <p className="quick-find-help">↑↓ choose · Enter open · Esc close · Ctrl+N new page · Ctrl+W close tab · Ctrl+Tab next tab · F11 full screen · Ctrl+Z undo</p>
+      <p className="quick-find-help">↑↓ choose · Enter open · Esc close · Ctrl+Q find · Ctrl+\ sidebar · Ctrl+P print · Ctrl+N new page · Ctrl+W close tab · Ctrl+Tab next tab · F11 full screen · Ctrl+Z undo</p>
     </div>
   </div>;
 }

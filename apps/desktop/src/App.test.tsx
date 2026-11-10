@@ -42,22 +42,22 @@ it("keeps multiple page tabs open and closes tabs without deleting pages",async(
  expect(screen.getByText("Second note")).toBeTruthy();
 });
 
-it("Ctrl+P opens Quick find instead of the print dialog, filters pages and opens the chosen one with Enter",async()=>{
+it("Ctrl+Q opens Quick find, filters pages and opens the chosen one with Enter",async()=>{
  render(<App/>);await screen.findByText("Test note");
  const press=(init:KeyboardEventInit)=>{const event=new KeyboardEvent("keydown",{bubbles:true,cancelable:true,...init});window.dispatchEvent(event);return event};
- expect(press({key:"p",ctrlKey:true}).defaultPrevented).toBe(true);
+ expect(press({key:"q",ctrlKey:true}).defaultPrevented).toBe(true);
  const box=await screen.findByLabelText("Find a page");expect(screen.getByRole("dialog",{name:"Quick find"})).toBeTruthy();
  fireEvent.change(box,{target:{value:"second"}});
  await waitFor(()=>expect(screen.getAllByRole("option")).toHaveLength(1));
  fireEvent.keyDown(box,{key:"Enter"});
  await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Quick find"})).toBeNull());
  expect(screen.getAllByRole("tab")).toHaveLength(1);expect(screen.getByRole("tab",{name:"Second note"})).toBeTruthy();
- press({key:"p",ctrlKey:true});fireEvent.keyDown(await screen.findByLabelText("Find a page"),{key:"Escape"});
+ press({key:"q",ctrlKey:true});fireEvent.keyDown(await screen.findByLabelText("Find a page"),{key:"Escape"});
  await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Quick find"})).toBeNull());
 });
 it("Quick find does not open while a save is pending",async()=>{
  render(<App/>);fireEvent.click(await screen.findByText("Test note"));fireEvent.click(await screen.findByText("Simulate pending save"));
- window.dispatchEvent(new KeyboardEvent("keydown",{key:"p",ctrlKey:true,bubbles:true,cancelable:true}));
+ window.dispatchEvent(new KeyboardEvent("keydown",{key:"q",ctrlKey:true,bubbles:true,cancelable:true}));
  expect(screen.queryByRole("dialog",{name:"Quick find"})).toBeNull();
 });
 it("Ctrl+N creates a page, Ctrl+Tab cycles tabs and Ctrl+W closes the current tab",async()=>{
@@ -74,6 +74,34 @@ it("Ctrl+N creates a page, Ctrl+Tab cycles tabs and Ctrl+W closes the current ta
 },30000);
 it("ignores shortcuts while an input method is composing",async()=>{
  render(<App/>);await screen.findByText("Test note");
- const event=new KeyboardEvent("keydown",{key:"p",ctrlKey:true,isComposing:true,bubbles:true,cancelable:true});window.dispatchEvent(event);
+ const event=new KeyboardEvent("keydown",{key:"q",ctrlKey:true,isComposing:true,bubbles:true,cancelable:true});window.dispatchEvent(event);
  expect(event.defaultPrevented).toBe(false);expect(screen.queryByRole("dialog",{name:"Quick find"})).toBeNull();
+});
+it("Ctrl+P prints the page instead of opening Quick find",async()=>{
+ const print=vi.fn();vi.stubGlobal("print",print);
+ render(<App/>);await screen.findByText("Test note");
+ const event=new KeyboardEvent("keydown",{key:"p",ctrlKey:true,bubbles:true,cancelable:true});window.dispatchEvent(event);
+ expect(event.defaultPrevented).toBe(true);expect(print).toHaveBeenCalledTimes(1);expect(screen.queryByRole("dialog",{name:"Quick find"})).toBeNull();
+ vi.unstubAllGlobals();
+});
+it("closes the icon picker and the page menu when you click elsewhere or press Escape",async()=>{
+ render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByText("Simulate pending save");
+ fireEvent.click(screen.getByLabelText("Assign page icon"));expect(screen.getByRole("group",{name:"Monochrome page icons"})).toBeTruthy();
+ fireEvent.pointerDown(screen.getByText("Test note",{selector:".tree-page span"}));expect(screen.queryByRole("group",{name:"Monochrome page icons"})).toBeNull();
+ fireEvent.click(screen.getByLabelText("Assign page icon"));expect(screen.getByRole("group",{name:"Monochrome page icons"})).toBeTruthy();
+ fireEvent.keyDown(document,{key:"Escape"});expect(screen.queryByRole("group",{name:"Monochrome page icons"})).toBeNull();
+ fireEvent.click(screen.getByLabelText("More options for Test note"));expect(screen.getByRole("menu")).toBeTruthy();
+ fireEvent.pointerDown(document.body);expect(screen.queryByRole("menu")).toBeNull();
+ fireEvent.contextMenu(screen.getByText("Test note",{selector:".tree-page span"}));expect(screen.getByRole("menu")).toBeTruthy();
+ fireEvent.keyDown(document,{key:"Escape"});expect(screen.queryByRole("menu")).toBeNull();
+});
+it("favorites a page from its menu, renames it inline and collapses the sidebar with Ctrl+\\",async()=>{
+ render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByText("Simulate pending save");
+ fireEvent.click(screen.getByLabelText("More options for Test note"));fireEvent.click(screen.getByRole("menuitem",{name:"Add to Favorites"}));
+ await waitFor(()=>expect(calls).toContain("set_page_favorite"));
+ fireEvent.click(screen.getByLabelText("More options for Test note"));fireEvent.click(screen.getByRole("menuitem",{name:"Rename"}));
+ const box=await screen.findByLabelText("Rename Test note");fireEvent.change(box,{target:{value:"Renamed"}});fireEvent.keyDown(box,{key:"Enter"});
+ await waitFor(()=>expect(calls).toContain("rename_page"));
+ expect(screen.getByLabelText("Sidebar")).toBeTruthy();fireEvent.keyDown(window,{key:"\\",ctrlKey:true});expect(screen.queryByLabelText("Sidebar")).toBeNull();
+ fireEvent.click(screen.getByLabelText("Open sidebar"));expect(screen.getByLabelText("Sidebar")).toBeTruthy();
 });

@@ -3,6 +3,12 @@ use rusqlite::{params,Connection,OptionalExtension};
 use std::{path::Path,io::Write,fs};
 use tauri::{Manager,State};
 pub const ICONS:&[&str]=&["document","book","folder","bulb","star","code","briefcase","calendar","flag","home","link","image"];
+/// Favorites are a flag on the page; they never move, hide or delete anything.
+#[tauri::command]
+pub fn set_page_favorite(db:State<'_,Db>,page_id:String,favorite:bool)->Result<(),String>{
+ let c=db.0.lock().map_err(|_|"Database lock poisoned")?;db.writable()?;
+ if c.execute("UPDATE pages SET is_favorite=?1,revision=revision+1 WHERE id=?2 AND workspace_id='personal' AND deleted_at IS NULL",params![favorite as i64,page_id]).map_err(|e|e.to_string())?!=1{return Err("Page not found".into());}Ok(())
+}
 #[tauri::command]
 pub fn set_page_icon(db:State<'_,Db>,page_id:String,icon:String)->Result<(),String>{
  let c=db.0.lock().map_err(|_|"Database lock poisoned")?;db.writable()?;
@@ -36,6 +42,22 @@ pub fn relocate_page(db:State<'_,Db>,page_id:String,parent_id:Option<String>,bef
 pub async fn upload_attachment(app:tauri::AppHandle,path:String)->Result<attachments::Info,String>{
  tauri::async_runtime::spawn_blocking(move||{let db=app.state::<Db>();let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;db.writable()?;attachments::upload(&app.path().app_data_dir().map_err(|e|e.to_string())?,Path::new(&path))}).await.map_err(|e|e.to_string())?
 }
+fn decode_header(value:&str)->String{
+ let bytes=value.as_bytes();let mut out=Vec::with_capacity(bytes.len());let mut i=0;
+ while i<bytes.len(){
+  if bytes[i]==b'%'&&i+2<bytes.len(){if let Some(v)=std::str::from_utf8(&bytes[i+1..i+3]).ok().and_then(|h|u8::from_str_radix(h,16).ok()){out.push(v);i+=3;continue}}
+  out.push(bytes[i]);i+=1;
+ }
+ String::from_utf8_lossy(&out).into_owned()
+}
+/// Drag-and-drop upload: the webview sends the raw file bytes (no JSON number arrays) with the percent-encoded name in `x-file-name`.
+#[tauri::command]
+pub async fn upload_attachment_bytes(app:tauri::AppHandle,request:tauri::ipc::Request<'_>)->Result<attachments::Info,String>{
+ let tauri::ipc::InvokeBody::Raw(raw)=request.body() else{return Err("Expected the file contents".into())};
+ let data=raw.clone();
+ let name=request.headers().get("x-file-name").and_then(|v|v.to_str().ok()).map(decode_header).unwrap_or_else(||"File".into());
+ tauri::async_runtime::spawn_blocking(move||{let db=app.state::<Db>();let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;db.writable()?;attachments::upload_bytes(&app.path().app_data_dir().map_err(|e|e.to_string())?,&name,&data)}).await.map_err(|e|e.to_string())?
+}
 #[tauri::command]
 pub async fn read_attachment(app:tauri::AppHandle,id:String)->Result<attachments::File,String>{
  tauri::async_runtime::spawn_blocking(move||{let db=app.state::<Db>();let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;attachments::read(&app.path().app_data_dir().map_err(|e|e.to_string())?,&id)}).await.map_err(|e|e.to_string())?
@@ -45,8 +67,8 @@ pub fn export_attachment(app:tauri::AppHandle,db:State<'_,Db>,id:String,path:Str
  let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;
  let file=attachments::read(&app.path().app_data_dir().map_err(|e|e.to_string())?,&id)?;
  let ext=Path::new(&path).extension().and_then(|s|s.to_str()).unwrap_or("").to_ascii_lowercase();
- let valid=match file.info.mime.as_str(){"application/pdf"=>ext=="pdf","image/png"=>ext=="png","image/jpeg"=>ext=="jpg"||ext=="jpeg","image/gif"=>ext=="gif","image/webp"=>ext=="webp",_=>false};
- if !valid{return Err("Use a filename matching the uploaded image or PDF type".into());}
+ let valid=match file.info.mime.as_str(){"application/pdf"=>ext=="pdf","image/png"=>ext=="png","image/jpeg"=>ext=="jpg"||ext=="jpeg","image/gif"=>ext=="gif","image/webp"=>ext=="webp",m if m==attachments::GENERIC=>ext==Path::new(&file.info.name).extension().and_then(|s|s.to_str()).unwrap_or("").to_ascii_lowercase(),_=>false};
+ if !valid{return Err("Use a filename with the same extension as the stored file".into());}
  let mut out=fs::OpenOptions::new().create_new(true).write(true).open(&path).map_err(|e|format!("Choose a new filename; existing files stay unchanged: {e}"))?;
  let result=out.write_all(&file.data).and_then(|_|out.sync_all()).map_err(|e|e.to_string());drop(out);if result.is_err(){let _=fs::remove_file(path);}result
 }
