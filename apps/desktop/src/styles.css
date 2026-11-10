@@ -75,7 +75,7 @@ body{background:var(--bg);color:var(--text)}button,input,select,textarea{color:i
 .note-editor{margin-top:16px}.note-editor .bn-editor{padding-inline:0!important;background:var(--bg)!important;color:var(--text)!important}.note-editor .bn-container{padding:0!important}.note-editor .bn-block-content{padding-inline:0}.save-status{color:var(--muted)}.note-editor textarea{color:var(--text)}
 .note-export{position:relative;font-size:12px}.note-export>summary{list-style:none;padding:5px 10px;cursor:pointer;font-weight:700;font-size:20px;line-height:1;border-radius:5px}.note-export>summary::-webkit-details-marker{display:none}.note-export>summary:hover{background:var(--hover)}
 .export-dropdown{position:absolute;right:0;top:32px;width:255px;background:var(--bg);color:var(--text);border:1px solid var(--line);box-shadow:0 8px 25px #0002;padding:14px;border-radius:8px;z-index:25}.export-dropdown p{font-size:11px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}.export-dropdown button{display:block;width:100%;text-align:left;background:transparent!important;border:0!important;padding:9px!important}.export-dropdown button:hover{background:var(--hover)!important}
-.page-link-card,.bookmark-card,.stored-file{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:12px;margin:8px 0;color:var(--text)}.page-link-card{display:flex;align-items:center;gap:12px}.page-link-open{display:flex;align-items:center;gap:12px;flex:1;text-align:left;padding:4px;border:0;background:transparent;font-weight:600}.icon-size-options{display:flex;gap:4px}.icon-size-options button{font-size:10px;text-transform:capitalize;padding:4px 6px;background:transparent;border:1px solid var(--line)}.icon-size-options button[aria-pressed=true]{background:var(--hover);border-color:var(--accent)}
+.page-link-card,.bookmark-card{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:12px;margin:8px 0;color:var(--text)}.page-link-card{display:flex;align-items:center;gap:12px}.page-link-open{display:flex;align-items:center;gap:12px;flex:1;text-align:left;padding:4px;border:0;background:transparent;font-weight:600}.icon-size-options{display:flex;gap:4px}.icon-size-options button{font-size:10px;text-transform:capitalize;padding:4px 6px;background:transparent;border:1px solid var(--line)}.icon-size-options button[aria-pressed=true]{background:var(--hover);border-color:var(--accent)}
 .bookmark-card{display:flex;align-items:center;gap:12px}.bookmark-card>div{flex:1;min-width:0}.bookmark-card input{display:block;width:100%;background:transparent;border:0;padding:4px;font-size:13px;outline-offset:0}.bookmark-card input:first-child{font-weight:600}.bookmark-card input:nth-child(2){font-size:12px;color:var(--muted)}.bookmark-card>button,.stored-file button{background:var(--bg);border:1px solid var(--line);padding:6px 10px;font-size:11px}
 .stored-file img{display:block;max-width:100%;max-height:720px;object-fit:contain;object-position:left}.stored-file iframe{display:block;width:100%;height:600px;border:0;margin-top:10px}.file-caption,.pdf-caption{display:flex;align-items:center;gap:10px;font-size:12px}.file-caption{justify-content:space-between;padding-top:10px;color:var(--muted)}.pdf-caption strong{flex:1}
 .empty{align-items:flex-start;text-align:left;padding-left:52px}.empty h1,.trash-screen h1{color:var(--text)}.empty p,.trash-screen>p{color:var(--muted)}
@@ -105,8 +105,12 @@ body{background:var(--bg);color:var(--text)}button,input,select,textarea{color:i
 .editor-drop{border-radius:6px}.editor-drop.over{outline:2px dashed var(--accent);outline-offset:6px}
 .resizable-image{position:relative;display:inline-block;max-width:100%;line-height:0}
 .resizable-image img{display:block;width:100%;height:auto;max-height:none;border-radius:4px}
-.resize-handle{position:absolute;right:-7px;top:50%;width:10px;height:56px;transform:translateY(-50%);border:0;border-radius:5px;background:var(--accent);cursor:ew-resize;opacity:0;padding:0;touch-action:none}
-.resizable-image:hover .resize-handle,.resize-handle:focus-visible,.resize-handle:active{opacity:.85}
+/* The whole right edge of the image is the grab area; a line appears on hover. */
+.resize-handle{position:absolute;right:0;top:0;bottom:0;width:16px;border:0;border-radius:0 4px 4px 0;background:transparent;cursor:ew-resize;padding:0;touch-action:none;z-index:2}
+.resize-handle::after{content:"";position:absolute;right:2px;top:50%;width:5px;height:56px;transform:translateY(-50%);border-radius:3px;background:var(--accent);opacity:0;transition:opacity .12s}
+.resizable-image:hover .resize-handle{background:linear-gradient(to left,color-mix(in srgb,var(--accent) 35%,transparent),transparent)}
+.resizable-image:hover .resize-handle::after,.resize-handle:focus-visible::after,.resize-handle:active::after{opacity:.9}
+.resizable-image.dragging{user-select:none}
 .image-sizes{position:absolute;top:8px;left:8px;display:none;gap:4px;line-height:1}
 .resizable-image:hover .image-sizes,.resizable-image:focus-within .image-sizes{display:flex}
 .image-sizes button{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:5px;padding:4px 7px;font-size:11px}
@@ -163,3 +167,12 @@ body{background:var(--bg);color:var(--text)}button,input,select,textarea{color:i
 .row-menu button{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:5px;background:transparent}
 .row-menu button:hover{background:var(--hover)}.row-menu .danger{color:#b44}
 .row-menu hr{border:0;border-top:1px solid var(--line);margin:5px 2px}
+
+/* Attachments are seamless: the grey card only appears on hover, focus or selection. */
+.stored-file{border:1px solid transparent;border-radius:8px;background:transparent;padding:12px;margin:8px 0;color:var(--text);transition:background .12s,border-color .12s}
+.stored-file:hover,.stored-file:focus-within,.ProseMirror-selectednode .stored-file,.ProseMirror-selectednode.stored-file,.bn-block-outer:has(.ProseMirror-selectednode) .stored-file{border-color:var(--line);background:var(--panel)}
+.stored-file .file-caption{opacity:0;transition:opacity .12s}
+.stored-file:hover .file-caption,.stored-file:focus-within .file-caption,.ProseMirror-selectednode .stored-file .file-caption,.bn-block-outer:has(.ProseMirror-selectednode) .stored-file .file-caption{opacity:1}
+.stored-file:not(:hover):not(:focus-within) .file-card button,.stored-file.file-card:not(:hover):not(:focus-within) button{opacity:.0}
+.stored-file.file-card:hover button,.stored-file.file-card:focus-within button,.ProseMirror-selectednode .stored-file.file-card button{opacity:1}
+@media print{.stored-file{border-color:transparent!important;background:transparent!important;padding:0}.stored-file .file-caption{display:none}}

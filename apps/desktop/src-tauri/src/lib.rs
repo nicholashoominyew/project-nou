@@ -41,10 +41,17 @@ struct Page {
     is_favorite: bool,
 }
 
+/// The profile folder. `NOU_PROFILE_DIR` points the whole app at a disposable profile for testing;
+/// normal use (variable unset) is unchanged and resolves to the real app-data folder.
+pub(crate) fn data_dir<R: tauri::Runtime>(resolver: &tauri::path::PathResolver<R>) -> tauri::Result<PathBuf> {
+    match std::env::var_os("NOU_PROFILE_DIR") {
+        Some(dir) if !dir.is_empty() => Ok(PathBuf::from(dir)),
+        _ => resolver.app_data_dir(),
+    }
+}
+
 fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
-    let folder: PathBuf = app
-        .path()
-        .app_data_dir()
+    let folder: PathBuf = data_dir(app.path())
         .map_err(|e| format!("Could not find app data path: {e}"))?;
     fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     let conn = Connection::open(folder.join("notes.sqlite3")).map_err(|e| e.to_string())?;
@@ -328,7 +335,7 @@ fn save_note(app:tauri::AppHandle, attachment_ids:Option<Vec<String>>, db: State
     let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.check_epoch(epoch)?;
     let ids=attachment_ids.unwrap_or_default();
-    attachments::require(&app.path().app_data_dir().map_err(|e|e.to_string())?,&ids)?;
+    attachments::require(&crate::data_dir(app.path()).map_err(|e|e.to_string())?,&ids)?;
     editor::append_with_files(&mut c, &page_id, &update, &plain_text, &format, None,Some(&ids))
 }
 
@@ -336,7 +343,7 @@ fn save_note(app:tauri::AppHandle, attachment_ids:Option<Vec<String>>, db: State
 fn migrate_note(db: State<'_, Db>, app: tauri::AppHandle, page_id: String, update: Vec<u8>, plain_text: String, original: String, expected_seq: i64, epoch: u64) -> Result<i64, String> {
     let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.check_epoch(epoch)?;
-    let folder = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let folder = crate::data_dir(app.path()).map_err(|e| e.to_string())?;
     recovery::create(&c, &folder.join("editor-rollback"))?;
     editor::append(&mut c, &page_id, &update, &plain_text, "blocknote-v1", Some((expected_seq, &original)))
 }
@@ -379,7 +386,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use fs2::FileExt;
-            let folder = app.path().app_data_dir()?;
+            let folder = crate::data_dir(app.path())?;
             fs::create_dir_all(&folder)?;
             let lock = fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(folder.join("nou.lock"))?;
             lock.try_lock_exclusive().map_err(|_| std::io::Error::other("Project NOU is already running. Close the other instance first."))?;
@@ -387,7 +394,7 @@ pub fn run() {
             let interrupted = !recovery::unresolved(&folder).map_err(std::io::Error::other)?.is_empty();
             attachments::open(&folder).map_err(std::io::Error::other)?;
             let conn = get_connection(app.handle()).map_err(std::io::Error::other)?;
-            let backups = app.handle().path().app_data_dir()
+            let backups = crate::data_dir(app.handle().path())
                 .map_err(std::io::Error::other)?
                 .join("snapshots");
             app.manage(BackupDirectory(backups));

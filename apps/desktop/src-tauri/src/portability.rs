@@ -33,7 +33,7 @@ pub fn import_note(app:tauri::AppHandle,files:Option<Vec<crate::attachments::Imp
     let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.writable()?;
     let ids=attachment_ids.unwrap_or_default();
-    crate::attachments::import_all(&app.path().app_data_dir().map_err(|e|e.to_string())?,&files.unwrap_or_default(),&ids)?;
+    crate::attachments::import_all(&crate::data_dir(app.path()).map_err(|e|e.to_string())?,&files.unwrap_or_default(),&ids)?;
     import_with_files(&mut c, &title, &update, &plain_text, &format, legacy_text.as_deref(),&ids)
 }
 pub fn import(c:&mut rusqlite::Connection,title:&str,update:&[u8],text:&str,format:&str,legacy:Option<&str>)->Result<Page,String>{import_with_files(c,title,update,text,format,legacy,&[])}

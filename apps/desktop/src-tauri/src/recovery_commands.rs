@@ -15,7 +15,7 @@ struct Plans {
 pub struct Status { destination: Option<Destination>, interrupted: Vec<RestoreRecord>, rollback: Vec<Verified> }
 #[derive(Serialize)]
 pub struct Preview { token: String, backup: Verified }
-fn folder(app: &tauri::AppHandle) -> Result<PathBuf, String> { app.path().app_data_dir().map_err(|e| e.to_string()) }
+fn folder(app: &tauri::AppHandle) -> Result<PathBuf, String> { crate::data_dir(app.path()).map_err(|e| e.to_string()) }
 fn settings(app: &tauri::AppHandle) -> Result<Option<Destination>, String> {
     crate::schedule::destination(&folder(app)?)
 }

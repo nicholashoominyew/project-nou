@@ -40,7 +40,7 @@ pub fn relocate_page(db:State<'_,Db>,page_id:String,parent_id:Option<String>,bef
 }
 #[tauri::command]
 pub async fn upload_attachment(app:tauri::AppHandle,path:String)->Result<attachments::Info,String>{
- tauri::async_runtime::spawn_blocking(move||{let db=app.state::<Db>();let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;db.writable()?;attachments::upload(&app.path().app_data_dir().map_err(|e|e.to_string())?,Path::new(&path))}).await.map_err(|e|e.to_string())?
+ tauri::async_runtime::spawn_blocking(move||{let db=app.state::<Db>();let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;db.writable()?;attachments::upload(&crate::data_dir(app.path()).map_err(|e|e.to_string())?,Path::new(&path))}).await.map_err(|e|e.to_string())?
 }
 fn decode_header(value:&str)->String{
  let bytes=value.as_bytes();let mut out=Vec::with_capacity(bytes.len());let mut i=0;
@@ -56,16 +56,16 @@ pub async fn upload_attachment_bytes(app:tauri::AppHandle,request:tauri::ipc::Re
  let tauri::ipc::InvokeBody::Raw(raw)=request.body() else{return Err("Expected the file contents".into())};
  let data=raw.clone();
  let name=request.headers().get("x-file-name").and_then(|v|v.to_str().ok()).map(decode_header).unwrap_or_else(||"File".into());
- tauri::async_runtime::spawn_blocking(move||{let db=app.state::<Db>();let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;db.writable()?;attachments::upload_bytes(&app.path().app_data_dir().map_err(|e|e.to_string())?,&name,&data)}).await.map_err(|e|e.to_string())?
+ tauri::async_runtime::spawn_blocking(move||{let db=app.state::<Db>();let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;db.writable()?;attachments::upload_bytes(&crate::data_dir(app.path()).map_err(|e|e.to_string())?,&name,&data)}).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
 pub async fn read_attachment(app:tauri::AppHandle,id:String)->Result<attachments::File,String>{
- tauri::async_runtime::spawn_blocking(move||{let db=app.state::<Db>();let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;attachments::read(&app.path().app_data_dir().map_err(|e|e.to_string())?,&id)}).await.map_err(|e|e.to_string())?
+ tauri::async_runtime::spawn_blocking(move||{let db=app.state::<Db>();let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;attachments::read(&crate::data_dir(app.path()).map_err(|e|e.to_string())?,&id)}).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
 pub fn export_attachment(app:tauri::AppHandle,db:State<'_,Db>,id:String,path:String)->Result<(),String>{
  let _c=db.0.lock().map_err(|_|"Database lock poisoned")?;
- let file=attachments::read(&app.path().app_data_dir().map_err(|e|e.to_string())?,&id)?;
+ let file=attachments::read(&crate::data_dir(app.path()).map_err(|e|e.to_string())?,&id)?;
  let ext=Path::new(&path).extension().and_then(|s|s.to_str()).unwrap_or("").to_ascii_lowercase();
  let valid=match file.info.mime.as_str(){"application/pdf"=>ext=="pdf","image/png"=>ext=="png","image/jpeg"=>ext=="jpg"||ext=="jpeg","image/gif"=>ext=="gif","image/webp"=>ext=="webp",m if m==attachments::GENERIC=>ext==Path::new(&file.info.name).extension().and_then(|s|s.to_str()).unwrap_or("").to_ascii_lowercase(),_=>false};
  if !valid{return Err("Use a filename with the same extension as the stored file".into());}

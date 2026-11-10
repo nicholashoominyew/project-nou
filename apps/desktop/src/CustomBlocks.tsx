@@ -53,7 +53,7 @@ function ResizableImage({url,name,width,editable,onWidth}:{url:string;name:strin
   window.addEventListener("pointermove",move);window.addEventListener("pointerup",up);window.addEventListener("pointercancel",up);
  }
  const current=live??width;
- return <div className="resizable-image" ref={box} style={current>0?{width:current}:undefined}>
+ return <div className={live!==null?"resizable-image dragging":"resizable-image"} ref={box} style={current>0?{width:current}:undefined}>
   <img src={url} alt={name} draggable={false}/>
   {editable&&<>
    <div className="image-sizes" role="group" aria-label="Image size">{[25,50,75,100].map(percent=><button key={percent} onClick={()=>onWidth(clamp(limit()*percent/100))}>{percent}%</button>)}<button onClick={()=>onWidth(0)} title="Original size">Auto</button></div>
@@ -65,7 +65,7 @@ function ResizableImage({url,name,width,editable,onWidth}:{url:string;name:strin
 function StoredFile({id,name,pdf,image}:{id:string;name:string;pdf:boolean;image?:{width:number;editable:boolean;onWidth:(width:number)=>void}}){
  const context=useEditorFeatures();const {url,error}=useBlobUrl(id);const [preview,setPreview]=useState(false);
  return <div className="stored-file" contentEditable={false}>{error?<p role="alert">{error}</p>:!url?<p>Opening file…</p>:pdf?<><div className="pdf-caption"><Icon name="document"/><strong>{name}</strong><button onClick={()=>setPreview(v=>!v)}>{preview?"Hide preview":"Preview PDF"}</button></div>{preview&&<iframe title={name} src={url}/>}</>:<ResizableImage url={url} name={name} width={image?.width??0} editable={!!image?.editable} onWidth={image?.onWidth??(()=>{})}/>}
- <div className="file-caption"><span>{name}</span><button disabled={!url} onClick={()=>void saveCopy(id,name,pdf).catch(context.onError)}>Save a copy</button></div></div>;
+ {pdf&&<div className="file-caption"><span>{name}</span><button disabled={!url} onClick={()=>void saveCopy(id,name,pdf).catch(context.onError)}>Save a copy</button></div>}</div>;
 }
 export const imageBlock=createReactBlockSpec({type:"nouImage",propSchema:{fileId:{default:""},name:{default:"Image"},width:{default:0}},content:"none"},{render:({block,editor})=><StoredFile id={block.props.fileId} name={block.props.name} pdf={false} image={{width:block.props.width,editable:editor.isEditable,onWidth:width=>editor.updateBlock(block,{props:{width}})}}/>});
 export const pdfBlock=createReactBlockSpec({type:"nouPdf",propSchema:{fileId:{default:""},name:{default:"Document.pdf"}},content:"none"},{render:({block})=><StoredFile id={block.props.fileId} name={block.props.name} pdf/>});
