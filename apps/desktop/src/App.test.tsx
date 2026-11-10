@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
 const {isFullscreen,setFullscreen,calls}=vi.hoisted(()=>({isFullscreen:vi.fn(),setFullscreen:vi.fn(),calls:[] as string[]}));
@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   calls.push(command);
   if (command === "create_page") return { id: "created", title: "Untitled", parent_id: null, sort_key: "3", icon: "document" };
   if (command === "search_notes") return [{ id: "page", title: "Test note", parent_id: null }];
-  if (command === "list_pages") return [{ id: "page", title: "Test note", parent_id: null, sort_key: "1" },{ id:"second",title:"Second note",parent_id:null,sort_key:"2"}];
+  if (command === "list_pages") return [{ id: "page", title: "Test note", parent_id: null, sort_key: "1" },{ id:"second",title:"Second note",parent_id:null,sort_key:"2"},{ id:"child",title:"Child note",parent_id:"page",sort_key:"1"}];
   if (command === "list_trashed_pages") return [];
   if (command === "backup_status") return { interrupted: [] };
 } }));
@@ -92,6 +92,26 @@ it("Ctrl+Shift+L toggles dark mode, Ctrl+= zooms, and Ctrl+/ opens the shortcuts
  fireEvent.keyDown(window,{key:"0",ctrlKey:true});expect(localStorage.getItem("nou-zoom")).toBe("1");
  fireEvent.keyDown(window,{key:"/",ctrlKey:true});expect(screen.getByRole("dialog",{name:"Keyboard shortcuts"})).toBeTruthy();
  fireEvent.keyDown(document,{key:"Escape"});expect(screen.queryByRole("dialog",{name:"Keyboard shortcuts"})).toBeNull();
+});
+it("breadcrumb shows every ancestor as a link and navigates to it",async()=>{
+ render(<App/>);fireEvent.click(await screen.findByText("Child note"));await screen.findByText("Simulate pending save");
+ const crumbs=screen.getByRole("navigation",{name:"Breadcrumb"});
+ expect(crumbs.textContent).toContain("Workspace");expect(crumbs.textContent).toContain("Test note");expect(crumbs.textContent).toContain("Child note");
+ fireEvent.click(within(crumbs).getByText("Test note"));
+ const selected=()=>screen.getAllByRole("tab").find(t=>t.getAttribute("aria-selected")==="true")?.textContent;
+ expect(selected()).toBe("Test note");
+ expect(within(screen.getByRole("navigation",{name:"Breadcrumb"})).queryByRole("button",{name:"Test note"})).toBeNull(); // the current page is plain text
+ fireEvent.click(within(screen.getByRole("navigation",{name:"Breadcrumb"})).getByText("Workspace"));
+ expect(screen.queryByRole("navigation",{name:"Breadcrumb"})).toBeNull();
+});
+it("Ctrl+Shift+F enters focus mode, Esc leaves it, and the Exit button always works",async()=>{
+ const {container}=render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByText("Simulate pending save");
+ const shell=()=>container.querySelector("main.shell")!;
+ expect(shell().classList.contains("focus")).toBe(false);
+ fireEvent.keyDown(window,{key:"F",ctrlKey:true,shiftKey:true});expect(shell().classList.contains("focus")).toBe(true);
+ fireEvent.keyDown(window,{key:"Escape"});expect(shell().classList.contains("focus")).toBe(false);
+ fireEvent.click(screen.getByLabelText("Focus mode"));expect(shell().classList.contains("focus")).toBe(true);
+ fireEvent.click(screen.getByText("Exit focus mode"));expect(shell().classList.contains("focus")).toBe(false);
 });
 it("ignores shortcuts while an input method is composing",async()=>{
  render(<App/>);await screen.findByText("Test note");

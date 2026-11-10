@@ -8,6 +8,8 @@ import {EditorFeatures,type PageInfo,type FileInfo} from "./EditorContext";
 import {Icon,iconNames} from "./Icons";
 import {pageDrop,type DropPosition} from "./workspaceModel";
 import ShortcutsHelp from "./ShortcutsHelp";
+import Backlinks from "./Backlinks";
+import PageTags from "./PageTags";
 import QuickFind from "./QuickFind";
 import {DismissibleDetails,useDismiss} from "./Dismissible";
 const NoteEditor=lazy(()=>import("./NoteEditor"));
@@ -39,7 +41,7 @@ export default function App(){
  useDismiss(menu!==null,()=>setMenu(null),menuRef);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [showShortcuts,setShowShortcuts]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [showShortcuts,setShowShortcuts]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -90,6 +92,7 @@ export default function App(){
    else if(key==="w"&&!event.shiftKey){event.preventDefault();if(!event.repeat&&selected&&tabs.includes(selected))closeTab(selected)}
    else if(event.key==="/"){event.preventDefault();setShowShortcuts(open=>!open)}
    else if(event.key==="["||event.key==="]"){event.preventDefault();goHistory(event.key==="["?-1:1)}
+   else if(key==="f"&&event.shiftKey){event.preventDefault();if(!event.repeat)setFocus(v=>!v)}
    else if(key==="t"&&event.shiftKey){event.preventDefault();if(!event.repeat)reopenTab()}
    else if(key==="l"&&event.shiftKey){event.preventDefault();if(!event.repeat)setTheme(v=>v==="light"?"dark":"light")}
    else if(key==="u"&&event.shiftKey){event.preventDefault();const parent=pagesRef.current.find(p=>p.id===selected)?.parent_id;if(parent&&!event.repeat)openPage(parent)}
@@ -101,6 +104,13 @@ export default function App(){
   };
   window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);
  },[guard,recoveryBlocked,showRecovery,showImport,tabs,selected]);
+ useEffect(()=>{
+  if(!focus)return;
+  const onEsc=(event:KeyboardEvent)=>{if(event.key==="Escape"&&!event.defaultPrevented&&!document.querySelector(".bn-suggestion-menu,.bn-formatting-toolbar,.db-menu,.row-menu"))setFocus(false)};
+  window.addEventListener("keydown",onEsc);return()=>window.removeEventListener("keydown",onEsc);
+ },[focus]);
+ // Workspace / Parent / Child: every ancestor is a link. The chain is cycle-safe even if the page tree were ever corrupt.
+ const crumbs=(()=>{const out:Page[]=[];const seen=new Set<string>();let page:Page|undefined=current;while(page&&!seen.has(page.id)){seen.add(page.id);out.unshift(page);const parent:string|null=page.parent_id;page=parent?pages.find(p=>p.id===parent):undefined}return out})();
  async function createChild(){if(!current)throw Error("Select a page first.");markBusy(true);try{const page=await createRichPage(current.id,"Untitled");await reload();setCollapsed(old=>old.filter(id=>id!==current.id));return page}finally{markBusy(false)}}
  async function upload(kind:"image"|"pdf"|"file"):Promise<FileInfo|null>{
   markBusy(true);try{const path=await chooseFile({multiple:false,title:kind==="image"?"Upload an image":kind==="pdf"?"Upload a PDF":"Upload a file",filters:kind==="file"?undefined:[{name:kind==="image"?"Images":"PDF",extensions:kind==="image"?["png","jpg","jpeg","gif","webp"]:["pdf"]}]});if(typeof path!=="string")return null;const file=await invoke<FileInfo>("upload_attachment",{path});if(kind!=="file"&&(kind==="pdf"&&file.mime!=="application/pdf"||kind==="image"&&!file.mime.startsWith("image/")))throw Error("Selected content does not match this block type.");return file}finally{markBusy(false)}
@@ -159,7 +169,7 @@ export default function App(){
  if(showRecovery)return <Suspense fallback={<p role="status">Opening backups…</p>}><BackupPanel onBusyChange={value=>{markBusy(value)}} onClose={()=>{setShowRecovery(false);setSelected(null);onEditorStatus("saved");void reload().catch(e=>setError(String(e)))}}/></Suspense>;
  if(showImport)return <Suspense fallback={<p role="status">Opening import…</p>}><ImportNotePanel onClose={()=>setShowImport(false)} onImported={async id=>{await reload();setShowImport(false);setShowTrash(false);openPage(id)}}/></Suspense>;
  return <EditorFeatures.Provider value={{pages,theme,canNavigate:!guard,open:openPage,create:createChild,upload,uploadFile,onError:e=>setError(String(e)),setPeekBusy:reportPeekBusy}}>
- <main className="shell">
+ <main className={"shell"+(focus?" focus":"")}>
   {sidebarOpen&&<aside className="sidebar" style={{width:sidebarWidth}} aria-label="Sidebar">
    <div className="sb-header"><span className="mark">脳</span><strong className="sb-name">Project NOU</strong>
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>
@@ -191,7 +201,8 @@ export default function App(){
    {recoveryBlocked&&<p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
    {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>Dismiss</button></div>}
    {showTrash?<div className="document trash-screen"><h1>Trash</h1><p>Restoring a page also restores its subpages deleted in the same operation.</p>{!trashed.length&&<p>Trash is empty.</p>}{trashed.map(page=><div className="trash-row" key={page.id}><span><Icon name={page.icon}/>{page.title}</span><button disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("restore_page",{pageId:page.id}))}>Restore</button></div>)}</div>
-   :current?<div className="document" key={current.id}><div className="toolbar"><span>Workspace / {current.title}</span><div className="actions">
+   :current?<div className="document" key={current.id}><div className="toolbar"><nav className="breadcrumb" aria-label="Breadcrumb"><button disabled={guard} onClick={()=>setSelected(null)}>Workspace</button>{crumbs.map((page,i)=><span key={page.id}><span aria-hidden="true"> / </span>{i<crumbs.length-1?<button disabled={guard} onClick={()=>openPage(page.id)}>{page.title}</button>:<span aria-current="page">{page.title}</span>}</span>)}</nav><div className="actions">
+    <button aria-label="Focus mode" title="Focus mode (Ctrl+Shift+F)" onClick={()=>setFocus(true)}>Focus</button>
     <button disabled={guard||recoveryBlocked} onClick={()=>void run(async()=>{const page=await createRichPage(current.id,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setCollapsed(old=>old.filter(id=>id!==current.id))})}>+ Subpage</button>
     <button aria-label="Move page up" title="Move page up" disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("move_page",{pageId:current.id,direction:"up"}))}>↑</button>
     <button aria-label="Move page down" title="Move page down" disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("move_page",{pageId:current.id,direction:"down"}))}>↓</button>
@@ -199,7 +210,7 @@ export default function App(){
    </div></div>
    <div className="document-heading"><div className="page-icon-picker" ref={iconPickerRef}><button className="document-icon" aria-label="Assign page icon" disabled={guard||recoveryBlocked} onClick={()=>setIconPicker(v=>!v)}><Icon name={current.icon} size={32}/></button>{iconPicker&&<div className="icon-picker-popover" role="group" aria-label="Monochrome page icons">{iconNames.map(icon=><button key={icon} aria-label={icon+" icon"} aria-pressed={current.icon===icon} disabled={guard} onClick={()=>void run(async()=>{await invoke("set_page_icon",{pageId:current.id,icon});setIconPicker(false)})}><Icon name={icon} size={22}/></button>)}</div>}</div>
     <input className="title-input" aria-label="Page title" readOnly={guard||recoveryBlocked} defaultValue={current.title} onBlur={e=>{const title=e.target.value.trim()||"Untitled";if(!recoveryBlocked&&title!==current.title)void run(()=>invoke("rename_page",{pageId:current.id,title}))}} onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur()}}/>
-   </div><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense></div>
+   </div><PageTags pageId={current.id} readOnly={guard||recoveryBlocked} onError={e=>setError(String(e))}/><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense><Backlinks pageId={current.id} refreshKey={editorStatus} onOpen={openPage}/></div>
    :<div className="empty"><span className="big-mark">脳</span><h1>Your knowledge, your device.</h1><p>Select a page or create a new one.</p><button disabled={guard||recoveryBlocked} onClick={()=>void run(async()=>{const page=await createRichPage(null,"My first page");setTabs(old=>[...old,page.id]);setSelected(page.id)})}>Create a page</button></div>}
   </section>
  {menu&&menuPage&&<div className="row-menu" role="menu" ref={menuRef} style={{left:Math.min(menu.x,window.innerWidth-230),top:Math.min(menu.y,window.innerHeight-190)}}>
@@ -207,6 +218,7 @@ export default function App(){
   <button role="menuitem" onClick={()=>{setMenu(null);setRenaming(menuPage.id)}}>Rename</button>
   <button role="menuitem" onClick={()=>{setMenu(null);void addSubpage(menuPage)}}>Add subpage</button>
   <hr/><button role="menuitem" className="danger" onClick={()=>{setMenu(null);trashPage(menuPage)}}>Move to Trash</button></div>}
+ {focus&&<button className="focus-exit" onClick={()=>setFocus(false)} title="Leave focus mode (Esc)">Exit focus mode</button>}
  {showShortcuts&&<ShortcutsHelp onClose={()=>setShowShortcuts(false)}/>}
  {quickFind&&<QuickFind pages={pages} onOpen={id=>{setQuickFind(false);openPage(id)}} onClose={()=>setQuickFind(false)}/>}
  </main></EditorFeatures.Provider>;

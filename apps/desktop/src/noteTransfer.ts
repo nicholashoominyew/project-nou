@@ -66,3 +66,9 @@ export function blockAttachmentIds(blocks:readonly {type?:string;props?:Record<s
  const ids=new Set<string>();const walk=(items:typeof blocks)=>{for(const b of items){if(b.type==="nouImage"||b.type==="nouPdf"||b.type==="nouFile"){const id=b.props?.fileId;if(typeof id!=="string"||!/^[a-f0-9]{64}$/.test(id))throw Error("Invalid attachment reference");ids.add(id)}if(b.children)walk(b.children)}};walk(blocks);return [...ids];
 }
 export function documentAttachmentIds(doc:Y.Doc,format:string):string[]{const data=inspectDocument(doc,format);return data.blocks?blockAttachmentIds(data.blocks):[];}
+
+/** Page-link blocks in a note body (the targets of /page and @ links), for the backlinks index. */
+export function blockPageLinkIds(blocks:readonly {type?:string;props?:Record<string,unknown>;children?:readonly any[]}[]):string[]{
+ const ids=new Set<string>();const walk=(items:typeof blocks)=>{for(const b of items){if(b.type==="nouPage"){const id=b.props?.pageId;if(typeof id==="string"&&id)ids.add(id)}if(b.children?.length)walk(b.children)}};walk(blocks);return[...ids];
+}
+export function documentPageLinkIds(doc:Y.Doc,format:string):string[]{const data=inspectDocument(doc,format);return data.blocks?blockPageLinkIds(data.blocks):[];}

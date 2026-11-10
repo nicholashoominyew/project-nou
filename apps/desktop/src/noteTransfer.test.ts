@@ -3,7 +3,7 @@ import * as Y from "yjs";
 import { BlockNoteEditor } from "@blocknote/core";
 import { withCollaboration } from "@blocknote/core/yjs";
 import { migrateLegacy, noteSchema, FRAGMENT } from "./blockModel";
-import { exportNote, parseRecovery, recoveryData } from "./noteTransfer";
+import { exportNote, parseRecovery, recoveryData, blockPageLinkIds} from "./noteTransfer";
 it("roundtrips plain text and derives the search text instead of trusting an imported cache", () => {
   const doc = new Y.Doc(); doc.getText("body").insert(0, "脳\r\n<script>literal</script>\n");
   const data = recoveryData(doc,"text-v1","original","My note"); data.plainText = "untrusted cache";
@@ -42,4 +42,14 @@ it("tracks images, PDFs and other dropped files as note attachments and rejects 
     { type: "paragraph", children: [{ type: "nouPdf", props: { fileId: b } }, { type: "nouFile", props: { fileId: c } }, { type: "nouFile", props: { fileId: c } }] },
   ]).sort()).toEqual([a, b, c]);
   expect(() => blockAttachmentIds([{ type: "nouFile", props: { fileId: "../../secret" } }])).toThrow(/Invalid attachment reference/);
+});
+
+it("collects page-link targets from nested blocks without duplicates, ignoring other blocks", () => {
+  const blocks = [
+    { type: "paragraph", children: [{ type: "nouPage", props: { pageId: "a" } }] },
+    { type: "nouPage", props: { pageId: "b" }, children: [{ type: "nouPage", props: { pageId: "a" } }, { type: "nouPage", props: { pageId: "" } }] },
+    { type: "nouImage", props: { fileId: "f" } },
+  ];
+  expect(blockPageLinkIds(blocks).sort()).toEqual(["a", "b"]);
+  expect(blockPageLinkIds([])).toEqual([]);
 });

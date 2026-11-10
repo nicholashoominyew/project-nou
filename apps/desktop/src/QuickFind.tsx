@@ -13,19 +13,30 @@ export default function QuickFind({ pages, onOpen, onClose }: { pages: PageInfo[
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const needle = query.trim().toLowerCase();
+  const byTag = needle.startsWith("#") && needle.length > 1;
+  const [tagHits, setTagHits] = useState<Hit[]>([]);
 
   const results = useMemo(() => {
+    if (byTag) return tagHits.map(h => pages.find(p => p.id === h.id)).filter((p): p is PageInfo => !!p);
     const byTitle = (needle ? pages.filter(p => p.title.toLowerCase().includes(needle)) : pages).slice(0, 50);
     const seen = new Set(byTitle.map(p => p.id));
     const byBody = bodyHits.filter(h => !seen.has(h.id)).map(h => pages.find(p => p.id === h.id)).filter((p): p is PageInfo => !!p);
     return [...byTitle, ...byBody];
-  }, [pages, needle, bodyHits]);
+  }, [pages, needle, bodyHits, byTag, tagHits]);
 
   useEffect(() => { input.current?.focus(); }, []);
   useEffect(() => { setIndex(0); }, [needle]);
+  // "#tag" lists pages carrying a tag that starts with the text after the #.
+  useEffect(() => {
+    setTagHits([]);
+    if (!byTag) return;
+    let cancelled = false;
+    void invoke<Hit[]>("find_pages_by_tag", { prefix: query.trim().slice(1) }).then(hits => { if (!cancelled && Array.isArray(hits)) setTagHits(hits); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [needle]);
   useEffect(() => {
     setBodyHits([]);
-    if (!needle) return;
+    if (!needle || byTag) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
       void invoke<Hit[]>("search_notes", { query: query.trim() })
@@ -48,7 +59,7 @@ export default function QuickFind({ pages, onOpen, onClose }: { pages: PageInfo[
 
   return <div className="quick-find-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="quick-find" role="dialog" aria-modal="true" aria-label="Quick find">
-      <input ref={input} aria-label="Find a page" placeholder="Jump to a page…" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={onKeyDown}
+      <input ref={input} aria-label="Find a page" placeholder="Jump to a page… (#tag to find by tag)" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={onKeyDown}
         role="combobox" aria-expanded="true" aria-controls="quick-find-results" aria-activedescendant={results[index] ? "quick-find-" + results[index].id : undefined} />
       <ul id="quick-find-results" role="listbox" aria-label="Pages" ref={list}>
         {results.map((page, i) => <li key={page.id} id={"quick-find-" + page.id} role="option" aria-selected={i === index} className={i === index ? "selected" : ""}

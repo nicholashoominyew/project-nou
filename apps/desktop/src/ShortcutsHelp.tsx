@@ -8,7 +8,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
     ["Ctrl+[ / Ctrl+]", "Back / forward through visited pages"], ["Ctrl+Shift+U", "Go to the parent page"],
   ] },
   { title: "Window", items: [
-    ["Ctrl+\\", "Show or hide the sidebar"], ["F11", "Full screen"], ["Ctrl+P", "Print the page"], ["Ctrl+Shift+L", "Light / dark mode"],
+    ["Ctrl+\\", "Show or hide the sidebar"], ["Ctrl+Shift+F", "Focus mode (Esc leaves)"], ["F11", "Full screen"], ["Ctrl+P", "Print the page"], ["Ctrl+Shift+L", "Light / dark mode"],
     ["Ctrl+= / Ctrl+− / Ctrl+0", "Zoom in / out / reset"], ["Ctrl+/", "This list"],
   ] },
   { title: "Editing", items: [

@@ -6,7 +6,7 @@ import {useEditorFeatures} from "./EditorContext";
 import {DismissibleDetails} from "./Dismissible";
 import {filterSuggestionItems,insertOrUpdateBlockForSlashMenu} from "@blocknote/core/extensions";
 import {getDefaultReactSlashMenuItems,SuggestionMenuController} from "@blocknote/react";
-import {blockAttachmentIds,documentAttachmentIds,recoveryData} from "./noteTransfer";
+import {blockAttachmentIds,documentAttachmentIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
 import { useCreateBlockNote } from "@blocknote/react";
@@ -103,6 +103,7 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
   const revision = useRef(0);
   const latestText = useRef("");
   const latestFiles = useRef<string[]>([]);
+  const lastLinks = useRef("");
   function report(next: SaveStatus) { setStatus(next); onStatus(next); }
 
   useEffect(() => {
@@ -117,6 +118,7 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
       const next = { doc, loaded, queue }; active.current = next; setSession(next);
       const original = doc.getText("body").toString(); setText(original); latestText.current = original;
       latestFiles.current=documentAttachmentIds(doc,loaded.format);
+      indexLinks(next);
       report("saved");
     }).catch(e => { if (!cancelled) { failed.current = true; setError(String(e)); setStatus("failed"); onStatus("saved"); } });
     return () => {
@@ -124,6 +126,16 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
       void queue.settled().then(() => doc.destroy());
     };
   }, [pageId, reload]);
+
+  // Backlinks are a derived index: a failure here must never affect saving, so it is best-effort and silent.
+  function indexLinks(s: Session) {
+    if (readOnly || s.loaded.format !== "blocknote-v1") return;
+    const targets = documentPageLinkIds(s.doc, s.loaded.format);
+    const key = pageId + "|" + [...targets].sort().join(",");
+    if (key === lastLinks.current) return;
+    lastLinks.current = key;
+    void invoke("set_page_links", { pageId, targets }).catch(() => { lastLinks.current = ""; });
+  }
 
   function save(nextText: string, ids:string[]=[]) {
     const s = active.current;
@@ -136,6 +148,7 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
       pageId, update, plainText: nextText, format: s.loaded.format, epoch: s.loaded.epoch, attachmentIds:ids,
     })).then(seq => {
       s.loaded.seq = seq;
+      if (active.current === s) indexLinks(s);
       if (active.current === s && generation === revision.current) report("saved");
     }).catch(e => {
       if (active.current !== s) return;

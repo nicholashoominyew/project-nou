@@ -351,3 +351,33 @@ textarea.db-wrap{resize:none;overflow:hidden;field-sizing:content;min-height:2.2
 .db-add-wide{min-width:260px}.db-add-wide select,.db-add-wide input[type=text],.db-add-wide input:not([type]){width:100%;box-sizing:border-box}
 .db-inline{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 .db-options>input[type=text],.db-options>input:not([type]){margin:2px 2px 4px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:inherit;font:inherit}
+
+/* Breadcrumb and focus mode */
+.breadcrumb{display:flex;align-items:center;flex-wrap:wrap;gap:2px;font-size:13px;color:var(--muted);min-width:0}
+.breadcrumb button{border:0;background:transparent;color:inherit;font:inherit;padding:2px 5px;border-radius:4px;cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.breadcrumb button:hover:not(:disabled){background:var(--hover);color:var(--text)}.breadcrumb [aria-current=page]{color:var(--text);padding:2px 5px}
+.focus-exit{display:none}
+.shell.focus .sidebar,.shell.focus .workspace-topbar,.shell.focus .toolbar,.shell.focus .window-tools,.shell.focus .save-status,.shell.focus .sb-open{display:none!important}
+.shell.focus .document{max-width:760px;margin-left:auto;margin-right:auto}
+body:has(.shell.focus) .focus-exit{display:block;position:fixed;top:10px;right:14px;z-index:80;border:1px solid var(--line);background:var(--panel);color:var(--muted);font:inherit;font-size:12px;padding:4px 10px;border-radius:6px;opacity:.55;cursor:pointer}
+body:has(.shell.focus) .focus-exit:hover,body:has(.shell.focus) .focus-exit:focus-visible{opacity:1}
+@media print{.focus-exit{display:none!important}}
+
+/* Linked from (backlinks) */
+.backlinks{margin:32px 0 24px;padding-top:12px;border-top:1px solid var(--line)}
+.backlinks h2{margin:0 0 6px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.backlinks-count{font-weight:400;margin-left:4px}
+.backlinks ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px 8px}
+.backlinks button{border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:13px;padding:3px 10px;border-radius:6px;cursor:pointer}
+.backlinks button:hover{background:var(--hover)}
+@media print{.backlinks{display:none}}
+
+/* Page tags */
+.page-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 10px;min-height:24px}
+.page-tag{display:inline-flex;align-items:center;gap:2px;padding:1px 4px 1px 9px;border-radius:12px;background:var(--hover);color:var(--text);font-size:12px;line-height:20px}
+.page-tag button{border:0;background:transparent;color:var(--muted);cursor:pointer;font:inherit;font-size:13px;padding:0 5px;border-radius:50%}
+.page-tag button:hover{color:var(--text);background:var(--line)}
+.page-tags input{border:0;background:transparent;color:var(--text);font:inherit;font-size:12px;padding:2px 4px;min-width:90px;outline:none}
+.page-tags input::placeholder{color:var(--muted);opacity:.6}
+.page-tags input:focus{border-bottom:1px solid var(--accent)}
+@media print{.page-tags input{display:none}}
