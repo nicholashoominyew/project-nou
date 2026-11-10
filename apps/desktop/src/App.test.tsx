@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   if (command === "list_pages") return [{ id: "page", title: "Test note", parent_id: null, sort_key: "1" },{ id:"second",title:"Second note",parent_id:null,sort_key:"2"},{ id:"child",title:"Child note",parent_id:"page",sort_key:"1"}];
   if (command === "list_trashed_pages") return [];
   if (command === "list_tags") return [{ name: "research", count: 2 }];
+  if (command === "list_backlinks") return [{ id: "second", title: "Linker page" }];
   if (command === "list_recent_pages") return [];
   if (command === "backup_status") return { interrupted: [] };
 } }));
@@ -126,6 +127,18 @@ it("shows Home when no page is open, a tag there opens Quick find pre-filled, an
  expect(screen.queryByLabelText("Home")).toBeNull();
  fireEvent.click(screen.getByText("Home",{selector:".sb-item span"}));
  expect(await screen.findByLabelText("Home")).toBeTruthy();
+});
+it("typing does not make the tag row or the Linked-from panel vanish and reappear (layout jitter)",async()=>{
+ render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByText("Simulate pending save");
+ const panel=await screen.findByLabelText("Linked from");const tags=await screen.findByLabelText("Add a tag");
+ const backlinkCalls=()=>calls.filter(c=>c==="list_backlinks").length;
+ const before=backlinkCalls();
+ // the editor reports "saving" on every pause while typing, then "saved"
+ fireEvent.click(screen.getByText("Simulate pending save"));
+ expect(screen.getByLabelText("Linked from")).toBe(panel);
+ expect(screen.getByLabelText("Add a tag")).toBe(tags);
+ expect((screen.getByLabelText("Add a tag") as HTMLInputElement).disabled).toBe(false);
+ expect(backlinkCalls()).toBe(before);
 });
 it("ignores shortcuts while an input method is composing",async()=>{
  render(<App/>);await screen.findByText("Test note");

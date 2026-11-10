@@ -21,12 +21,15 @@ describe("Backlinks", () => {
     fireEvent.click(screen.getByText("Beta"));
     expect(open).toHaveBeenCalledWith("b");
   });
-  it("reloads when the refresh key changes (after a save)", async () => {
-    const { rerender } = render(<Backlinks pageId="p" refreshKey="saving" onOpen={() => {}} />);
-    await waitFor(() => expect(calls.length).toBe(1));
+  it("loads once per page and never reloads or blanks itself on re-render (no flicker while typing)", async () => {
     result.current = [{ id: "a", title: "Alpha" }];
-    rerender(<Backlinks pageId="p" refreshKey="saved" onOpen={() => {}} />);
-    expect(await screen.findByText("Alpha")).toBeTruthy();
-    expect(calls.length).toBe(2);
+    const { rerender } = render(<Backlinks pageId="p" onOpen={() => {}} />);
+    const first = await screen.findByText("Alpha");
+    rerender(<Backlinks pageId="p" onOpen={() => {}} />);
+    rerender(<Backlinks pageId="p" onOpen={() => {}} />);
+    expect(screen.getByText("Alpha")).toBe(first);
+    expect(calls.length).toBe(1);
+    rerender(<Backlinks pageId="q" onOpen={() => {}} />);
+    await waitFor(() => expect(calls.length).toBe(2));
   });
 });
