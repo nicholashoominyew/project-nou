@@ -168,7 +168,7 @@ fn schema_and_editor_migration_keep_original_updates_and_reject_stale_conversion
     assert!(editor::append(&mut f.db,"p", &[4], "stale text", "text-v1", None).is_err());
     assert!(editor::append(&mut f.db,"p", &[4], "again", "blocknote-v1", Some((2,"original"))).is_err());
     let b = create(&f.db, &f.dir.join("backups")).unwrap();
-    assert_eq!(b.manifest.schema, 3);
+    assert_eq!(b.manifest.schema, 4);
 }
 
 #[test]
@@ -295,4 +295,18 @@ fn backup_refuses_missing_referenced_files(){
  let mut f=Fixture::new();editor::upgrade(&f.db).unwrap();
  f.db.execute("INSERT INTO note_files(page_id,file_id) VALUES('p',?1)",["a".repeat(64)]).unwrap();
  assert!(create(&f.db,&f.dir.join("incomplete")).is_err());assert_eq!(f.title(),"Before");
+}
+#[test]
+fn databases_survive_backup_and_restore_and_upgrade_from_v3(){
+ let mut f=Fixture::new();
+ f.db.execute_batch(include_str!("../../../../db/notes/002_editor_formats.sql")).unwrap();
+ f.db.execute_batch(include_str!("../../../../db/notes/003_page_icons.sql")).unwrap();
+ editor::upgrade(&f.db).unwrap();
+ let v:i64=f.db.query_row("SELECT MAX(version) FROM schema_migrations",[],|r|r.get(0)).unwrap();assert_eq!(v,4);
+ f.db.execute_batch("INSERT INTO pages(id,workspace_id,title,sort_key) VALUES('d','personal','Projects','b'),('r','personal','Row','c'); INSERT INTO databases(page_id) VALUES('d'); INSERT INTO db_properties(id,database_id,name,type,position) VALUES('q','d','Hours','number',1); INSERT INTO db_rows(page_id,database_id) VALUES('r','d'); INSERT INTO db_values(row_id,property_id,value) VALUES('r','q','4');").unwrap();
+ let backup=create(&f.db,&f.dir.join("db-backup")).unwrap();
+ let staged=stage(Path::new(&backup.path),&f.dir).unwrap();
+ f.db.execute_batch("UPDATE db_values SET value='9'; DELETE FROM pages WHERE id='r';").unwrap();
+ restore(&mut f.db,&staged,&f.dir).unwrap();
+ let value:String=f.db.query_row("SELECT value FROM db_values WHERE row_id='r' AND property_id='q'",[],|r|r.get(0)).unwrap();assert_eq!(value,"4");
 }

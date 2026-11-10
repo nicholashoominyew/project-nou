@@ -7,6 +7,7 @@ mod background_task;
 mod portability;
 mod recovery;
 mod editor;
+mod databases;
 mod recovery_commands;
 #[cfg(test)]
 mod recovery_tests;
@@ -66,11 +67,11 @@ fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     } else {
         let version: i64 = conn.query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version != 1 && version != 2 && version != 3 { return Err(format!("Unsupported Notes database version: {version}")); }
+        if version != 1 && version != 2 && version != 3 && version != 4 { return Err(format!("Unsupported Notes database version: {version}")); }
     }
     conn.execute("INSERT OR IGNORE INTO workspaces (id,title) VALUES ('personal','Personal')", [])
         .map_err(|e| e.to_string())?;
-    if conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get::<_,i64>(0)).map_err(|e| e.to_string())? < 3 {
+    if conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get::<_,i64>(0)).map_err(|e| e.to_string())? < 4 {
         recovery::create(&conn, &folder.join("schema-rollback"))?;
         editor::upgrade(&conn)?;
     }
@@ -85,7 +86,7 @@ fn row_page(row: &rusqlite::Row<'_>) -> rusqlite::Result<Page> {
 #[tauri::command]
 fn list_pages(db: State<'_, Db>) -> Result<Vec<Page>, String> {
     let conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    let mut stmt = conn.prepare("SELECT id,title,parent_id,sort_key,icon,is_favorite FROM pages WHERE workspace_id='personal' AND deleted_at IS NULL ORDER BY sort_key COLLATE BINARY,id").map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id,title,parent_id,sort_key,icon,is_favorite FROM pages WHERE workspace_id='personal' AND deleted_at IS NULL AND id NOT IN (SELECT page_id FROM db_rows) ORDER BY sort_key COLLATE BINARY,id").map_err(|e| e.to_string())?;
     let pages = stmt.query_map([], row_page).map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())?;
     Ok(pages)
@@ -124,18 +125,15 @@ fn rebalance(tx: &Transaction<'_>, parent_id: Option<&str>) -> Result<(), String
     Ok(())
 }
 
-#[tauri::command]
-fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String, initial_update: Vec<u8>) -> Result<Page, String> {
-    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    db.writable()?;
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
+/// Insert a page (with its rich-text state, search row and location) inside the caller's transaction.
+pub(crate) fn insert_page(tx: &Transaction<'_>, parent_id: Option<String>, title: &str, initial_update: &[u8]) -> Result<Page, String> {
     if let Some(ref parent) = parent_id {
         let valid: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM pages WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NULL)",
             [parent], |r| r.get(0)).map_err(|e| e.to_string())?;
         if !valid { return Err("Parent page is missing or in trash".into()); }
     }
-    let key = key_for_position(&tx,parent_id.as_deref(),usize::MAX,None)?;
+    let key = key_for_position(tx,parent_id.as_deref(),usize::MAX,None)?;
     let id = Uuid::new_v4().to_string();
     let title = if title.trim().is_empty() { "Untitled".to_string() } else { title.trim().to_string() };
     tx.execute("INSERT INTO pages(id,workspace_id,parent_id,title,sort_key) VALUES (?1,'personal',?2,?3,?4)",
@@ -143,13 +141,22 @@ fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String, init
     tx.execute("INSERT INTO note_locations(page_id) VALUES (?1)", [&id]).map_err(|e| e.to_string())?;
     tx.execute("INSERT INTO page_search(page_id,title,body) VALUES (?1,?2,'')",
         params![id,title]).map_err(|e| e.to_string())?;
-    editor::initialize_rich(&tx, &id, &initial_update)?;
-    rebalance(&tx,parent_id.as_deref())?;
+    editor::initialize_rich(tx, &id, initial_update)?;
+    rebalance(tx,parent_id.as_deref())?;
     let actual_key: String = tx.query_row(
         "SELECT sort_key FROM pages WHERE id=?1", [&id], |r| r.get(0)
     ).map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
     Ok(Page { id,title,parent_id,sort_key:actual_key,icon:"document".into(),is_favorite:false })
+}
+
+#[tauri::command]
+fn create_page(db: State<'_, Db>, parent_id: Option<String>, title: String, initial_update: Vec<u8>) -> Result<Page, String> {
+    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let page = insert_page(&tx, parent_id, &title, &initial_update)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(page)
 }
 
 #[tauri::command]
@@ -419,6 +426,7 @@ pub fn run() {
             recovery_commands::preview_retention,recovery_commands::apply_retention,
             recovery_commands::create_encrypted_backup,recovery_commands::prepare_encrypted_restore,recovery_commands::review_restore,recovery_commands::reset_backup_schedule,recovery_commands::backup_schedule_status,recovery_commands::configure_backup_schedule,
             workspace_commands::notes_write_blocked,workspace_commands::relocate_page,workspace_commands::set_page_icon,workspace_commands::set_page_favorite,workspace_commands::upload_attachment,workspace_commands::upload_attachment_bytes,workspace_commands::read_attachment,workspace_commands::export_attachment,workspace_commands::open_bookmark,
+            databases::create_database,databases::get_database,databases::add_property,databases::rename_property,databases::delete_property,databases::add_select_option,databases::add_row,databases::set_value,
             background_task::background_backup_task,portability::write_note_export,portability::read_note_import,portability::import_note])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");
