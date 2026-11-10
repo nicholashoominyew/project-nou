@@ -1,6 +1,7 @@
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import Database from "./DatabaseView";
+import { EditorFeatures } from "./EditorContext";
 
 const { calls, view } = vi.hoisted(() => ({ calls: [] as { command: string; args: any }[], view: { current: null as any } }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
@@ -17,7 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: a
   if (command === "add_view") return { id: "v-new", name: args.name, type: args.kind, config: args.config };
 } }));
 vi.mock("./richUpdate", () => ({ newRichUpdate: async () => [1] }));
-vi.mock("./NoteEditor", () => ({ default: ({ pageId }: { pageId: string }) => <div data-testid="note">{pageId}</div> }));
+vi.mock("./NoteEditor", () => ({ default: ({ pageId, onStatus }: { pageId: string; onStatus: (s: string) => void }) => <div><span data-testid="note">{pageId}</span><button onClick={() => onStatus("saving")}>make busy</button><button onClick={() => onStatus("saved")}>make saved</button></div> }));
 
 const base = () => ({
   title: "Projects",
@@ -300,5 +301,17 @@ describe("Database", () => {
     fireEvent.click(within(screen.getByLabelText("Row options for Write ADR").parentElement!).getByText("Duplicate"));
     await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "new-row", propertyId: "rel", value: ["t1"] } }));
     expect(calls.some(c => c.command === "set_value" && c.args.propertyId === "sum")).toBe(false);
+  });
+  it("the row panel tells the app while it is saving, and cannot be closed until it is saved", async () => {
+    const busy: boolean[] = [];
+    render(<EditorFeatures.Provider value={{ pages: [], theme: "light", canNavigate: true, open: () => {}, create: async () => { throw Error("n/a"); }, upload: async () => null, uploadFile: async () => { throw Error("n/a"); }, onError: () => {}, setPeekBusy: b => busy.push(b) }}>
+      <Database databaseId="db" readOnly={false} onError={() => {}} /></EditorFeatures.Provider>);
+    fireEvent.click(await screen.findByLabelText("Open Write ADR"));
+    fireEvent.click(await screen.findByText("make busy"));
+    await waitFor(() => expect(busy[busy.length - 1]).toBe(true));
+    expect((screen.getByText("Close") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText("make saved"));
+    await waitFor(() => expect(busy[busy.length - 1]).toBe(false));
+    expect((screen.getByText("Close") as HTMLButtonElement).disabled).toBe(false);
   });
 });

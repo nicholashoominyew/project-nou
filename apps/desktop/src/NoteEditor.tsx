@@ -62,6 +62,13 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     const copy=(b:any):any=>({type:b.type,props:b.props,content:b.content,children:(b.children??[]).map(copy)});
     editor.insertBlocks([copy(block)],block,"after");
   }
+  // Existing databases can be shown again here (a "linked view"); this also recovers a database whose block was deleted.
+  async function linkedDatabaseItems(){
+    try{
+      const list=await invoke<{id:string;title:string}[]>("list_databases");
+      return list.map(d=>({title:"Database: "+d.title,aliases:["database","linked","table","board",d.title],group:"Existing databases",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouDatabase",props:{databaseId:d.id}} as never)}));
+    }catch{return []}
+  }
   const pageItems=(query:string)=>filterSuggestionItems(context.pages.map(page=>({title:page.title,aliases:[],group:"Pages",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium"}} as never)})),query).slice(0,12);
   const items=()=>[...getDefaultReactSlashMenuItems(editor),
     {title:"Page",aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
@@ -76,7 +83,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
     onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
   <BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
-    <SuggestionMenuController triggerCharacter="/" getItems={async query=>filterSuggestionItems(items(),query)}/>
+    <SuggestionMenuController triggerCharacter="/" getItems={async query=>filterSuggestionItems([...items(),...await linkedDatabaseItems()],query)}/>
     <SuggestionMenuController triggerCharacter="@" getItems={async query=>pageItems(query)}/>
   </BlockNoteView></div>;
 }

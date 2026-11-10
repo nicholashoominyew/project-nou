@@ -465,23 +465,19 @@ pub fn change_property_type(db: State<'_, Db>, property_id: String, kind: String
     tx.commit().map_err(e)
 }
 
-/// Copy a column next to the original, with its options and values.
-#[tauri::command]
-pub fn duplicate_property(db: State<'_, Db>, property_id: String) -> Result<Prop, String> {
-    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    db.writable()?;
-    let tx = conn.transaction().map_err(e)?;
-    let (database, name, kind, position): (String, String, String, i64) = tx.query_row("SELECT database_id,name,type,position FROM db_properties WHERE id=?1 AND deleted_at IS NULL", [&property_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional().map_err(e)?.ok_or("Property not found")?;
+/// Copy a column next to the original, with its options and values (inside the caller's transaction).
+fn copy_property(tx: &Transaction<'_>, property_id: &str) -> Result<Prop, String> {
+    let (database, name, kind, position): (String, String, String, i64) = tx.query_row("SELECT database_id,name,type,position FROM db_properties WHERE id=?1 AND deleted_at IS NULL", [property_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional().map_err(e)?.ok_or("Property not found")?;
     if needs_setup(&kind) { return Err("Relations and rollups cannot be duplicated yet".into()); }
     let copy_name: String = format!("{name} copy").chars().take(100).collect();
-    let mut copy = insert_property_at(&tx, &database, &copy_name, &kind, Some(position + 1))?;
+    let mut copy = insert_property_at(tx, &database, &copy_name, &kind, Some(position + 1))?;
     // insert_property seeds Status options; replace them with exact copies of the original's.
     tx.execute("DELETE FROM db_options WHERE property_id=?1", [&copy.id]).map_err(e)?;
     copy.options.clear();
     let mut map: HashMap<String, String> = HashMap::new();
     let originals: Vec<(String, String, String, i64)> = {
         let mut s = tx.prepare("SELECT id,name,color,position FROM db_options WHERE property_id=?1 ORDER BY position").map_err(e)?;
-        let it = s.query_map([&property_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).map_err(e)?;
+        let it = s.query_map([property_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).map_err(e)?;
         it.collect::<rusqlite::Result<_>>().map_err(e)?
     };
     for (old, option_name, color, pos) in originals {
@@ -492,7 +488,7 @@ pub fn duplicate_property(db: State<'_, Db>, property_id: String) -> Result<Prop
     }
     let values: Vec<(String, String)> = {
         let mut s = tx.prepare("SELECT row_id,value FROM db_values WHERE property_id=?1").map_err(e)?;
-        let it = s.query_map([&property_id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(e)?;
+        let it = s.query_map([property_id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(e)?;
         it.collect::<rusqlite::Result<_>>().map_err(e)?
     };
     for (row, json) in values {
@@ -505,6 +501,16 @@ pub fn duplicate_property(db: State<'_, Db>, property_id: String) -> Result<Prop
         }
         tx.execute("INSERT INTO db_values(row_id,property_id,value) VALUES(?1,?2,?3)", params![row, copy.id, value.to_string()]).map_err(e)?;
     }
+    Ok(copy)
+}
+
+/// Copy a column next to the original, with its options and values.
+#[tauri::command]
+pub fn duplicate_property(db: State<'_, Db>, property_id: String) -> Result<Prop, String> {
+    let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
+    let tx = conn.transaction().map_err(e)?;
+    let copy = copy_property(&tx, &property_id)?;
     tx.commit().map_err(e)?;
     Ok(copy)
 }
@@ -863,6 +869,39 @@ mod tests {
         let names: HashMap<String, String> = [("o1".to_string(), "Done".to_string())].into();
         assert_eq!(rollup_text("show_original", &[serde_json::json!("o1"), serde_json::json!(["o1"]), serde_json::json!("Plain")], &names), "Done, Done, Plain");
         assert_eq!(rollup_text("nonsense", &nums, &none), "");
+    }
+    #[test]
+    fn duplicating_a_column_copies_options_and_values_with_fresh_option_ids() {
+        let mut c = fresh();
+        let tx = c.transaction().unwrap();
+        let database = insert_page(&tx, None, "D", &[1]).unwrap();
+        tx.execute("INSERT INTO databases(page_id) VALUES(?1)", [&database.id]).unwrap();
+        let status = insert_property(&tx, &database.id, "Status", "status").unwrap();
+        let tags = insert_property(&tx, &database.id, "Tags", "multi_select").unwrap();
+        let tag_a = add_option(&tx, &tags.id, "A", "red").unwrap();
+        let tag_b = add_option(&tx, &tags.id, "B", "blue").unwrap();
+        let after = insert_property(&tx, &database.id, "After", "text").unwrap();
+        let row = insert_page(&tx, Some(database.id.clone()), "Row", &[1]).unwrap();
+        tx.execute("INSERT INTO db_rows(page_id,database_id) VALUES(?1,?2)", params![row.id, database.id]).unwrap();
+        tx.execute("INSERT INTO db_values(row_id,property_id,value) VALUES(?1,?2,?3)", params![row.id, status.id, Value::String(status.options[1].id.clone()).to_string()]).unwrap();
+        tx.execute("INSERT INTO db_values(row_id,property_id,value) VALUES(?1,?2,?3)", params![row.id, tags.id, serde_json::json!([tag_a.id, tag_b.id]).to_string()]).unwrap();
+        let copy = copy_property(&tx, &status.id).unwrap();
+        assert_eq!(copy.name, "Status copy");
+        assert_eq!(copy.options.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["Not started", "In progress", "Done"], "exactly the original's options, not the freshly seeded ones");
+        assert!(copy.options.iter().all(|o| !status.options.iter().any(|p| p.id == o.id)), "option ids are new");
+        let stored: String = tx.query_row("SELECT value FROM db_values WHERE row_id=?1 AND property_id=?2", params![row.id, copy.id], |r| r.get(0)).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&stored).unwrap(), Value::String(copy.options[1].id.clone()), "the copied value points at the copy's own option");
+        let multi = copy_property(&tx, &tags.id).unwrap();
+        let stored: String = tx.query_row("SELECT value FROM db_values WHERE row_id=?1 AND property_id=?2", params![row.id, multi.id], |r| r.get(0)).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&stored).unwrap(), serde_json::json!([multi.options[0].id, multi.options[1].id]));
+        // it sits directly after the original and pushes later columns right
+        let order: Vec<String> = { let mut st = tx.prepare("SELECT name FROM db_properties WHERE database_id=?1 ORDER BY position").unwrap(); st.query_map([&database.id], |r| r.get(0)).unwrap().map(Result::unwrap).collect() };
+        assert_eq!(order, ["Status", "Status copy", "Tags", "Tags copy", "After"]);
+        let _ = after;
+        // relations and rollups are refused rather than copied half-way
+        let relation = insert_property(&tx, &database.id, "Rel", "relation").unwrap();
+        assert!(copy_property(&tx, &relation.id).is_err());
+        assert!(!tx.prepare("PRAGMA foreign_key_check").unwrap().exists([]).unwrap());
     }
     #[test]
     fn dates_are_calendar_checked() {

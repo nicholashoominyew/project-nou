@@ -52,3 +52,7 @@ The exact tested PR head was `4af0eb5ee4c9c96739552b67ff295dacbf3361ee`. [Window
 [PR #7](https://github.com/nicholashoominyew/project-nou/pull/7) was merged as `010b3fa2d7fb0a6e2cc143fc820bfae1db7c168b`. The accepted code is now the main-branch Windows alpha baseline. Earlier pending-status entries above describe the evidence available when they were written and are superseded by this acceptance entry for general Windows acceptance.
 
 Trusted Authenticode signing remains open. The delivered installer was explicitly unsigned; no signing certificate, valid signer/timestamp evidence or signed artifact was supplied. The user's general acceptance report does not change that artifact's signing status. The signed-release helper is prepared but has not been run with a trusted signing identity. Home-server deployment has not started.
+
+## Databases branch status — 11 November 2026
+
+`feature/databases` adds inline databases, views, relations/rollups, a Notion-style sidebar, file drops and many shortcuts. Evidence so far is unit tests (91 Vitest, 38 Rust library) and a browser-pane layout check with a fake backend. It has **not** been run in a real Windows window: Smart App Control blocks the unsigned dev binary on the development machine. See `docs/development/DATABASES.md` for the acceptance checklist and known limitations. The user's real profile has not been opened by this branch; rehearse the schema v4 upgrade on a copy first.

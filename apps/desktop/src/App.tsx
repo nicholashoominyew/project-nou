@@ -39,7 +39,7 @@ export default function App(){
  useDismiss(menu!==null,()=>setMenu(null),menuRef);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [showShortcuts,setShowShortcuts]=useState(false);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [showShortcuts,setShowShortcuts]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -48,7 +48,7 @@ export default function App(){
  useDismiss(iconPicker,()=>setIconPicker(false),iconPickerRef);
  const onEditorStatus=useCallback((s:SaveStatus)=>{saveStatusRef.current=s;setEditorStatus(s)},[]);
  function markBusy(value:boolean){busyRef.current=value;setBusy(value)}
- const guard=busy||editorStatus!=="saved";
+ const guard=busy||editorStatus!=="saved"||peekBusy;
  const current=pages.find(p=>p.id===selected);
  const reload=useCallback(async()=>{
   const [active,deleted,status]=await Promise.all([invoke<Page[]>("list_pages"),invoke<Page[]>("list_trashed_pages"),invoke<boolean>("notes_write_blocked")]);
@@ -73,7 +73,7 @@ export default function App(){
   check();const timer=window.setInterval(check,30000);return()=>{cancelled=true;window.clearInterval(timer)};
  },[]);
  async function run(action:()=>Promise<unknown>){markBusy(true);setError("");try{await action();await reload()}catch(e){setError(String(e))}finally{markBusy(false)}}
- function openPage(id:string){if(busyRef.current||saveStatusRef.current!=="saved")return;setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setIconPicker(false)}
+ function openPage(id:string){if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved")return;setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setIconPicker(false)}
  function closeTab(id:string){if(guard)return;closedTabs.current.push(id);const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
  function reopenTab(){if(guard)return;while(closedTabs.current.length){const id=closedTabs.current.pop()!;if(!tabs.includes(id)&&pagesRef.current.some(p=>p.id===id)){openPage(id);return}}}
  function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
@@ -158,7 +158,7 @@ export default function App(){
  const menuPage=menu?pages.find(p=>p.id===menu.id):undefined;
  if(showRecovery)return <Suspense fallback={<p role="status">Opening backups…</p>}><BackupPanel onBusyChange={value=>{markBusy(value)}} onClose={()=>{setShowRecovery(false);setSelected(null);onEditorStatus("saved");void reload().catch(e=>setError(String(e)))}}/></Suspense>;
  if(showImport)return <Suspense fallback={<p role="status">Opening import…</p>}><ImportNotePanel onClose={()=>setShowImport(false)} onImported={async id=>{await reload();setShowImport(false);setShowTrash(false);openPage(id)}}/></Suspense>;
- return <EditorFeatures.Provider value={{pages,theme,canNavigate:!guard,open:openPage,create:createChild,upload,uploadFile,onError:e=>setError(String(e))}}>
+ return <EditorFeatures.Provider value={{pages,theme,canNavigate:!guard,open:openPage,create:createChild,upload,uploadFile,onError:e=>setError(String(e)),setPeekBusy:reportPeekBusy}}>
  <main className="shell">
   {sidebarOpen&&<aside className="sidebar" style={{width:sidebarWidth}} aria-label="Sidebar">
    <div className="sb-header"><span className="mark">脳</span><strong className="sb-name">Project NOU</strong>

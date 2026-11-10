@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useDismiss } from "./Dismissible";
+import { useEditorFeatures } from "./EditorContext";
 import { newRichUpdate } from "./richUpdate";
 import { BoardView, CalendarView, GalleryView, ListView, MapView, TimelineView } from "./DatabaseViews";
 import { CALC_LABELS, OPS, calcOptions, computeCalc, groupRows, groupable, needsValue, visibleRows, type CalcFn, type Filter, type FilterOp, type Sort } from "./dbLogic";
@@ -111,6 +112,9 @@ export default function Database({ databaseId, readOnly, onError }: { databaseId
 function RowPeek({ row, onClose }: { row: Row; onClose: () => void }) {
   const [status, setStatus] = useState("saved");
   const busy = status !== "saved";
+  // While the panel is still saving, the rest of the app must not navigate away or close (same guard as the main editor).
+  const { setPeekBusy } = useEditorFeatures();
+  useEffect(() => { setPeekBusy(busy); return () => setPeekBusy(false); }, [busy, setPeekBusy]);
   return createPortal(<div className="db-peek" role="dialog" aria-label={"Page " + row.title}>
     <div className="db-peek-bar"><strong>{row.title}</strong><span className="hint">{busy ? "Saving…" : ""}</span><button disabled={busy} onClick={onClose}>Close</button></div>
     <div className="db-peek-body"><Suspense fallback={<p role="status">Opening page…</p>}><NoteEditor pageId={row.id} title={row.title} onStatus={s => setStatus(String(s))} readOnly={false} /></Suspense></div>
