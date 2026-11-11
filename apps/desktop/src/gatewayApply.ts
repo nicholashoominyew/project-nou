@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
+import { appendBlocksToNote } from "./noteAppend";
 
 /** One request from an outside client, as the gateway stores it. Never trust its shape: every field is re-checked here. */
 export type Proposal = {
@@ -15,7 +16,9 @@ export const OP_LABELS: Record<string, string> = {
   append_text: "Add text to a page", add_checklist_item: "Add a checklist item",
 };
 /** Operations the app can apply today. The others can be viewed and rejected but not approved. */
-export const APPLICABLE_OPS = ["create_page", "rename_page", "set_value", "create_row"] as const;
+export const APPLICABLE_OPS = ["create_page", "rename_page", "set_value", "create_row", "append_text", "add_checklist_item"] as const;
+/** An open copy of the page reloads itself, so an approved change shows up without reopening the page. */
+function announceNoteChanged(pageId: string) { try { window.dispatchEvent(new CustomEvent("nou:note-changed", { detail: pageId })); } catch { /* only a refresh hint */ } }
 export const canApply = (op: string) => (APPLICABLE_OPS as readonly string[]).includes(op);
 
 /**
@@ -51,6 +54,25 @@ export async function applyProposal(p: Pick<Proposal, "op" | "payload">): Promis
         if (typeof d.title === "string") await invoke("rename_page", { pageId: row.id, title: d.title.trim() });
         for (const [property, value] of Object.entries(values as Record<string, unknown>)) await invoke("set_value", { rowId: row.id, propertyId: property, value });
         return { ok: true, result: "Added row " + row.id };
+      }
+      case "append_text": {
+        if (!id(d.page)) throw new Error("The page id is invalid");
+        if (typeof d.text !== "string" || !d.text.trim() || d.text.length > 20000) throw new Error("The text is missing or longer than 20,000 characters");
+        // Each non-empty line becomes a plain paragraph. Control characters are dropped; nothing is interpreted as markup.
+        const lines = d.text.split(/\r?\n/).map(l => l.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim()).filter(Boolean);
+        if (!lines.length) throw new Error("There is no text to add");
+        if (lines.length > 200 || lines.some(l => l.length > 2000)) throw new Error("The text has too many lines (200) or a line over 2,000 characters");
+        const out = await appendBlocksToNote(d.page as string, lines.map(text => ({ type: "paragraph" as const, text })));
+        if (out.changed) announceNoteChanged(d.page as string);
+        return { ok: true, result: out.message };
+      }
+      case "add_checklist_item": {
+        if (!id(d.page)) throw new Error("The page id is invalid");
+        if (!text(d.text, 500) || /[\r\n]/.test(d.text as string)) throw new Error("A to-do must be one line of up to 500 characters");
+        if (d.checked !== undefined && typeof d.checked !== "boolean") throw new Error("checked must be true or false");
+        const out = await appendBlocksToNote(d.page as string, [{ type: "checkListItem", text: (d.text as string).trim(), checked: d.checked === true }]);
+        if (out.changed) announceNoteChanged(d.page as string);
+        return { ok: true, result: out.message };
       }
       default:
         return { ok: false, result: "This kind of request cannot be applied yet" };

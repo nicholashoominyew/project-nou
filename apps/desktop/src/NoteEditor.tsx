@@ -123,6 +123,13 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
   const [status, setStatus] = useState<SaveStatus>("loading");
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
+  // An approved request may have changed this page on disk: reload it, but only if nothing here is unsaved.
+  const statusNow = useRef<SaveStatus>("saved");
+  useEffect(() => {
+    const onChanged = (e: Event) => { if ((e as CustomEvent).detail === pageId && statusNow.current === "saved") setReload(n => n + 1); };
+    window.addEventListener("nou:note-changed", onChanged);
+    return () => window.removeEventListener("nou:note-changed", onChanged);
+  }, [pageId]);
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
   const [exportError, setExportError] = useState("");
@@ -133,7 +140,7 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
   const latestText = useRef("");
   const latestFiles = useRef<string[]>([]);
   const lastLinks = useRef("");
-  function report(next: SaveStatus) { setStatus(next); onStatus(next); }
+  function report(next: SaveStatus) { statusNow.current = next; setStatus(next); onStatus(next); }
 
   useEffect(() => {
     let cancelled = false;

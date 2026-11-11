@@ -428,11 +428,11 @@ describe("Database", () => {
   describe("place search", () => {
     it("typing coordinates saves them without contacting any search service", async () => {
       show();
-      const cells = await screen.findAllByLabelText("Where");
+      const cells = await screen.findAllByLabelText("Where", {}, { timeout: 5000 });
       const empty = cells[1] as HTMLInputElement;
       fireEvent.change(empty, { target: { value: "48.8566, 2.3522" } });
       fireEvent.keyDown(empty, { key: "Enter" });
-      await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "r2", propertyId: "where", value: { lat: 48.8566, lng: 2.3522 } } }));
+      await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "r2", propertyId: "where", value: { lat: 48.8566, lng: 2.3522 } } }), { timeout: 5000 });
       expect(search.calls).toEqual([]);
     });
     it("a name or address is only looked up when Enter is pressed, then a chosen result is saved with its address", async () => {

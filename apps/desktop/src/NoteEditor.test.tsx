@@ -72,3 +72,26 @@ it("ignores a previous note load that finishes after switching pages", async () 
   await waitFor(() => expect(screen.getByLabelText("Note content")).toHaveProperty("value", "Original"));
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+const loads = () => invoke.mock.calls.filter(c => c[0] === "load_note").length;
+const announce = (page: string) => window.dispatchEvent(new CustomEvent("nou:note-changed", { detail: page }));
+it("reloads the open page when an approved change was applied to it, and ignores other pages", async () => {
+  invoke.mockImplementation(async command => { if (command === "load_note") return { updates: [Array.from((() => { const d = new Y.Doc(); d.getText("body").insert(0, "Original"); return Y.encodeStateAsUpdate(d); })())], format: "text-v1", legacy_text: null, seq: 1, epoch: 4 }; });
+  render(<NoteEditor pageId="page-1" onStatus={vi.fn()} />);
+  await screen.findByLabelText("Note content");
+  expect(loads()).toBe(1);
+  announce("some-other-page");
+  await new Promise(r => setTimeout(r, 50));
+  expect(loads()).toBe(1);
+  announce("page-1");
+  await waitFor(() => expect(loads()).toBe(2));
+});
+it("does not reload over unsaved text when a change is announced", async () => {
+  render(<NoteEditor pageId="page-1" onStatus={vi.fn()} />);
+  await failSave();
+  const before = loads();
+  announce("page-1");
+  await new Promise(r => setTimeout(r, 80));
+  expect(loads()).toBe(before);
+  expect(screen.getByLabelText("Recovery text")).toHaveProperty("value", "Unsaved 脳 content");
+});

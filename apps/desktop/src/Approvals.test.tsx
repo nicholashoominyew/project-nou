@@ -54,7 +54,7 @@ describe("Approvals", () => {
     expect(calls.some(c => c.command === "create_page")).toBe(false);
   });
   it("kinds the app cannot apply yet can only be rejected", async () => {
-    state.list = [proposal({ op: "append_text", payload: { page: "p", text: "hi" } })];
+    state.list = [proposal({ op: "link_pages", payload: { a: "p", b: "q" } })];
     render(<Approvals disabled={false} refresh={async () => {}} />);
     const approve = (await screen.findByText("Approve and apply")) as HTMLButtonElement;
     expect(approve.disabled).toBe(true);

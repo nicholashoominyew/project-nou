@@ -13,12 +13,19 @@ Roadmap: Phase 3 (`ROADMAP-PROPOSAL-2026-11-11.md`, draft). Design and threat mo
 - **AI access screen** (`GatewayPanel.tsx`, Home → *AI access*): create tokens (secret shown once), revoke (confirmation; cancels the token's waiting requests), local API switch, recent activity.
 
 ## Applying changes
-Supported today: `create_page`, `rename_page`, `set_value`, `create_row`. Not yet: `append_text` and `add_checklist_item` (they need editing a note body, which will use the editor path). Payloads are re-validated in the app before any command runs.
+Supported: `create_page`, `rename_page`, `set_value`, `create_row`, `append_text`, `add_checklist_item`. Payloads are re-validated in the app before anything runs.
+
+**Note-body edits** (`noteAppend.ts`): the app loads the note's Yjs state, binds a headless BlockNote editor to it with the same collaboration setup the visible editor uses, inserts the blocks, and saves the resulting state through the normal `save_note` command (so validation, search indexing, the restore barrier and backups apply). New blocks go before the editor's trailing empty line.
+- `append_text`: each non-empty line becomes a plain paragraph (max 200 lines, 2,000 characters a line, 20,000 in all). Control characters are dropped and nothing is read as markup.
+- `add_checklist_item`: one to-do of one line (max 500 characters), optionally ticked. A to-do whose text (case and spacing ignored) already exists as a to-do on the page is not added again, and the approval is recorded as applied with "already on the page".
+- Old plain-text notes (`text-v1`) are refused until converted to rich text.
+- If the page is open it reloads itself (`nou:note-changed`), but only when it has no unsaved text.
 
 ## Verified (run this session on the development PC)
-TypeScript clean; 134 Vitest tests; 61 Rust library tests (token hashing, scopes, duplicate protection, decide-once, revocation, expiry, append-only audit, request handling including browser/host refusal, and a real-socket round trip that also stops the listener). Schema 1→6 upgrade ran in the real app binary on a disposable profile (integrity `ok`). **Not** verified: the Home approvals widget, token screen or live API in the real window; use with any actual AI tool; behaviour under Windows firewall prompts.
+TypeScript clean; Vitest tests including end-to-end note edits with the real BlockNote editor (saved update decoded and checked); 61 Rust library tests (token hashing, scopes, duplicate protection, decide-once, revocation, expiry, append-only audit, request handling including browser/host refusal, and a real-socket round trip that also stops the listener). Schema 1→6 upgrade ran in the real app binary on a disposable profile (integrity `ok`). **Not** verified: the Home approvals widget, token screen or live API in the real window; use with any actual AI tool; behaviour under Windows firewall prompts.
 
 ## Limitations and next steps
+- The headless editor used for note-body edits is tested in jsdom but has not run in the real WebView2 window yet.
 - No MCP transport yet. Tools that speak MCP over stdio need a small bridge to this HTTP API.
 - Reading a page returns its searchable plain text, not formatting, tables or attachments.
 - No per-token rate limits (one global limit); no IP allow-list beyond loopback.
