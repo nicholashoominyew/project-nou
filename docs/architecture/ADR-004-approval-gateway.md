@@ -13,7 +13,7 @@ The plan requires that **every AI- or bot-requested write is explicitly approved
 5. **Proposals are inert data.** The `op` is one of a fixed allow-list; payloads are size-limited and validated again when applied. The approval screen shows the exact change, never a model-written description alone (the `summary` is shown but labelled as the client's claim).
 6. **Duplicate protection.** An identical pending proposal from the same token returns the existing one instead of creating another (the "AI posted the same checklist item twice" problem). Similar-item checks are added per feature.
 7. **Expiry.** Pending proposals expire after 7 days; expired proposals cannot be approved.
-8. **Built so far:** storage, token and proposal rules, audit log, a loopback-only opt-in HTTP API, the approval widget and token screen, and appliers for `create_page`, `rename_page`, `set_value`, `create_row`, `append_text` and `add_checklist_item` (note-body edits go through a headless editor bound to the note's Yjs state and the normal save command). An MCP transport is a separate step.
+8. **Built so far:** storage, token and proposal rules, audit log, a loopback-only opt-in HTTP API, the approval widget and token screen, and appliers for `create_page`, `rename_page`, `set_value`, `create_row`, `append_text` and `add_checklist_item` (note-body edits go through a headless editor bound to the note's Yjs state and the normal save command). An MCP stdio bridge (`tools/nou-mcp`) forwards to the local API.
 
 ## Threat model (summary)
 - **Prompt injection:** content read through the gateway may contain instructions aimed at the model. Defences: reads are data only; no tool can write without a human decision; the approval screen shows the real operation and target; payload limits; op allow-list.
@@ -26,4 +26,4 @@ The plan requires that **every AI- or bot-requested write is explicitly approved
 Schema 6 (`db/notes/006_gateway.sql`), another one-way schema step. Providers that cannot work with a human-approval loop (fully autonomous agents) are intentionally unsupported.
 
 ## Not built yet
-MCP transport, linked (multi-page) checklist items, per-provider setup, per-token rate limits, and a self-hosted-AI runner.
+linked (multi-page) checklist items, per-provider setup, per-token rate limits, and a self-hosted-AI runner.

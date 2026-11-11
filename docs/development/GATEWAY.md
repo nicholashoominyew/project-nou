@@ -26,7 +26,6 @@ TypeScript clean; Vitest tests including end-to-end note edits with the real Blo
 
 ## Limitations and next steps
 - The headless editor used for note-body edits is tested in jsdom but has not run in the real WebView2 window yet.
-- No MCP transport yet. Tools that speak MCP over stdio need a small bridge to this HTTP API.
 - Reading a page returns its searchable plain text, not formatting, tables or attachments.
 - No per-token rate limits (one global limit); no IP allow-list beyond loopback.
 - Tokens cannot be edited, only revoked and recreated.
@@ -40,3 +39,11 @@ Invoke-RestMethod http://127.0.0.1:47651/v1/proposals -Method Post -Headers $h -
   -Body '{"op":"create_page","payload":{"title":"From a script"},"summary":"Create a page"}'
 ```
 Then open Home in NOU and approve or reject it.
+
+## MCP bridge (`tools/nou-mcp/nou-mcp.mjs`)
+A single dependency-free Node file (Node 18+) that speaks MCP over stdio and forwards to the local API, so MCP clients such as Claude Desktop or Claude Code can use NOU.
+- It has no powers of its own. Tools: `nou_search`, `nou_read_page`, `nou_read_database`, `nou_proposal_status`, and `nou_propose_*` for `create_page`, `rename_page`, `append_text`, `add_checklist_item`, `set_value`, `create_row`. There is no approve or apply tool: every proposal waits for the person in NOU.
+- Settings: `NOU_TOKEN` (create it under AI access; only the scopes you tick are usable) and optionally `NOU_API_URL` (default `http://127.0.0.1:47651`). It refuses any address that is not `http://` on this computer, so the token cannot be sent elsewhere, and it never prints the token.
+- Anything read from notes is returned with a note that it is untrusted data.
+- Setup (example for a client's MCP config): `{"mcpServers":{"nou":{"command":"node","args":["C:\path\to\project-nou\tools\nou-mcp\nou-mcp.mjs"],"env":{"NOU_TOKEN":"nou_..."}}}}`. NOU must be open with the local API switched on.
+- Verified: 13 Node tests (`npm run test:mcp`) cover the handshake, tool list, request mapping, error handling, token never leaking, id encoding and a real stdio round trip against a fake API. Not yet verified: a real MCP client (Claude Desktop or Claude Code) driving it end to end.
