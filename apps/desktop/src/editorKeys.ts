@@ -48,3 +48,22 @@ export function wantsExistingDatabases(slashQuery: string): boolean {
   const q = slashQuery.trim().toLowerCase();
   return q.startsWith("linked") || q.startsWith("existing");
 }
+
+// ---- Ctrl+Z / Ctrl+Y when keyboard focus is not in the editor ----
+export type FocusLike = { tagName?: string; isContentEditable?: boolean; closest?: (selector: string) => unknown } | null | undefined;
+
+/**
+ * Clicking a toolbar button or colour menu with the mouse moves keyboard focus off the editor (onto the page body or the
+ * menu). The editor only listens for Ctrl+Z while it has focus, so after choosing a colour, undo appeared to do nothing.
+ * Returns what to do with the key, or null when the key belongs to whatever has focus (a text field, the editor itself).
+ */
+export function undoRequest(event: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }, active: FocusLike): "undo" | "redo" | null {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return null;
+  const key = event.key.toLowerCase();
+  const wanted = key === "z" ? (event.shiftKey ? "redo" : "undo") : key === "y" && !event.shiftKey ? "redo" : null;
+  if (!wanted) return null;
+  const tag = (active?.tagName ?? "BODY").toUpperCase();
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || active?.isContentEditable) return null; // it has its own undo
+  const onPageOrToolbar = tag === "BODY" || tag === "HTML" || !!active?.closest?.(".bn-formatting-toolbar,.bn-toolbar,.bn-side-menu,.bn-color-picker-dropdown,.mantine-Menu-dropdown,.mantine-Popover-dropdown");
+  return onPageOrToolbar ? wanted : null;
+}

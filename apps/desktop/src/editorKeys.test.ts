@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { wantsExistingDatabases, hasHighlight, highlightToApply, isHighlightShortcut, rememberHighlight, shouldTrapTab, type TabEvent } from "./editorKeys";
+import { undoRequest, wantsExistingDatabases, hasHighlight, highlightToApply, isHighlightShortcut, rememberHighlight, shouldTrapTab, type TabEvent } from "./editorKeys";
 // Node's fs is only used by this test; the app's tsconfig has no Node types, hence the ignore.
 // @ts-ignore
 import { readFileSync } from "node:fs";
@@ -80,5 +80,32 @@ describe("slash menu", () => {
     expect(wantsExistingDatabases("")).toBe(false);
     expect(wantsExistingDatabases("linked")).toBe(true);
     expect(wantsExistingDatabases("  Existing db")).toBe(true);
+  });
+});
+
+describe("undo and redo when focus has left the editor", () => {
+  const key = (k: string, extra: object = {}) => ({ key: k, ctrlKey: true, metaKey: false, shiftKey: false, altKey: false, ...extra });
+  const body = { tagName: "BODY" };
+  const inside = (selector: string) => ({ tagName: "BUTTON", closest: (s: string) => (s.includes(selector) ? {} : null) });
+  it("undoes and redoes when focus is on the page body (as after clicking a colour with the mouse)", () => {
+    expect(undoRequest(key("z"), body)).toBe("undo");
+    expect(undoRequest(key("Z", { shiftKey: true }), body)).toBe("redo");
+    expect(undoRequest(key("y"), body)).toBe("redo");
+    expect(undoRequest(key("z"), null)).toBe("undo");
+    expect(undoRequest(key("z", { ctrlKey: false, metaKey: true }), body)).toBe("undo");
+  });
+  it("does the same when focus is on the formatting toolbar or a colour menu", () => {
+    expect(undoRequest(key("z"), inside(".bn-formatting-toolbar"))).toBe("undo");
+    expect(undoRequest(key("z"), inside(".mantine-Menu-dropdown"))).toBe("undo");
+  });
+  it("leaves the key alone when a text field or the editor itself has focus, or for other keys", () => {
+    expect(undoRequest(key("z"), { tagName: "INPUT" })).toBeNull();
+    expect(undoRequest(key("z"), { tagName: "TEXTAREA" })).toBeNull();
+    expect(undoRequest(key("z"), { tagName: "DIV", isContentEditable: true })).toBeNull();
+    expect(undoRequest(key("z"), { tagName: "BUTTON", closest: () => null })).toBeNull();
+    expect(undoRequest(key("a"), body)).toBeNull();
+    expect(undoRequest(key("z", { ctrlKey: false }), body)).toBeNull();
+    expect(undoRequest(key("z", { altKey: true }), body)).toBeNull();
+    expect(undoRequest(key("y", { shiftKey: true }), body)).toBeNull();
   });
 });

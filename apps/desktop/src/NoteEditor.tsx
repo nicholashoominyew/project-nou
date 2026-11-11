@@ -9,7 +9,7 @@ import {getDefaultReactSlashMenuItems,SuggestionMenuController} from "@blocknote
 import {blockAttachmentIds,documentAttachmentIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
-import { wantsExistingDatabases, hasHighlight, highlightToApply, isHighlightShortcut, readHighlight, rememberHighlight, shouldTrapTab, writeHighlight, type Highlight } from "./editorKeys";
+import { undoRequest, wantsExistingDatabases, hasHighlight, highlightToApply, isHighlightShortcut, readHighlight, rememberHighlight, shouldTrapTab, writeHighlight, type Highlight } from "./editorKeys";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { withCollaboration } from "@blocknote/core/yjs";
@@ -62,6 +62,22 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
   useEffect(()=>{
     const off=editor.onSelectionChange(()=>{const next=rememberHighlight(editor.getActiveStyles() as Record<string,unknown>,lastHighlight.current);if(next!==lastHighlight.current){lastHighlight.current=next;writeHighlight(next)}});
     return typeof off==="function"?off:undefined;
+  },[editor]);
+  // After a colour is picked with the mouse, keyboard focus is no longer in the editor, so Ctrl+Z would do nothing. Send undo/redo
+  // to the editor you were last typing in (not to both when a row page is open over the main page).
+  const owner=useRef(false);
+  useEffect(()=>{
+    const dom=()=>editor.domElement as HTMLElement|undefined;
+    const onFocusIn=(e:FocusEvent)=>{const t=e.target as Node|null;if(!t)return;if(dom()?.contains(t))owner.current=true;else if((t as HTMLElement).closest?.(".bn-editor"))owner.current=false};
+    const onKey=(e:KeyboardEvent)=>{
+      if(!owner.current||e.isComposing)return;
+      const action=undoRequest(e,document.activeElement as HTMLElement|null);
+      if(!action)return;
+      e.preventDefault();editor.focus();
+      if(action==="undo")editor.undo();else editor.redo();
+    };
+    window.addEventListener("focusin",onFocusIn);window.addEventListener("keydown",onKey);
+    return()=>{window.removeEventListener("focusin",onFocusIn);window.removeEventListener("keydown",onKey)};
   },[editor]);
   function applyHighlight(){
     if(disabled)return;
