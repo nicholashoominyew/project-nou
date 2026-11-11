@@ -67,3 +67,18 @@ export function undoRequest(event: { key: string; ctrlKey: boolean; metaKey: boo
   const onPageOrToolbar = tag === "BODY" || tag === "HTML" || !!active?.closest?.(".bn-formatting-toolbar,.bn-toolbar,.bn-side-menu,.bn-color-picker-dropdown,.mantine-Menu-dropdown,.mantine-Popover-dropdown");
   return onPageOrToolbar ? wanted : null;
 }
+
+/**
+ * Which open note editor should receive Ctrl+Z when keyboard focus is not in any editor? The one you used last; if you have not
+ * focused any (for example you opened a page and went straight to a block's colour menu), the newest one that is open, which is
+ * the page you are looking at. A row page opened over the main page is newer, and when it closes the main page is active again.
+ */
+export class EditorOwnership {
+  private stack: symbol[] = [];
+  /** Register an editor, or move it to the top (most recently used). */
+  use(id: symbol) { this.stack = this.stack.filter(x => x !== id); this.stack.push(id); }
+  remove(id: symbol) { this.stack = this.stack.filter(x => x !== id); }
+  isActive(id: symbol): boolean { return this.stack[this.stack.length - 1] === id; }
+  get size() { return this.stack.length; }
+}
+export const editorOwnership = new EditorOwnership();

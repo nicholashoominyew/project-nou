@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { undoRequest, wantsExistingDatabases, hasHighlight, highlightToApply, isHighlightShortcut, rememberHighlight, shouldTrapTab, type TabEvent } from "./editorKeys";
+import { EditorOwnership, undoRequest, wantsExistingDatabases, hasHighlight, highlightToApply, isHighlightShortcut, rememberHighlight, shouldTrapTab, type TabEvent } from "./editorKeys";
 // Node's fs is only used by this test; the app's tsconfig has no Node types, hence the ignore.
 // @ts-ignore
 import { readFileSync } from "node:fs";
@@ -107,5 +107,40 @@ describe("undo and redo when focus has left the editor", () => {
     expect(undoRequest(key("z", { ctrlKey: false }), body)).toBeNull();
     expect(undoRequest(key("z", { altKey: true }), body)).toBeNull();
     expect(undoRequest(key("y", { shiftKey: true }), body)).toBeNull();
+  });
+});
+
+describe("EditorOwnership", () => {
+  it("the newest editor is active, so a page opened and not yet clicked still gets undo", () => {
+    const o = new EditorOwnership();
+    const page = Symbol("page");
+    o.use(page);
+    expect(o.isActive(page)).toBe(true);
+  });
+  it("a row page opened over the main page is active, and the main page is active again when it closes", () => {
+    const o = new EditorOwnership();
+    const main = Symbol("main"), row = Symbol("row");
+    o.use(main); o.use(row);
+    expect(o.isActive(row)).toBe(true);
+    expect(o.isActive(main)).toBe(false);
+    o.remove(row);
+    expect(o.isActive(main)).toBe(true);
+  });
+  it("clicking into an editor makes it the active one, and exactly one is active", () => {
+    const o = new EditorOwnership();
+    const main = Symbol("main"), row = Symbol("row");
+    o.use(main); o.use(row);
+    o.use(main);
+    expect(o.isActive(main)).toBe(true);
+    expect(o.isActive(row)).toBe(false);
+    expect(o.size).toBe(2);
+  });
+  it("removing an unknown or already-removed editor is harmless, and nothing is active when none is open", () => {
+    const o = new EditorOwnership();
+    const a = Symbol("a");
+    o.remove(a);
+    expect(o.isActive(a)).toBe(false);
+    o.use(a); o.remove(a); o.remove(a);
+    expect(o.size).toBe(0);
   });
 });
