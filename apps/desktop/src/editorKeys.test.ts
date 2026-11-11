@@ -40,6 +40,11 @@ describe("no flicker while typing (stylesheet rules)", () => {
     expect(styles).toContain(".db-block{width:calc(100% + 2*(var(--doc-pad,52px) - 16px));margin-inline:calc(16px - var(--doc-pad,52px))");
     expect(styles).toMatch(/\.db-scroll,\.db-board,\.db-tl-scroll\{overflow-x:auto/);
   });
+  it("indenting a block with Tab animates 3x faster than BlockNote's default 0.2s", () => {
+    expect(styles).toContain(".note-editor{--indent-anim:.067s;--indent-anim-delay:.033s}");
+    for (const rule of [".note-editor .bn-block-outer{transition:margin var(--indent-anim)}", ".note-editor .bn-block-content{transition:font-size var(--indent-anim)}", ".note-editor .bn-block-content::before{transition:all var(--indent-anim)}", ".note-editor .bn-block-outer:not([data-prev-depth-changed])::before{transition:all var(--indent-anim) var(--indent-anim-delay)}"]) expect(styles).toContain(rule);
+    expect(0.2 / 0.067).toBeGreaterThan(2.9);
+  });
   it("hides the save status text while all is well, but not an error", () => {
     expect(styles).toMatch(/\.save-status\.save-quiet\{[^}]*clip:rect/);
     expect(styles).toMatch(/\.save-status\.save-failed\{/);

@@ -468,3 +468,11 @@ tr.db-drop-target>td{box-shadow:inset 0 2px 0 var(--accent)}
 .db-place-search{display:flex;gap:6px;align-items:center}.db-place-search input{flex:1;min-width:0;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:inherit;font-size:13px}
 .db-place-search button{border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:13px;padding:5px 12px;border-radius:6px;cursor:pointer}.db-place-search button:disabled{opacity:.5;cursor:default}
 .db-table th.db-title-col{padding-left:46px;text-align:left}
+
+/* Tab / Shift+Tab indents and outdents a block. BlockNote slides it over 0.2s; make that 3x faster (about four frames), so
+   it reads as instant. The .note-editor prefix outranks BlockNote's own rules whichever stylesheet loads last. */
+.note-editor{--indent-anim:.067s;--indent-anim-delay:.033s}
+.note-editor .bn-block-outer{transition:margin var(--indent-anim)}
+.note-editor .bn-block-content{transition:font-size var(--indent-anim)}
+.note-editor .bn-block-content::before{transition:all var(--indent-anim)}
+.note-editor .bn-block-outer:not([data-prev-depth-changed])::before{transition:all var(--indent-anim) var(--indent-anim-delay)}
