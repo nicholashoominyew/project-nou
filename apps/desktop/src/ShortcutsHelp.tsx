@@ -13,7 +13,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
   ] },
   { title: "Editing", items: [
     ["Ctrl+Z / Ctrl+Y", "Undo / redo"], ["Ctrl+C / Ctrl+X / Ctrl+V", "Copy / cut / paste"], ["Ctrl+Shift+V", "Paste without formatting"],
-    ["Ctrl+D", "Duplicate the current block"], ["Ctrl+Shift+↑ / ↓", "Move the block up / down"], ["Tab / Shift+Tab", "Indent / outdent"],
+    ["Ctrl+D", "Duplicate the current block"], ["Ctrl+Shift+H", "Apply the last highlight colour (again to remove)"], ["Ctrl+Shift+↑ / ↓", "Move the block up / down"], ["Tab / Shift+Tab", "Indent / outdent"],
     ["Ctrl+Alt+1 … 6", "Heading 1 – 6"], ["Ctrl+Alt+0", "Plain paragraph"], ["Ctrl+Shift+7 / 8 / 9", "Numbered / bulleted / to-do list"],
     ["Ctrl+Alt+C / Ctrl+Alt+Q", "Code block / quote"], ["/", "Insert a block (page, database, image, file …)"], ["@", "Link to a page"], [":", "Emoji"],
   ] },

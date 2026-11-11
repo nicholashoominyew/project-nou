@@ -9,7 +9,7 @@ import {getDefaultReactSlashMenuItems,SuggestionMenuController} from "@blocknote
 import {blockAttachmentIds,documentAttachmentIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
-import { shouldTrapTab } from "./editorKeys";
+import { wantsExistingDatabases, hasHighlight, highlightToApply, isHighlightShortcut, readHighlight, rememberHighlight, shouldTrapTab, writeHighlight, type Highlight } from "./editorKeys";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { withCollaboration } from "@blocknote/core/yjs";
@@ -57,6 +57,17 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
       }
     }catch(error){context.onError(error)}finally{setPending(false)}
   }
+  // Ctrl+Shift+H applies the last highlight colour used, and removes it again from text that already has it.
+  const lastHighlight=useRef<Highlight>(readHighlight());
+  useEffect(()=>{
+    const off=editor.onSelectionChange(()=>{const next=rememberHighlight(editor.getActiveStyles() as Record<string,unknown>,lastHighlight.current);if(next!==lastHighlight.current){lastHighlight.current=next;writeHighlight(next)}});
+    return typeof off==="function"?off:undefined;
+  },[editor]);
+  function applyHighlight(){
+    if(disabled)return;
+    const h=highlightToApply(lastHighlight.current);
+    if(hasHighlight(editor.getActiveStyles() as Record<string,unknown>,h))editor.removeStyles(h as never);else editor.addStyles(h as never);
+  }
   function duplicateBlock(){
     if(disabled)return;
     const block=editor.getTextCursorPosition().block;
@@ -79,12 +90,12 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     {title:"PDF",aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
     {title:"File",aliases:["file","attachment","html","upload"],group:"NOU",onItemClick:()=>void create("file")}
   ];
-  return <div className={"editor-drop"+(over?" over":"")} onKeyDown={e=>{if(shouldTrapTab(e))e.preventDefault()}} onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateBlock()}}}
+  return <div className={"editor-drop"+(over?" over":"")} onKeyDown={e=>{if(shouldTrapTab(e))e.preventDefault()}} onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateBlock()}else if(isHighlightShortcut(e)){e.preventDefault();applyHighlight()}}}
     onDragOverCapture={e=>{if(hasFiles(e)){e.preventDefault();e.dataTransfer.dropEffect=disabled?"none":"copy";setOver(!disabled)}}}
     onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
     onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
   <BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
-    <SuggestionMenuController triggerCharacter="/" getItems={async query=>filterSuggestionItems([...items(),...await linkedDatabaseItems()],query)}/>
+    <SuggestionMenuController triggerCharacter="/" getItems={async query=>{const linked=wantsExistingDatabases(query)?await linkedDatabaseItems():[];return filterSuggestionItems([...items(),...linked],query)}}/>
     <SuggestionMenuController triggerCharacter="@" getItems={async query=>pageItems(query)}/>
   </BlockNoteView></div>;
 }

@@ -50,3 +50,16 @@ Not run: the Python SQL tests and the `tests/native-core` crate after the v4 cha
 - Quick find does not list database rows by title (rows are hidden from the page list).
 - Relations support filtering only by empty/not empty; relations and rollups cannot be converted or duplicated.
 - Missing compared with Notion: formulas, date ranges/times, person/files/button/ID properties, templates and the New-row menu, row/column drag-reordering, multi-row selection, cell keyboard navigation, charts, full-page databases, CSV import/export.
+
+## Updates after first use in the real window (12 November 2026)
+- **Slash menu:** `/database` offers only *Database*. Existing databases (linked view, or recovering an orphan) are listed only after typing `/linked` or `/existing`.
+- **Empty table:** just the header and *+ New row* (no "No rows" text, no empty calculation row). The calculation row appears once a calculation is set from the column menu.
+- **Row page:** opening a row (table, board, list, gallery, calendar, timeline or map) shows a full page: editable title, every property as an editable field (rollups and automatic times read-only), then the body. *Expand* makes it full width.
+- **Row handles:** hovering a table row shows **+** (add a row directly below) and **⠿** (drag to reorder; drop on a row to move before it, or on *Move to the end*). Reordering is off while the view is sorted or grouped, and when read-only. Uses the existing `relocate_page` ordering.
+- **Full width:** the database block fills the page and extends into the margins (16px gutter); wider tables, boards and timelines pan with a horizontal scrollbar.
+- **Places by name or address:** a Place cell and the Map's search box accept a name or address; pressing **Enter** looks it up on OpenStreetMap Nominatim and the chosen result is saved with its name, address and coordinates. Typing coordinates (`35.68, 139.69`) still works and never goes online.
+  - **Privacy and security:** this is the only place the app contacts a third party. It happens only on Enter, never in the background, and only the typed text is sent (to `nominatim.openstreetmap.org`). The app's content-security policy was widened by exactly that one host (`connect-src` in `tauri.conf.json`). Remote answers are validated (coordinate ranges, lengths) and shown as plain text. The Rust validator accepts an optional `address` (300 characters) on a place.
+  - The Map is still an offline degree grid; places found online are plotted on it, but no map tiles or coastlines are drawn.
+- **Editor shortcuts:** Ctrl+Shift+H applies the last highlight colour (again to remove); Tab and Shift+Tab stay in the note text.
+
+Verified: TypeScript clean; 171 Vitest tests (geocoder validation, place search in the cell and on the map, row page, row handles and drag, empty table, slash-menu rule, full-width rules). In a browser with a fake backend and the real app and styles: the `/data` menu, the full-width block with horizontal scrollbar, **+** inserting between rows, and the row page. **Not verified:** a live OpenStreetMap lookup (no network call was made in tests), real mouse-drag reordering in the Tauri window, and Ctrl+Shift+H on selected text in the real editor (the colour logic is unit-tested; the BlockNote calls are not).

@@ -642,7 +642,8 @@ fn validate(tx: &Transaction<'_>, property: &str, kind: &str, value: &Value) -> 
         ("place", Value::Object(map)) => {
             let coord = |key: &str, limit: f64| map.get(key).and_then(Value::as_f64).is_some_and(|v| v.is_finite() && v.abs() <= limit);
             let name_ok = map.get("name").is_none_or(|n| n.as_str().is_some_and(|s| s.chars().count() <= 100));
-            if !coord("lat", 90.0) || !coord("lng", 180.0) || !name_ok || map.keys().any(|k| !matches!(k.as_str(), "lat" | "lng" | "name")) { return bad(); }
+            let address_ok = map.get("address").is_none_or(|n| n.as_str().is_some_and(|s| s.chars().count() <= 300));
+            if !coord("lat", 90.0) || !coord("lng", 180.0) || !name_ok || !address_ok || map.keys().any(|k| !matches!(k.as_str(), "lat" | "lng" | "name" | "address")) { return bad(); }
         }
         ("date", Value::String(s)) if is_date(s) => {}
         ("select" | "status", v @ Value::String(_)) if option_ok(v)? => {}
@@ -748,6 +749,9 @@ mod tests {
         let place = insert_property(&tx, &database.id, "Where", "place").unwrap();
         let spot = |v: Value| validate(&tx, &place.id, &place.kind, &v);
         assert!(spot(serde_json::json!({"lat": 35.68, "lng": 139.69, "name": "Tokyo"})).unwrap().is_some());
+        assert!(spot(serde_json::json!({"lat": 35.68, "lng": 139.69, "name": "Tokyo Station", "address": "Tokyo Station, Chiyoda, Tokyo, Japan"})).unwrap().is_some(), "a place found by name can carry its address");
+        assert!(spot(serde_json::json!({"lat": 0.0, "lng": 0.0, "address": "x".repeat(301)})).is_err());
+        assert!(spot(serde_json::json!({"lat": 0.0, "lng": 0.0, "address": 5})).is_err());
         assert!(spot(serde_json::json!({"lat": 91.0, "lng": 0.0})).is_err());
         assert!(spot(serde_json::json!({"lat": 0.0, "lng": 181.0})).is_err());
         assert!(spot(serde_json::json!({"lat": 0.0})).is_err());

@@ -212,7 +212,7 @@ body{background:var(--bg);color:var(--text)}button,input,select,textarea{color:i
 @media print{.db-open,.db-row-remove,.db-new-row,.db-add-col{display:none!important}.db-peek{position:static;box-shadow:none;width:auto}}
 
 /* Inline databases, views and fixed popovers (override the first pass above) */
-.db-block{margin:12px 0;padding:0;max-width:100%}
+.db-block{margin:12px 0;padding:0}
 .db{margin:0}
 .db-name{display:block;width:100%;box-sizing:border-box;border:0;background:transparent;color:inherit;font:inherit;font-size:20px;font-weight:700;padding:4px 2px;outline-offset:2px}
 .db-scroll{overflow-x:auto;overflow-y:visible}
@@ -426,3 +426,45 @@ body:has(.shell.focus) .focus-exit:hover,body:has(.shell.focus) .focus-exit:focu
    get it, and a save error is shown plainly. */
 .save-status.save-quiet{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .save-status.save-failed{color:var(--danger,#b3261e);font-weight:600;font-size:13px}
+
+/* Row page (opens from a table row, board card, gallery card, ...) */
+.db-peek{width:min(760px,94vw)}.db-peek.wide{width:100vw;border-left:0}
+.db-peek-bar{justify-content:flex-end}.db-peek-bar .hint{margin-right:auto}
+.db-peek-bar button{border:1px solid var(--line);background:var(--bg);color:inherit;font:inherit;font-size:13px;padding:4px 12px;border-radius:6px;cursor:pointer}
+.db-peek-body{padding:20px 32px 40px;max-width:900px;width:100%;margin:0 auto;box-sizing:border-box}
+.db-peek-title{display:block;width:100%;box-sizing:border-box;border:0;background:transparent;color:inherit;font:inherit;font-size:34px;font-weight:700;padding:4px 0;outline:none}
+.db-peek-title::placeholder{color:var(--muted);opacity:.5}
+.db-peek-props{margin:10px 0 0;display:grid;gap:2px}
+.db-peek-prop{display:grid;grid-template-columns:160px minmax(0,1fr);align-items:center;gap:8px;min-height:34px}
+.db-peek-prop dt{color:var(--muted);font-size:13px;display:flex;align-items:center}.db-peek-prop dd{margin:0;min-width:0}
+.db-peek-prop .db-input{padding:6px 8px}.db-peek-prop .db-input:hover{background:var(--hover)}.db-peek-prop .db-select>summary{padding:6px 8px;border-radius:4px}.db-peek-prop .db-select>summary:hover{background:var(--hover)}
+.db-peek-rule{border:0;border-top:1px solid var(--line);margin:14px 0}
+
+/* Databases span the whole page. The block used to shrink to its content (so board/gallery looked narrow); it now fills the
+   text column and extends into the page margins, leaving a 16px gutter. Anything wider than that pans with a scrollbar. */
+.document{--doc-pad:52px}
+@media(max-width:850px){.document{--doc-pad:32px}}
+.bn-block-content[data-content-type="nouDatabase"]{display:block;width:100%;max-width:none}
+.db-block{width:calc(100% + 2*(var(--doc-pad,52px) - 16px));margin-inline:calc(16px - var(--doc-pad,52px));max-width:none;min-width:0}
+.db,.db-scroll,.db-board,.db-tl-scroll{min-width:0}
+.db-scroll,.db-board,.db-tl-scroll{overflow-x:auto;scrollbar-width:thin;scrollbar-gutter:stable}
+.db-scroll::-webkit-scrollbar,.db-board::-webkit-scrollbar,.db-tl-scroll::-webkit-scrollbar{height:10px}
+.db-scroll::-webkit-scrollbar-thumb,.db-board::-webkit-scrollbar-thumb,.db-tl-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
+@media print{.db-block{width:auto;margin-inline:0}}
+
+/* Row handles (+ and drag grip), place cells and the map search box */
+.db-title-cell{position:relative;padding-left:46px}
+.db-row-handle{position:absolute;left:6px;top:50%;transform:translateY(-50%);display:flex;opacity:0;transition:opacity .1s}
+.db-table tr:hover .db-row-handle,.db-row-handle:focus-within{opacity:1}
+.db-row-handle button{border:0;background:transparent;color:var(--muted);width:20px;height:24px;border-radius:4px;cursor:pointer;padding:0;font-size:15px;line-height:1}
+.db-row-handle button:hover:not(:disabled){background:var(--hover);color:var(--text)}.db-row-handle button:disabled{opacity:.35;cursor:default}
+.db-grip{cursor:grab!important}.db-grip:active{cursor:grabbing!important}
+tr.db-drop-target>td{box-shadow:inset 0 2px 0 var(--accent)}
+.db-end-drop td{height:26px;padding:0 10px!important;font-size:12px;color:var(--muted);border-bottom:0!important}
+.db-place-cell{position:relative}.db-place-hint{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);pointer-events:none;background:var(--bg);padding:0 4px}
+.db-place-results{min-width:300px;max-width:340px}.db-place-results button{flex-direction:column;align-items:flex-start;gap:2px}.db-place-results button .hint{font-size:11px;white-space:normal;text-align:left}
+.db-place-note{margin:6px 8px 2px;font-size:10px}
+.db-map-add{padding:8px 10px;border-bottom:1px solid var(--line)}
+.db-place-search{display:flex;gap:6px;align-items:center}.db-place-search input{flex:1;min-width:0;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:inherit;font-size:13px}
+.db-place-search button{border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:13px;padding:5px 12px;border-radius:6px;cursor:pointer}.db-place-search button:disabled{opacity:.5;cursor:default}
+.db-table th.db-title-col{padding-left:46px;text-align:left}

@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useDismiss } from "./Dismissible";
+import { PlaceResults } from "./PlaceSearch";
 import { useEditorFeatures } from "./EditorContext";
 import { newRichUpdate } from "./richUpdate";
 import { BoardView, CalendarView, GalleryView, ListView, MapView, TimelineView } from "./DatabaseViews";
@@ -57,7 +58,7 @@ export default function Database({ databaseId, readOnly, onError }: { databaseId
   const [data, setData] = useState<DatabaseData | null>(null);
   const [failed, setFailed] = useState("");
   const [activeId, setActiveId] = useState("");
-  const [peek, setPeek] = useState<Row | null>(null);
+  const [peekId, setPeekId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const load = useCallback(async () => {
     const view = await invoke<DatabaseData | null>("get_database", { pageId: databaseId });
@@ -75,8 +76,9 @@ export default function Database({ databaseId, readOnly, onError }: { databaseId
   const view = data.views.find(v => v.id === activeId) ?? data.views[0];
   if (!view) return <p role="alert" className="db-error">This database has no views.</p>;
   const setValue = (row: Row, property: Property, value: unknown) => act(() => invoke("set_value", { rowId: row.id, propertyId: property.id, value }));
-  const addRow = (values: Record<string, unknown> = {}) => act(async () => {
+  const addRow = (values: Record<string, unknown> = {}, title?: string) => act(async () => {
     const row = await invoke<Row>("add_row", { databaseId, initialUpdate: await newRichUpdate() });
+    if (title && title.trim()) await invoke("rename_page", { pageId: row.id, title: title.trim() });
     for (const [propertyId, value] of Object.entries(values)) await invoke("set_value", { rowId: row.id, propertyId, value });
   });
   // Every view setting is saved as one complete, validated object (the server rejects unknown ids and operators).
@@ -88,7 +90,7 @@ export default function Database({ databaseId, readOnly, onError }: { databaseId
   const needle = search.trim().toLowerCase();
   const searched = needle ? visibleRows(data.rows, data.properties, view.config).filter(r => r.title.toLowerCase().includes(needle) || Object.values(r.values).some(v => typeof v === "string" && v.toLowerCase().includes(needle))) : visibleRows(data.rows, data.properties, view.config);
   const shown: DatabaseData = { ...data, rows: searched };
-  const ctx: ViewContext = { data: shown, view, readOnly, open: setPeek, setValue, addRow, onError };
+  const ctx: ViewContext = { data: shown, view, readOnly, open: row => setPeekId(row.id), setValue, addRow, onError };
 
   return <div className="db">
     <input className="db-name" aria-label="Database title" defaultValue={data.title} readOnly={readOnly} key={data.title}
@@ -105,19 +107,41 @@ export default function Database({ databaseId, readOnly, onError }: { databaseId
     {view.type === "timeline" && <TimelineView ctx={ctx} />}
     {view.type === "map" && <MapView ctx={ctx} />}
     {view.type !== "board" && view.type !== "calendar" && <button className="db-new-row" disabled={readOnly} onClick={() => void addRow()}>+ New row</button>}
-    {peek && <RowPeek row={peek} onClose={() => { setPeek(null); void load().catch(() => undefined); }} />}
+    {peekId && <RowPage rowId={peekId} data={data} readOnly={readOnly} act={act} onClose={() => { setPeekId(null); void load().catch(() => undefined); }} />}
   </div>;
 }
 
-function RowPeek({ row, onClose }: { row: Row; onClose: () => void }) {
+/**
+ * A database row as a full page: editable title, every property as an editable field, then the page body.
+ * It reads the row from the latest database data, so edits show up here as soon as they are saved.
+ */
+function RowPage({ rowId, data, readOnly, act, onClose }: { rowId: string; data: DatabaseData; readOnly: boolean; act: Act; onClose: () => void }) {
   const [status, setStatus] = useState("saved");
+  const [wide, setWide] = useState(false);
   const busy = status !== "saved";
-  // While the panel is still saving, the rest of the app must not navigate away or close (same guard as the main editor).
+  const row = data.rows.find(r => r.id === rowId);
+  // While the body is still saving, the rest of the app must not navigate away or close (same guard as the main editor).
   const { setPeekBusy } = useEditorFeatures();
   useEffect(() => { setPeekBusy(busy); return () => setPeekBusy(false); }, [busy, setPeekBusy]);
-  return createPortal(<div className="db-peek" role="dialog" aria-label={"Page " + row.title}>
-    <div className="db-peek-bar"><strong>{row.title}</strong><span className="hint">{busy ? "Saving…" : ""}</span><button disabled={busy} onClick={onClose}>Close</button></div>
-    <div className="db-peek-body"><Suspense fallback={<p role="status">Opening page…</p>}><NoteEditor pageId={row.id} title={row.title} onStatus={s => setStatus(String(s))} readOnly={false} /></Suspense></div>
+  if (!row) return null;
+  const setValue = (property: Property, value: unknown) => act(() => invoke("set_value", { rowId: row.id, propertyId: property.id, value }));
+  return createPortal(<div className={"db-peek" + (wide ? " wide" : "")} role="dialog" aria-label={"Page " + row.title}>
+    <div className="db-peek-bar">
+      <button aria-pressed={wide} title={wide ? "Side panel" : "Full width"} onClick={() => setWide(v => !v)}>{wide ? "Shrink" : "Expand"}</button>
+      <span className="hint">{busy ? "Saving…" : ""}</span>
+      <button disabled={busy} onClick={onClose}>Close</button>
+    </div>
+    <div className="db-peek-body">
+      <input className="db-peek-title" aria-label="Page title" defaultValue={row.title} readOnly={readOnly} key={row.title} placeholder="Untitled"
+        onBlur={e => { const title = e.target.value.trim(); if (title && title !== row.title) void act(() => invoke("rename_page", { pageId: row.id, title })); else e.target.value = row.title; }}
+        onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+      {data.properties.length > 0 && <dl className="db-peek-props" aria-label="Properties">
+        {data.properties.map(property => <div key={property.id} className="db-peek-prop"><dt><span className="db-kind" aria-hidden="true">{KIND_ICON[property.type]}</span>{property.name}</dt>
+          <dd><Cell property={property} wrap={false} value={row.values[property.id]} readOnly={readOnly} onChange={value => void setValue(property, value)} onError={() => {}} linked={data.linked} /></dd></div>)}
+      </dl>}
+      <hr className="db-peek-rule" />
+      <Suspense fallback={<p role="status">Opening page…</p>}><NoteEditor pageId={row.id} title={row.title} onStatus={s => setStatus(String(s))} readOnly={readOnly} /></Suspense>
+    </div>
   </div>, document.body);
 }
 
@@ -231,8 +255,26 @@ function TableView({ ctx, act, patch, databaseId }: { ctx: ViewContext; act: Act
   const groupProperty = config.groupBy ? data.properties.find(p => p.id === config.groupBy && groupable(p.type)) : undefined;
   const groups = groupProperty ? groupRows(data.rows, groupProperty) : null;
   const span = columns.length + 2;
-  const renderRow = (row: Row) => <tr key={row.id}>
+  // Rows can be dragged to reorder only when the view shows them in their own order (no sort, no grouping).
+  const canReorder = !readOnly && !(config.sorts ?? []).length && !config.groupBy;
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const moveBefore = (dragged: string, target: string | null) => { setDragId(null); setOverId(null); if (dragged !== target) void act(() => invoke("relocate_page", { pageId: dragged, parentId: databaseId, beforeId: target })); };
+  const insertBelow = (row: Row) => act(async () => {
+    const created = await invoke<Row>("add_row", { databaseId, initialUpdate: await newRichUpdate() });
+    const next = data.rows[data.rows.findIndex(r => r.id === row.id) + 1];
+    if (next) await invoke("relocate_page", { pageId: created.id, parentId: databaseId, beforeId: next.id });
+  });
+  const renderRow = (row: Row) => <tr key={row.id} className={overId === row.id && dragId ? "db-drop-target" : ""}
+    onDragOver={e => { if (dragId && canReorder) { e.preventDefault(); if (overId !== row.id) setOverId(row.id); } }}
+    onDrop={e => { const id = e.dataTransfer.getData("application/x-nou-row") || dragId; if (id && canReorder) { e.preventDefault(); moveBefore(id, row.id); } }}>
     <td className="db-title-col" style={frozenStyle(-1)}><div className="db-title-cell">
+      <div className="db-row-handle">
+        <button aria-label={"Add a row below " + row.title} title="Add a row below" disabled={readOnly} onClick={() => void insertBelow(row)}>+</button>
+        <button aria-label={"Drag " + row.title + " to reorder"} className="db-grip" title={canReorder ? "Drag to reorder" : "Remove sorting and grouping to reorder rows"} disabled={!canReorder} draggable={canReorder}
+          onDragStart={e => { e.dataTransfer.setData("application/x-nou-row", row.id); e.dataTransfer.effectAllowed = "move"; setDragId(row.id); }}
+          onDragEnd={() => { setDragId(null); setOverId(null); }}>⠿</button>
+      </div>
       <input className="db-input db-title-input" aria-label={"Title of " + row.title} defaultValue={row.title} readOnly={readOnly} key={row.id + row.title}
         onBlur={e => { const title = e.target.value.trim(); if (title && title !== row.title) void act(() => invoke("rename_page", { pageId: row.id, title })); else e.target.value = row.title; }}
         onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
@@ -255,16 +297,17 @@ function TableView({ ctx, act, patch, databaseId }: { ctx: ViewContext; act: Act
     </tr></thead>
     <tbody>
       {groups ? groups.map(group => <GroupBody key={group.key || "none"} group={group} span={span} render={renderRow} />) : data.rows.map(renderRow)}
+      {dragId && canReorder && <tr className={"db-end-drop" + (overId === "" ? " db-drop-target" : "")} onDragOver={e => { e.preventDefault(); if (overId !== "") setOverId(""); }} onDrop={e => { e.preventDefault(); moveBefore(e.dataTransfer.getData("application/x-nou-row") || dragId, null); }}><td colSpan={span}>Move to the end</td></tr>}
     </tbody>
-    <tfoot><tr className={hasCalc ? "has-calc" : ""}>
+    {hasCalc && <tfoot><tr className={hasCalc ? "has-calc" : ""}>
       <td className="db-title-col" style={frozenStyle(-1)} />
       {columns.map((property, i) => { const fn = calc[property.id]; return <td key={property.id} style={frozenStyle(i)}>
         <Popover className="db-calc" summaryLabel={"Calculate " + property.name} summary={fn ? <span className="db-calc-value"><em>{CALC_LABELS[fn]}</em> {computeCalc(fn, data.rows, property)}</span> : <span className="db-calc-empty">Calculate</span>} menuClass="db-options">
           {[undefined, ...calcOptions(property.type)].map(option => <button key={option ?? "none"} disabled={readOnly} aria-selected={option === fn} onClick={e => { closeOf(e); void patch({ calc: { ...calc, [property.id]: option } as Record<string, CalcFn> }); }}>{option ? CALC_LABELS[option] : "None"}</button>)}
         </Popover></td>; })}
       <td className="db-add-col" />
-    </tr></tfoot>
-  </table>{!data.rows.length && <p className="hint db-empty">No rows to show.</p>}</div>;
+    </tr></tfoot>}
+  </table></div>;
 }
 
 /** Copy a row: its values and its full page body. Automatic (time) columns are not copied; the copy gets its own. */
@@ -326,12 +369,8 @@ function Cell({ property, value, wrap, readOnly, onChange, onError, linked }: { 
       return <RelationCell property={property} ids={Array.isArray(value) ? (value as string[]) : []} linked={linked ?? {}} readOnly={readOnly} onChange={onChange} />;
     case "created_time": case "last_edited_time":
       return <span className="db-auto" aria-label={label} title="Filled in automatically">{formatStamp(value)}</span>;
-    case "place": {
-      const text = formatPlace(value);
-      const commit = (el: HTMLInputElement | HTMLTextAreaElement) => { const next = el.value.trim(); if (next === text) return; if (next === "") return onChange(null); const place = parsePlace(next); if (place) onChange(place); else { el.value = text; onError(new Error("Enter a place as latitude, longitude (for example 35.68, 139.69).")); } };
-      const common = { className: "db-input" + (wrap ? " db-wrap" : ""), "aria-label": label, placeholder: "lat, lng", title: "Latitude, longitude and an optional name, e.g. 35.68, 139.69, Tokyo", defaultValue: text, readOnly, key: text };
-      return wrap ? <textarea rows={1} {...common} onBlur={e => commit(e.target)} /> : <input {...common} onBlur={e => commit(e.target)} />;
-    }
+    case "place":
+      return <PlaceCell property={property} value={value} readOnly={readOnly} wrap={wrap} onChange={onChange} onError={onError} />;
     default: {
       const text = typeof value === "string" ? value : "";
       const commit = (el: HTMLInputElement | HTMLTextAreaElement) => { if (el.value !== text) onChange(el.value === "" ? null : el.value); };
@@ -341,6 +380,49 @@ function Cell({ property, value, wrap, readOnly, onChange, onError, linked }: { 
     }
   }
 }
+
+/**
+ * A place column. Type coordinates ("35.68, 139.69") and leave the field to save them, or type a name or address and press
+ * Enter to search for it online. Nothing is sent to anyone until Enter is pressed.
+ */
+function PlaceCell({ property, value, readOnly, wrap, onChange, onError }: { property: Property; value: unknown; readOnly: boolean; wrap: boolean; onChange: (value: unknown) => void; onError: (e: unknown) => void }) {
+  const text = formatPlace(value);
+  const [draft, setDraft] = useState(text);
+  const [query, setQuery] = useState<string | null>(null);
+  const box = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  useEffect(() => { setDraft(text); }, [text]);
+  const tooltip = isPlaceValue(value) ? `${value.lat}, ${value.lng}${value.address ? "\n" + value.address : ""}` : "Type coordinates (35.68, 139.69) or a place name and press Enter to search";
+  const commit = () => {
+    if (query !== null) return;
+    const next = draft.trim();
+    if (next === text) return;
+    if (next === "") return onChange(null);
+    const place = parsePlace(next);
+    if (place) onChange(place);
+    else { setDraft(text); if (looksLikeCoordinates(next)) onError(new Error("Enter a place as latitude, longitude (for example 35.68, 139.69).")); }
+  };
+  const common = {
+    ref: box as never, className: "db-input" + (wrap ? " db-wrap" : ""), "aria-label": property.name, placeholder: "Search a place or lat, lng", title: tooltip, value: draft, readOnly,
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraft(e.target.value), onBlur: commit,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Escape") { setQuery(null); setDraft(text); return; }
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const next = draft.trim();
+      if (next === "" || next === text || parsePlace(next) || looksLikeCoordinates(next)) { commit(); return; }
+      setQuery(next);
+    },
+  };
+  const hint = !readOnly && query === null && draft.trim() !== "" && draft.trim() !== text && !parsePlace(draft.trim()) && !looksLikeCoordinates(draft.trim());
+  return <div className="db-place-cell">
+    {wrap ? <textarea rows={1} {...common} /> : <input {...common} />}
+    {hint && <span className="db-place-hint">Enter: search online</span>}
+    {query !== null && <PlaceResults query={query} anchor={box.current} onClose={() => { setQuery(null); setDraft(text); }}
+      onPick={p => { setQuery(null); onChange({ lat: p.lat, lng: p.lng, name: p.name, address: p.address }); }} />}
+  </div>;
+}
+const looksLikeCoordinates = (t: string) => /^-?\d+(\.\d+)?\s*[,;\s]\s*-?\d+(\.\d+)?/.test(t);
+const isPlaceValue = (v: unknown): v is { lat: number; lng: number; address?: string } => !!v && typeof v === "object" && typeof (v as { lat?: unknown }).lat === "number" && typeof (v as { lng?: unknown }).lng === "number";
 
 type Panel = "main" | "type" | "sort" | "options";
 /** The Notion-style column menu: rename, change type, filter, sort, group, calculate, freeze, hide, wrap, insert, duplicate, delete. */

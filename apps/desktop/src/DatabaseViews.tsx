@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { PlaceSearchBox } from "./PlaceSearch";
 import { Chip, Summary, cardProperties, dateOf, dayNumber, fromDay, isDateLike, isPlace, type Place, type Row, type ViewContext } from "./dbShared";
 
 function Notice({ children }: { children: React.ReactNode }) { return <p className="hint db-notice">{children}</p>; }
@@ -124,7 +125,7 @@ export function MapView({ ctx }: { ctx: ViewContext }) {
   const [mode, setMode] = useState<"fit" | "world">("fit");
   const [zoom, setZoom] = useState(1);
   const points = useMemo(() => (place ? ctx.data.rows.flatMap(row => { const v = row.values[place.id]; return isPlace(v) ? [{ row, at: v as Place }] : []; }) : []), [ctx.data.rows, place]);
-  if (!place) return <Notice>Choose a Place property to plot rows on the map. Add one with the + button in the Table view, then type coordinates such as 35.68, 139.69.</Notice>;
+  if (!place) return <Notice>Choose a Place property to plot rows on the map. Add one with the + button in the Table view.</Notice>;
   const missing = ctx.data.rows.filter(r => !isPlace(r.values[place.id]));
   const W = 900, H = 520;
   let minLng = -180, maxLng = 180, minLat = -90, maxLat = 90;
@@ -144,6 +145,7 @@ export function MapView({ ctx }: { ctx: ViewContext }) {
   const step = niceStep(Math.max(maxLat - minLat, 1e-6));
   const lines = (lo: number, hi: number, limit: number) => { const out: number[] = []; for (let v = Math.ceil(Math.max(lo, -limit) / step) * step; v <= Math.min(hi, limit) + 1e-9 && out.length < 60; v += step) out.push(+v.toFixed(6)); return out; };
   return <div className="db-map">
+    {!ctx.readOnly && <div className="db-map-add"><PlaceSearchBox onPick={p => void ctx.addRow({ [place.id]: { lat: p.lat, lng: p.lng, name: p.name, address: p.address } }, p.name)} placeholder="Search a place or address to add a pin…" /></div>}
     <div className="db-map-bar">
       <button className={mode === "fit" ? "active" : ""} onClick={() => { setMode("fit"); setZoom(1); }}>Fit pins</button>
       <button className={mode === "world" ? "active" : ""} onClick={() => setMode("world")}>World</button>
@@ -163,7 +165,7 @@ export function MapView({ ctx }: { ctx: ViewContext }) {
         </g>;
       })}
     </svg>
-    {!points.length && <Notice>No rows have a place yet. In the Table view, type coordinates such as 35.68, 139.69 into the {place.name} column.</Notice>}
+    {!points.length && <Notice>No pins yet. Search for a place or address above (press Enter), or type coordinates such as 35.68, 139.69 into the {place.name} column in the Table view.</Notice>}
     {missing.length > 0 && points.length > 0 && <details className="db-undated"><summary>No place ({missing.length})</summary>{missing.map(row => <button key={row.id} className="db-cal-item" onClick={() => ctx.open(row)}>{row.title}</button>)}</details>}
   </div>;
 }

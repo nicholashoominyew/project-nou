@@ -18,6 +18,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: a
   if (command === "add_view") return { id: "v-new", name: args.name, type: args.kind, config: args.config };
 } }));
 vi.mock("./richUpdate", () => ({ newRichUpdate: async () => [1] }));
+const { search } = vi.hoisted(() => ({ search: { calls: [] as string[], results: [{ name: "Tokyo Station", address: "Tokyo Station, Chiyoda, Tokyo, Japan", lat: 35.6812, lng: 139.7671 }] as any[] } }));
+vi.mock("./geocode", () => ({ searchPlaces: async (q: string) => { search.calls.push(q); return search.results; } }));
 vi.mock("./NoteEditor", () => ({ default: ({ pageId, onStatus }: { pageId: string; onStatus: (s: string) => void }) => <div><span data-testid="note">{pageId}</span><button onClick={() => onStatus("saving")}>make busy</button><button onClick={() => onStatus("saved")}>make saved</button></div> }));
 
 const base = () => ({
@@ -34,7 +36,7 @@ const base = () => ({
 });
 const show = (readOnly = false) => render(<Database databaseId="db" readOnly={readOnly} onError={() => {}} />);
 const withView = (type: string, config: object) => { view.current = { ...base(), views: [{ id: "v1", name: "View", type, config }] }; };
-beforeEach(() => { calls.length = 0; view.current = base(); });
+beforeEach(() => { calls.length = 0; search.calls.length = 0; view.current = base(); });
 
 describe("Database", () => {
   it("shows the title and typed cells and saves a checkbox through set_value", async () => {
@@ -313,5 +315,184 @@ describe("Database", () => {
     fireEvent.click(screen.getByText("make saved"));
     await waitFor(() => expect(busy[busy.length - 1]).toBe(false));
     expect((screen.getByText("Close") as HTMLButtonElement).disabled).toBe(false);
+  });
+  it("a new empty table is just the header and + New row: no 'No rows' message and no empty calculation row", async () => {
+    view.current = { ...base(), rows: [], views: [{ id: "v1", name: "Table", type: "table", config: {} }] };
+    const { container } = show();
+    await screen.findByDisplayValue("Projects");
+    expect(screen.queryByText(/No rows/)).toBeNull();
+    expect(container.querySelector("tfoot")).toBeNull();
+    expect(screen.getByText("+ New row")).toBeTruthy();
+  });
+  it("a configured calculation still shows its row", async () => {
+    view.current = { ...base(), views: [{ id: "v1", name: "Table", type: "table", config: { calc: { hours: "sum" } } }] };
+    const { container } = show();
+    await screen.findByDisplayValue("Write ADR");
+    expect(container.querySelector("tfoot")).toBeTruthy();
+  });
+
+  describe("row page", () => {
+    const openRow = async () => { show(); fireEvent.click(await screen.findByLabelText("Open Write ADR")); return await screen.findByRole("dialog", { name: "Page Write ADR" }); };
+    it("opens as a page with an editable title, every property as a field, and the body", async () => {
+      const dialog = await openRow();
+      expect((within(dialog).getByLabelText("Page title") as HTMLInputElement).value).toBe("Write ADR");
+      const props = within(dialog).getByLabelText("Properties");
+      for (const name of ["Finished", "Hours", "State", "Due", "Where"]) expect(within(props).getByText(name)).toBeTruthy();
+      expect(within(dialog).getByTestId("note").textContent).toBe("r1");
+    });
+    it("renaming the page and changing a property save through the normal commands", async () => {
+      const dialog = await openRow();
+      const title = within(dialog).getByLabelText("Page title");
+      fireEvent.change(title, { target: { value: "Write the ADR" } }); fireEvent.blur(title);
+      await waitFor(() => expect(calls).toContainEqual({ command: "rename_page", args: { pageId: "r1", title: "Write the ADR" } }));
+      const hours = within(within(dialog).getByLabelText("Properties")).getByLabelText("Hours");
+      fireEvent.change(hours, { target: { value: "8" } }); fireEvent.blur(hours);
+      await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "r1", propertyId: "hours", value: 8 } }));
+    });
+    it("can expand to full width and shrink back", async () => {
+      const dialog = await openRow();
+      expect(dialog.classList.contains("wide")).toBe(false);
+      fireEvent.click(within(dialog).getByText("Expand"));
+      expect(dialog.classList.contains("wide")).toBe(true);
+      fireEvent.click(within(dialog).getByText("Shrink"));
+      expect(dialog.classList.contains("wide")).toBe(false);
+    });
+    it("is read-only when the profile is", async () => {
+      show(true);
+      fireEvent.click(await screen.findByLabelText("Open Write ADR"));
+      const dialog = await screen.findByRole("dialog", { name: "Page Write ADR" });
+      expect((within(dialog).getByLabelText("Page title") as HTMLInputElement).readOnly).toBe(true);
+      expect((within(within(dialog).getByLabelText("Properties")).getByLabelText("Finished") as HTMLInputElement).disabled).toBe(true);
+    });
+    it("a board card opens the same full page", async () => {
+      withView("board", { groupBy: "state" }); show();
+      fireEvent.click((await screen.findByText("Write ADR")).closest("article")!);
+      expect(await screen.findByRole("dialog", { name: "Page Write ADR" })).toBeTruthy();
+    });
+  });
+
+  describe("row handles", () => {
+    const row = (title: string) => screen.getByLabelText("Title of " + title).closest("tr") as HTMLElement;
+    const drag = (data: Record<string, string> = {}) => ({ dataTransfer: { setData: (k: string, v: string) => { data[k] = v; }, getData: (k: string) => data[k] ?? "", effectAllowed: "" } });
+    it("+ adds a row directly below the one it belongs to", async () => {
+      show();
+      fireEvent.click(await screen.findByLabelText("Add a row below Write ADR"));
+      await waitFor(() => expect(calls).toContainEqual({ command: "relocate_page", args: { pageId: "new-row", parentId: "db", beforeId: "r2" } }));
+      expect(calls.some(c => c.command === "add_row")).toBe(true);
+    });
+    it("+ on the last row just adds a row at the end", async () => {
+      show();
+      fireEvent.click(await screen.findByLabelText("Add a row below Loose end"));
+      await waitFor(() => expect(calls.some(c => c.command === "add_row")).toBe(true));
+      expect(calls.some(c => c.command === "relocate_page")).toBe(false);
+    });
+    it("dragging a row's grip onto another row moves it before that row", async () => {
+      show();
+      await screen.findByDisplayValue("Write ADR");
+      const payload: Record<string, string> = {};
+      fireEvent.dragStart(screen.getByLabelText("Drag Write ADR to reorder"), drag(payload));
+      expect(payload["application/x-nou-row"]).toBe("r1");
+      fireEvent.dragOver(row("Loose end"), drag(payload));
+      expect(row("Loose end").className).toContain("db-drop-target");
+      fireEvent.drop(row("Loose end"), drag(payload));
+      await waitFor(() => expect(calls).toContainEqual({ command: "relocate_page", args: { pageId: "r1", parentId: "db", beforeId: "r2" } }));
+    });
+    it("dropping on 'Move to the end' puts the row last", async () => {
+      show();
+      await screen.findByDisplayValue("Write ADR");
+      const payload: Record<string, string> = {};
+      fireEvent.dragStart(screen.getByLabelText("Drag Write ADR to reorder"), drag(payload));
+      fireEvent.drop(await screen.findByText("Move to the end"), drag(payload));
+      await waitFor(() => expect(calls).toContainEqual({ command: "relocate_page", args: { pageId: "r1", parentId: "db", beforeId: null } }));
+    });
+    it("dropping a row on itself does nothing", async () => {
+      show();
+      await screen.findByDisplayValue("Write ADR");
+      const payload: Record<string, string> = {};
+      fireEvent.dragStart(screen.getByLabelText("Drag Write ADR to reorder"), drag(payload));
+      fireEvent.drop(row("Write ADR"), drag(payload));
+      expect(calls.some(c => c.command === "relocate_page")).toBe(false);
+    });
+    it("reordering is switched off while the view is sorted or grouped, and when read-only", async () => {
+      view.current = { ...base(), views: [{ id: "v1", name: "Table", type: "table", config: { sorts: [{ p: "hours", dir: "asc" }] } }] };
+      const first = show();
+      expect((await screen.findByLabelText("Drag Write ADR to reorder") as HTMLButtonElement).disabled).toBe(true);
+      first.unmount();
+      view.current = base();
+      show(true);
+      expect((await screen.findByLabelText("Drag Write ADR to reorder") as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByLabelText("Add a row below Write ADR") as HTMLButtonElement).disabled).toBe(true);
+    });
+  });
+
+  describe("place search", () => {
+    it("typing coordinates saves them without contacting any search service", async () => {
+      show();
+      const cells = await screen.findAllByLabelText("Where");
+      const empty = cells[1] as HTMLInputElement;
+      fireEvent.change(empty, { target: { value: "48.8566, 2.3522" } });
+      fireEvent.keyDown(empty, { key: "Enter" });
+      await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "r2", propertyId: "where", value: { lat: 48.8566, lng: 2.3522 } } }));
+      expect(search.calls).toEqual([]);
+    });
+    it("a name or address is only looked up when Enter is pressed, then a chosen result is saved with its address", async () => {
+      show();
+      const empty = (await screen.findAllByLabelText("Where"))[1] as HTMLInputElement;
+      fireEvent.change(empty, { target: { value: "Tokyo Station" } });
+      expect(screen.getByText("Enter: search online")).toBeTruthy();
+      expect(search.calls).toEqual([]);
+      fireEvent.blur(empty);
+      expect(search.calls).toEqual([]);
+      fireEvent.change(empty, { target: { value: "Tokyo Station" } });
+      fireEvent.keyDown(empty, { key: "Enter" });
+      const results = await screen.findByRole("listbox", { name: "Place results" }, { timeout: 5000 });
+      expect(search.calls).toEqual(["Tokyo Station"]);
+      expect(within(results).getByText(/sent to nominatim.openstreetmap.org/)).toBeTruthy();
+      fireEvent.click(await within(results).findByText("Tokyo Station", {}, { timeout: 5000 }));
+      await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "r2", propertyId: "where", value: { lat: 35.6812, lng: 139.7671, name: "Tokyo Station", address: "Tokyo Station, Chiyoda, Tokyo, Japan" } } }));
+    });
+    it("out-of-range numbers are reported, never searched or saved", async () => {
+      const errors: unknown[] = [];
+      render(<Database databaseId="db" readOnly={false} onError={e => errors.push(e)} />);
+      const empty = (await screen.findAllByLabelText("Where"))[1] as HTMLInputElement;
+      fireEvent.change(empty, { target: { value: "91, 10" } });
+      fireEvent.keyDown(empty, { key: "Enter" });
+      await waitFor(() => expect(errors.length).toBe(1));
+      expect(search.calls).toEqual([]);
+      expect(calls.some(c => c.command === "set_value" && c.args.propertyId === "where")).toBe(false);
+    });
+    it("shows 'no places found' and keeps the cell unchanged when nothing matches", async () => {
+      search.results = [];
+      show();
+      const empty = (await screen.findAllByLabelText("Where"))[1] as HTMLInputElement;
+      fireEvent.change(empty, { target: { value: "zzzzqq" } });
+      fireEvent.keyDown(empty, { key: "Enter" });
+      expect(await screen.findByText(/No places found/, {}, { timeout: 5000 })).toBeTruthy();
+      expect(calls.some(c => c.command === "set_value" && c.args.propertyId === "where")).toBe(false);
+      search.results = [{ name: "Tokyo Station", address: "Tokyo Station, Chiyoda, Tokyo, Japan", lat: 35.6812, lng: 139.7671 }];
+    });
+    it("a saved place shows its name, with the coordinates and address in the tooltip", async () => {
+      view.current = { ...base(), rows: [{ id: "r1", title: "Trip", values: { where: { lat: 35.6812, lng: 139.7671, name: "Tokyo Station", address: "Tokyo Station, Chiyoda, Tokyo, Japan" } } }] };
+      show();
+      const cell = (await screen.findAllByLabelText("Where"))[0] as HTMLInputElement;
+      expect(cell.value).toBe("Tokyo Station");
+      expect(cell.title).toContain("35.6812, 139.7671");
+      expect(cell.title).toContain("Chiyoda");
+    });
+    it("the map has a search box: pick a result to add a row with that place and title", async () => {
+      withView("map", { placeBy: "where" }); show();
+      const box = await screen.findByLabelText("Search for a place");
+      fireEvent.change(box, { target: { value: "Tokyo Station" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+      fireEvent.click(await screen.findByText("Tokyo Station", { selector: "strong" }, { timeout: 5000 }));
+      const place = { lat: 35.6812, lng: 139.7671, name: "Tokyo Station", address: "Tokyo Station, Chiyoda, Tokyo, Japan" };
+      await waitFor(() => expect(calls).toContainEqual({ command: "set_value", args: { rowId: "new-row", propertyId: "where", value: place } }));
+      expect(calls).toContainEqual({ command: "rename_page", args: { pageId: "new-row", title: "Tokyo Station" } });
+    });
+    it("the map's search box is hidden when the profile is read-only", async () => {
+      withView("map", { placeBy: "where" }); show(true);
+      await screen.findByLabelText("Map of places");
+      expect(screen.queryByLabelText("Search for a place")).toBeNull();
+    });
   });
 });

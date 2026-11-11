@@ -19,7 +19,7 @@ export type ViewContext = {
   data: DatabaseData; view: View; readOnly: boolean;
   open: (row: Row) => void;
   setValue: (row: Row, property: Property, value: unknown) => Promise<void>;
-  addRow: (values?: Record<string, unknown>) => Promise<void>;
+  addRow: (values?: Record<string, unknown>, title?: string) => Promise<void>;
   onError: (e: unknown) => void;
 };
 
@@ -72,12 +72,13 @@ export function defaultConfig(type: ViewType, properties: Property[]): ViewConfi
   return {};
 }
 
-export type Place = { lat: number; lng: number; name?: string };
+export type Place = { lat: number; lng: number; name?: string; address?: string };
 export const isPlace = (value: unknown): value is Place => !!value && typeof value === "object" && typeof (value as Place).lat === "number" && typeof (value as Place).lng === "number";
 export function formatPlace(value: unknown): string {
   if (!isPlace(value)) return "";
   const coords = `${+value.lat.toFixed(5)}, ${+value.lng.toFixed(5)}`;
-  return value.name ? `${coords}, ${value.name}` : coords;
+  // A place found by name shows its name; a bare coordinate shows the numbers. Coordinates are always in the tooltip.
+  return value.name || value.address?.split(",")[0]?.trim() || coords;
 }
 /** Accepts "35.68, 139.69" (as copied from most map apps) with an optional ", Name". Returns null when it is not a valid coordinate. */
 export function parsePlace(text: string): Place | null {
