@@ -80,3 +80,41 @@ export const databaseBlock=createReactBlockSpec({type:"nouDatabase",propSchema:{
  const context=useEditorFeatures();
  return <div className="db-block" contentEditable={false}><Database databaseId={block.props.databaseId} readOnly={!editor.isEditable} onError={context.onError}/></div>;
 }});
+export type LinkedTodo={id:string;text:string;checked:boolean;pages:number};
+/** Tells every open linked to-do about a change so copies on screen stay in step (other pages read the shared state when they open). */
+export const announceLinkedTodo=(todo:LinkedTodo)=>{try{window.dispatchEvent(new CustomEvent("nou:linked-todo",{detail:todo}))}catch{/* only a refresh hint */}};
+export function LinkedTodoView({todoId,cachedText,cachedChecked,editable,onCache}:{todoId:string;cachedText:string;cachedChecked:boolean;editable:boolean;onCache:(todo:{text:string;checked:boolean})=>void}){
+ const context=useEditorFeatures();
+ const [todo,setTodo]=useState<LinkedTodo|null>(null);const [missing,setMissing]=useState(false);const [draft,setDraft]=useState(cachedText);
+ const [showPages,setShowPages]=useState(false);const [pages,setPages]=useState<{id:string;title:string}[]>([]);
+ const editing=useRef(false);
+ useEffect(()=>{let cancelled=false;
+  void invoke<LinkedTodo[]>("linked_todo_get",{ids:[todoId]}).then(list=>{if(cancelled)return;const t=Array.isArray(list)?list[0]:undefined;if(t){setTodo(t);if(!editing.current)setDraft(t.text);setMissing(false)}else setMissing(true)}).catch(()=>{if(!cancelled)setMissing(true)});
+  const on=(e:Event)=>{const t=(e as CustomEvent<LinkedTodo>).detail;if(t&&t.id===todoId){setTodo(t);if(!editing.current)setDraft(t.text)}};
+  window.addEventListener("nou:linked-todo",on);return()=>{cancelled=true;window.removeEventListener("nou:linked-todo",on)};
+ },[todoId]);
+ const checked=todo?todo.checked:cachedChecked;
+ async function change(next:{checked?:boolean;text?:string}){
+  try{const t=await invoke<LinkedTodo>("linked_todo_set",{id:todoId,checked:next.checked??null,text:next.text??null});setTodo(t);setDraft(t.text);announceLinkedTodo(t);onCache({text:t.text,checked:t.checked})}
+  catch(e){context.onError(e)}
+ }
+ async function togglePages(){
+  const open=!showPages;setShowPages(open);
+  if(open)try{setPages(await invoke<{id:string;title:string}[]>("linked_todo_pages",{id:todoId}))}catch{setPages([])}
+ }
+ return <div className={"linked-todo"+(checked?" done":"")} contentEditable={false}>
+  <input type="checkbox" aria-label="Done" checked={checked} disabled={!editable||missing||!todo} onChange={e=>void change({checked:e.target.checked})}/>
+  <input className="linked-todo-text" aria-label="To-do text" placeholder="To-do" value={missing?cachedText:draft} readOnly={!editable||missing}
+   onFocus={()=>{editing.current=true}} onChange={e=>setDraft(e.target.value)}
+   onBlur={()=>{editing.current=false;if(todo&&draft.trim()!==todo.text)void change({text:draft})}}
+   onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();(e.target as HTMLInputElement).blur()}}}/>
+  {missing?<span className="linked-todo-note" role="status">Unavailable</span>
+   :<button className="linked-todo-pages" aria-expanded={showPages} aria-label={"Shown on "+(todo?.pages??0)+" pages"} title="Where this to-do appears" onClick={()=>void togglePages()}><Icon name="link" size={14}/>{todo?.pages??""}</button>}
+  {showPages&&<div className="linked-todo-list" role="group" aria-label="Pages with this to-do">{!pages.length?<em>Not on any other page yet</em>:pages.map(p=><button key={p.id} disabled={!context.canNavigate} onClick={()=>context.open(p.id)}>{p.title||"Untitled"}</button>)}</div>}
+ </div>;
+}
+/** A to-do that can appear on several pages. Its state lives in the Notes database (linked_todos); the block stores the id and a copy of the text for search. */
+export const linkedTodoBlock=createReactBlockSpec({type:"nouLinkedTodo",propSchema:{todoId:{default:""},text:{default:""},checked:{default:false}},content:"none"},{
+ render:({block,editor})=><LinkedTodoView todoId={block.props.todoId} cachedText={block.props.text} cachedChecked={block.props.checked} editable={editor.isEditable}
+  onCache={t=>{if(t.text!==block.props.text||t.checked!==block.props.checked)editor.updateBlock(block,{props:{text:t.text,checked:t.checked}})}}/>
+});

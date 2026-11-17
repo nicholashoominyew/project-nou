@@ -72,3 +72,9 @@ export function blockPageLinkIds(blocks:readonly {type?:string;props?:Record<str
  const ids=new Set<string>();const walk=(items:typeof blocks)=>{for(const b of items){if(b.type==="nouPage"){const id=b.props?.pageId;if(typeof id==="string"&&id)ids.add(id)}if(b.children?.length)walk(b.children)}};walk(blocks);return[...ids];
 }
 export function documentPageLinkIds(doc:Y.Doc,format:string):string[]{const data=inspectDocument(doc,format);return data.blocks?blockPageLinkIds(data.blocks):[];}
+
+/** Linked to-do blocks in a note body, for the "which pages show this to-do" index. */
+export function blockLinkedTodoIds(blocks:readonly {type?:string;props?:Record<string,unknown>;children?:readonly any[]}[]):string[]{
+ const ids=new Set<string>();const walk=(items:typeof blocks)=>{for(const b of items){if(b.type==="nouLinkedTodo"){const id=b.props?.todoId;if(typeof id==="string"&&id)ids.add(id)}if(b.children?.length)walk(b.children)}};walk(blocks);return[...ids];
+}
+export function documentLinkedTodoIds(doc:Y.Doc,format:string):string[]{const data=inspectDocument(doc,format);return data.blocks?blockLinkedTodoIds(data.blocks):[];}

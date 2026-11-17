@@ -6,10 +6,10 @@ import {useEditorFeatures} from "./EditorContext";
 import {DismissibleDetails} from "./Dismissible";
 import {filterSuggestionItems,insertOrUpdateBlockForSlashMenu} from "@blocknote/core/extensions";
 import {getDefaultReactSlashMenuItems,SuggestionMenuController} from "@blocknote/react";
-import {blockAttachmentIds,documentAttachmentIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
+import {blockAttachmentIds,documentAttachmentIds,documentLinkedTodoIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
-import { editorOwnership, undoRequest, wantsExistingDatabases, hasHighlight, highlightToApply, isHighlightShortcut, readHighlight, rememberHighlight, shouldTrapTab, writeHighlight, type Highlight } from "./editorKeys";
+import { editorOwnership, undoRequest, wantsExistingDatabases, wantsExistingTodos, hasHighlight, highlightToApply, isHighlightShortcut, readHighlight, rememberHighlight, shouldTrapTab, writeHighlight, type Highlight } from "./editorKeys";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { withCollaboration } from "@blocknote/core/yjs";
@@ -98,10 +98,21 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
       return list.map(d=>({title:"Database: "+d.title,aliases:["database","linked","table","board",d.title],group:"Existing databases",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouDatabase",props:{databaseId:d.id}} as never)}));
     }catch{return []}
   }
+  async function linkedTodoItems(){
+    try{
+      const list=await invoke<{id:string;text:string;checked:boolean;pages:number}[]>("linked_todo_list",{query:""});
+      return list.map(t=>({title:"Linked to-do: "+(t.text||"(empty)"),aliases:["linked","shared","todo",t.text],group:"Existing linked to-dos",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouLinkedTodo",props:{todoId:t.id,text:t.text,checked:t.checked}} as never)}));
+    }catch{return []}
+  }
+  async function newLinkedTodo(){
+    try{const t=await invoke<{id:string;text:string;checked:boolean}>("linked_todo_create",{text:""});insertOrUpdateBlockForSlashMenu(editor,{type:"nouLinkedTodo",props:{todoId:t.id,text:"",checked:false}} as never)}
+    catch(e){context.onError(e)}
+  }
   const pageItems=(query:string)=>filterSuggestionItems(context.pages.map(page=>({title:page.title,aliases:[],group:"Pages",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium"}} as never)})),query).slice(0,12);
   const items=()=>[...getDefaultReactSlashMenuItems(editor),
     {title:"Page",aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
     {title:"Database",aliases:["database","table","board","calendar","timeline","gallery","list"],group:"NOU",onItemClick:()=>void create("database")},
+    {title:"Linked to-do",aliases:["linked","shared","todo","to-do","checklist","task"],group:"NOU",onItemClick:()=>void newLinkedTodo()},
     {title:"Bookmark",aliases:["bookmark","link"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouBookmark"})},
     {title:"Image",aliases:["image","photo","upload"],group:"NOU",onItemClick:()=>void create("image")},
     {title:"PDF",aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
@@ -112,7 +123,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
     onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
   <BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
-    <SuggestionMenuController triggerCharacter="/" getItems={async query=>{const linked=wantsExistingDatabases(query)?await linkedDatabaseItems():[];return filterSuggestionItems([...items(),...linked],query)}}/>
+    <SuggestionMenuController triggerCharacter="/" getItems={async query=>{const linked=wantsExistingDatabases(query)?await linkedDatabaseItems():[];const todos=wantsExistingTodos(query)?await linkedTodoItems():[];return filterSuggestionItems([...items(),...linked,...todos],query)}}/>
     <SuggestionMenuController triggerCharacter="@" getItems={async query=>pageItems(query)}/>
   </BlockNoteView></div>;
 }
@@ -140,6 +151,7 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
   const latestText = useRef("");
   const latestFiles = useRef<string[]>([]);
   const lastLinks = useRef("");
+  const lastTodos = useRef("");
   function report(next: SaveStatus) { statusNow.current = next; setStatus(next); onStatus(next); }
 
   useEffect(() => {
@@ -168,9 +180,15 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
     if (readOnly || s.loaded.format !== "blocknote-v1") return;
     const targets = documentPageLinkIds(s.doc, s.loaded.format);
     const key = pageId + "|" + [...targets].sort().join(",");
-    if (key === lastLinks.current) return;
-    lastLinks.current = key;
-    void invoke("set_page_links", { pageId, targets }).catch(() => { lastLinks.current = ""; });
+    if (key !== lastLinks.current) {
+      lastLinks.current = key;
+      void invoke("set_page_links", { pageId, targets }).catch(() => { lastLinks.current = ""; });
+    }
+    const todos = documentLinkedTodoIds(s.doc, s.loaded.format);
+    const todoKey = pageId + "|" + [...todos].sort().join(",");
+    if (todoKey === lastTodos.current) return;
+    lastTodos.current = todoKey;
+    void invoke("set_page_todo_links", { pageId, ids: todos }).catch(() => { lastTodos.current = ""; });
   }
 
   function save(nextText: string, ids:string[]=[]) {

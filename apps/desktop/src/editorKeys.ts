@@ -44,6 +44,11 @@ export function writeHighlight(h: Highlight) { try { localStorage.setItem(HIGHLI
  * "/database" offers only *new* database. Existing databases (a linked view, or recovering an orphan) are listed only when
  * the person asks for them by typing "/linked" or "/existing", so the menu stays short.
  */
+/** Typing "/linked" or "/todo" also offers the to-dos that already exist, so one can be shown on another page. */
+export function wantsExistingTodos(slashQuery: string): boolean {
+  const q = slashQuery.trim().toLowerCase();
+  return q.startsWith("linked") || q.startsWith("link to") || q.startsWith("shared");
+}
 export function wantsExistingDatabases(slashQuery: string): boolean {
   const q = slashQuery.trim().toLowerCase();
   return q.startsWith("linked") || q.startsWith("existing");
