@@ -3,7 +3,7 @@ import { useDismiss } from "./Dismissible";
 
 const GROUPS: { title: string; items: [string, string][] }[] = [
   { title: "Pages and tabs", items: [
-    ["Ctrl+Q", "Quick find"], ["Ctrl+N", "New page"], ["Ctrl+W", "Close tab"], ["Ctrl+Tab / Ctrl+Shift+Tab", "Next / previous tab"],
+    ["Ctrl+Q", "Quick find"], ["Ctrl+Shift+A", "Quick capture to your Inbox"], ["Ctrl+N", "New page"], ["Ctrl+W", "Close tab"], ["Ctrl+Tab / Ctrl+Shift+Tab", "Next / previous tab"],
     ["Ctrl+1 … 8", "Go to that tab"], ["Ctrl+9", "Go to the last tab"], ["Ctrl+Shift+T", "Reopen the last closed tab"],
     ["Ctrl+[ / Ctrl+]", "Back / forward through visited pages"], ["Ctrl+Shift+U", "Go to the parent page"],
   ] },

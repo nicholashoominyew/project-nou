@@ -16,6 +16,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   if (command === "list_link_edges") return [{ source: "page", target: "second" }];
   if (command === "backup_status") return { interrupted: [] };
 } }));
+const appended=vi.hoisted(()=>[] as {page:string;blocks:unknown[]}[]);
+vi.mock("./noteAppend",()=>({appendBlocksToNote:async(page:string,blocks:unknown[])=>{appended.push({page,blocks});return {changed:true,message:"Added"}}}));
 vi.mock("./NoteEditor", () => ({ default: ({ onStatus }: { onStatus: (status: string) => void }) => <>
   <button onClick={() => onStatus("saving")}>Simulate pending save</button>
   <button onClick={() => onStatus("failed")}>Simulate failed save</button>
@@ -202,4 +204,25 @@ it("Ctrl+wheel and trackpad pinch never zoom the whole window, except on the gra
  // the graph's own listener prevents it too, so check the app-level rule did not stop the event from reaching the graph
  let reached=false;svg.addEventListener("wheel",()=>{reached=true});
  send(svg,{ctrlKey:true,deltaY:-4});expect(reached).toBe(true);
+});
+it("Ctrl+Shift+A opens quick capture; saving makes an Inbox page on first use and adds the lines to it",async()=>{
+ appended.length=0;render(<App/>);await screen.findByText("Test note");
+ fireEvent.keyDown(window,{key:"A",ctrlKey:true,shiftKey:true});
+ const box=await screen.findByLabelText("Capture text");
+ fireEvent.change(box,{target:{value:"[] call Sam\nplain thought"}});fireEvent.keyDown(box,{key:"Enter"});
+ expect(await screen.findByText(/Saved to Inbox/)).toBeTruthy();
+ expect(calls).toContain("create_page");
+ expect(appended).toEqual([{page:"created",blocks:[{type:"checkListItem",text:"call Sam",checked:false},{type:"paragraph",text:"plain thought"}]}]);
+ expect(JSON.parse(localStorage.getItem("nou-inbox-page")||"null")).toBe("created");
+ fireEvent.keyDown(window,{key:"A",ctrlKey:true,shiftKey:true});
+ await waitFor(()=>expect(screen.queryByLabelText("Capture text")).toBeNull());
+});
+it("quick capture uses an existing top-level Inbox page and is opened from the sidebar",async()=>{
+ appended.length=0;localStorage.setItem("nou-inbox-page",JSON.stringify("second"));
+ render(<App/>);await screen.findByText("Test note");
+ fireEvent.click(screen.getByRole("button",{name:/Quick capture/}));
+ const box=await screen.findByLabelText("Capture text");
+ fireEvent.change(box,{target:{value:"hello"}});fireEvent.keyDown(box,{key:"Enter"});
+ await screen.findByText(/Saved to Inbox/);
+ expect(appended[0].page).toBe("second");expect(calls.filter(c=>c==="create_page").length).toBe(0);
 });

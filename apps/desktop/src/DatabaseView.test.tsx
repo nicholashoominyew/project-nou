@@ -426,9 +426,12 @@ describe("Database", () => {
   });
 
   describe("place search", () => {
+    // Wait for the rows to finish loading first: the table re-renders once after its first paint, and an event sent to a cell that was
+    // replaced in between is lost. That made these tests fail only on a busy machine.
+    const whereCells = async (firstRow = "Write ADR") => { await screen.findByDisplayValue(firstRow); return (await screen.findAllByLabelText("Where")) as HTMLInputElement[]; };
     it("typing coordinates saves them without contacting any search service", async () => {
       show();
-      const cells = await screen.findAllByLabelText("Where", {}, { timeout: 5000 });
+      const cells = await whereCells();
       const empty = cells[1] as HTMLInputElement;
       fireEvent.change(empty, { target: { value: "48.8566, 2.3522" } });
       fireEvent.keyDown(empty, { key: "Enter" });
@@ -437,7 +440,7 @@ describe("Database", () => {
     });
     it("a name or address is only looked up when Enter is pressed, then a chosen result is saved with its address", async () => {
       show();
-      const empty = (await screen.findAllByLabelText("Where"))[1] as HTMLInputElement;
+      const empty = (await whereCells())[1];
       fireEvent.change(empty, { target: { value: "Tokyo Station" } });
       expect(screen.getByText("Enter: search online")).toBeTruthy();
       expect(search.calls).toEqual([]);
@@ -454,7 +457,7 @@ describe("Database", () => {
     it("out-of-range numbers are reported, never searched or saved", async () => {
       const errors: unknown[] = [];
       render(<Database databaseId="db" readOnly={false} onError={e => errors.push(e)} />);
-      const empty = (await screen.findAllByLabelText("Where"))[1] as HTMLInputElement;
+      const empty = (await whereCells())[1];
       fireEvent.change(empty, { target: { value: "91, 10" } });
       fireEvent.keyDown(empty, { key: "Enter" });
       await waitFor(() => expect(errors.length).toBe(1));
@@ -464,7 +467,7 @@ describe("Database", () => {
     it("shows 'no places found' and keeps the cell unchanged when nothing matches", async () => {
       search.results = [];
       show();
-      const empty = (await screen.findAllByLabelText("Where"))[1] as HTMLInputElement;
+      const empty = (await whereCells())[1];
       fireEvent.change(empty, { target: { value: "zzzzqq" } });
       fireEvent.keyDown(empty, { key: "Enter" });
       expect(await screen.findByText(/No places found/, {}, { timeout: 5000 })).toBeTruthy();
@@ -474,13 +477,14 @@ describe("Database", () => {
     it("a saved place shows its name, with the coordinates and address in the tooltip", async () => {
       view.current = { ...base(), rows: [{ id: "r1", title: "Trip", values: { where: { lat: 35.6812, lng: 139.7671, name: "Tokyo Station", address: "Tokyo Station, Chiyoda, Tokyo, Japan" } } }] };
       show();
-      const cell = (await screen.findAllByLabelText("Where"))[0] as HTMLInputElement;
+      const cell = (await whereCells("Trip"))[0];
       expect(cell.value).toBe("Tokyo Station");
       expect(cell.title).toContain("35.6812, 139.7671");
       expect(cell.title).toContain("Chiyoda");
     });
     it("the map has a search box: pick a result to add a row with that place and title", async () => {
       withView("map", { placeBy: "where" }); show();
+      await screen.findByLabelText("Map of places");
       const box = await screen.findByLabelText("Search for a place");
       fireEvent.change(box, { target: { value: "Tokyo Station" } });
       fireEvent.keyDown(box, { key: "Enter" });

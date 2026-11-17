@@ -11,6 +11,9 @@ import ShortcutsHelp from "./ShortcutsHelp";
 import Backlinks from "./Backlinks";
 import PageTags from "./PageTags";
 import Home from "./Home";
+import QuickCapture from "./QuickCapture";
+import { appendBlocksToNote } from "./noteAppend";
+import { INBOX_KEY, parseCapture, pickInbox } from "./captureParse";
 const GatewayPanel=lazy(()=>import("./GatewayPanel"));
 const GraphView=lazy(()=>import("./GraphView"));
 import QuickFind from "./QuickFind";
@@ -44,7 +47,7 @@ export default function App(){
  useDismiss(menu!==null,()=>setMenu(null),menuRef);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -86,6 +89,17 @@ export default function App(){
  function closeTab(id:string){if(guard)return;closedTabs.current.push(id);const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
  function reopenTab(){if(guard)return;while(closedTabs.current.length){const id=closedTabs.current.pop()!;if(!tabs.includes(id)&&pagesRef.current.some(p=>p.id===id)){openPage(id);return}}}
  function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
+ // Quick capture: what is typed goes to the end of the Inbox page (made on first use), without leaving the current page.
+ async function captureText(text:string):Promise<string>{
+  const blocks=parseCapture(text);if(!blocks.length)throw new Error("Type something to capture.");
+  let id=pickInbox(pagesRef.current,readSetting<string|null>(INBOX_KEY,null));
+  if(!id){const page=await createRichPage(null,"Inbox");id=page.id;await reload()}
+  writeSetting(INBOX_KEY,id);
+  const out=await appendBlocksToNote(id,blocks);
+  if(out.changed)try{window.dispatchEvent(new CustomEvent("nou:note-changed",{detail:id}))}catch{}
+  return out.changed?"Saved to Inbox.":out.message;
+ }
+ function openInbox(){const id=pickInbox(pagesRef.current,readSetting<string|null>(INBOX_KEY,null));if(!id)return;setShowCapture(false);openPage(id)}
  // Keyboard shortcuts. Ctrl+C/V/X/A and Ctrl+Z/Y are handled natively by the editor and text fields.
  // Ctrl+P prints the open page (print styles hide the app chrome); Ctrl+Q opens Quick find.
  useEffect(()=>{
@@ -94,6 +108,7 @@ export default function App(){
    const key=event.key.toLowerCase();
    if(event.key==="\\"){event.preventDefault();setSidebarOpen(open=>!open)}
    else if(key==="q"&&!event.shiftKey){event.preventDefault();setQuickFind(open=>open?false:!guard)}
+   else if(key==="a"&&event.shiftKey){event.preventDefault();if(!event.repeat&&!recoveryBlocked&&!busyRef.current)setShowCapture(open=>!open)}
    else if(key==="p"&&!event.shiftKey){event.preventDefault();if(!event.repeat)window.print()}
    else if(key==="n"&&!event.shiftKey){event.preventDefault();if(!event.repeat&&!guard&&!recoveryBlocked){setQuickFind(false);void newRootPage()}}
    else if(key==="w"&&!event.shiftKey){event.preventDefault();if(!event.repeat&&selected&&tabs.includes(selected))closeTab(selected)}
@@ -185,6 +200,7 @@ export default function App(){
    <button className={"sb-item"+(!current&&!showTrash&&!showGraph?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false)}}><Icon name="home" size={17}/><span>Home</span></button>
    <button className="sb-item" disabled={guard} onClick={()=>{setQuickFindText("");setQuickFind(true)}}><Icon name="search" size={17}/><span>Search</span><kbd>Ctrl+Q</kbd></button>
    <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
+   <button className="sb-item" disabled={recoveryBlocked||busy} onClick={()=>setShowCapture(true)}><Icon name="compose" size={17}/><span>Quick capture</span><kbd>Ctrl+Shift+A</kbd></button>
    <div className="sb-scroll">
     {favorites.length>0&&<section aria-label="Favorites"><div className="sb-section"><button className="sb-section-title" aria-expanded={favoritesOpen} onClick={()=>setFavoritesOpen(v=>!v)}>Favorites</button></div>
      {favoritesOpen&&<nav aria-label="Favorite pages">{favorites.map(page=><div key={page.id}>{pageRow(page,0,true)}</div>)}</nav>}</section>}
@@ -230,6 +246,7 @@ export default function App(){
   <button role="menuitem" onClick={()=>{setMenu(null);void addSubpage(menuPage)}}>Add subpage</button>
   <hr/><button role="menuitem" className="danger" onClick={()=>{setMenu(null);trashPage(menuPage)}}>Move to Trash</button></div>}
  {focus&&<button className="focus-exit" onClick={()=>setFocus(false)} title="Leave focus mode (Esc)">Exit focus mode</button>}
+ {showCapture&&<QuickCapture save={captureText} onOpenInbox={openInbox} onClose={()=>setShowCapture(false)} disabled={recoveryBlocked}/>}
  {showShortcuts&&<ShortcutsHelp onClose={()=>setShowShortcuts(false)}/>}
  {quickFind&&<QuickFind initialQuery={quickFindText} pages={pages} onOpen={id=>{setQuickFind(false);openPage(id)}} onClose={()=>{setQuickFind(false);setQuickFindText("")}}/>}
  </main></EditorFeatures.Provider>;
