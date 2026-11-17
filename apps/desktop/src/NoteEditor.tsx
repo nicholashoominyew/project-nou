@@ -129,7 +129,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
   </BlockNoteView></div>;
 }
 
-export default function NoteEditor({ pageId, onStatus, readOnly = false, title = "Untitled" }: { pageId: string; title?: string; onStatus: (status: SaveStatus) => void; readOnly?: boolean }) {
+export default function NoteEditor({ pageId, onStatus, readOnly = false, title = "Untitled", secondary = false }: { pageId: string; title?: string; onStatus: (status: SaveStatus) => void; readOnly?: boolean; secondary?: boolean }) {
   const [session, setSession] = useState<Session>();
   const [text, setText] = useState("");
   const [status, setStatus] = useState<SaveStatus>("loading");
@@ -262,7 +262,7 @@ export default function NoteEditor({ pageId, onStatus, readOnly = false, title =
     {exportMessage&&<p role="status">{exportMessage}</p>}{exportError&&<p role="alert">{exportError}</p>}</div></DismissibleDetails>;
   return <section className="note-editor">
     <div className={"save-status "+(status === "failed" ? "save-failed" : "save-quiet")} aria-live="polite">{status === "loading" ? "Opening note…" : status === "saving" ? "Saving locally…" : status === "saved" ? "Saved on this device" : "Save error — content retained in this window"}</div>
-    {document.getElementById("note-export-host") ? createPortal(exportMenu,document.getElementById("note-export-host")!) : exportMenu}
+    {secondary ? null : document.getElementById("note-export-host") ? createPortal(exportMenu,document.getElementById("note-export-host")!) : exportMenu}
     {error && <p className="editor-error" role="alert">{error}</p>}
     {session?.loaded.format === "text-v1" && <>
       <div className="migration-notice"><strong>Original plain-text note</strong><p>Convert this note to rich-text blocks when you are ready. NOU preserves the exact original text and creates a local recovery copy first. Plain text stays literal; Markdown is not interpreted.</p>

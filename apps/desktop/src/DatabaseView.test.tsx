@@ -125,6 +125,7 @@ describe("Database", () => {
   it("place cells accept 'lat, lng, name' and reject nonsense without writing", async () => {
     const errors: unknown[] = [];
     render(<Database databaseId="db" readOnly={false} onError={e => errors.push(e)} />);
+    await screen.findByDisplayValue("Write ADR"); // rows finish loading first, so the cell is not replaced under the test
     const cells = await screen.findAllByLabelText("Where");
     const empty = cells[1] as HTMLInputElement;
     fireEvent.change(empty, { target: { value: "91, 10" } }); fireEvent.blur(empty);

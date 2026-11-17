@@ -18,11 +18,11 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
 } }));
 const appended=vi.hoisted(()=>[] as {page:string;blocks:unknown[]}[]);
 vi.mock("./noteAppend",()=>({appendBlocksToNote:async(page:string,blocks:unknown[])=>{appended.push({page,blocks});return {changed:true,message:"Added"}}}));
-vi.mock("./NoteEditor", () => ({ default: ({ onStatus }: { onStatus: (status: string) => void }) => <>
+vi.mock("./NoteEditor", () => ({ default: ({ onStatus, pageId, secondary }: { onStatus: (status: string) => void; pageId: string; secondary?: boolean }) => <div data-testid={secondary ? "split-editor" : "main-editor"} data-page={pageId}>
   <button onClick={() => onStatus("saving")}>Simulate pending save</button>
   <button onClick={() => onStatus("failed")}>Simulate failed save</button>
   <button onClick={() => onStatus("saved")}>Simulate durable save</button>
-</> }));
+</div> }));
 it("guards reload during pending and failed saves, then permits it after persistence and cleans up", async () => {
   const view = render(<App />);
   fireEvent.click(await screen.findByText("Test note"));
@@ -225,4 +225,68 @@ it("quick capture uses an existing top-level Inbox page and is opened from the s
  fireEvent.change(box,{target:{value:"hello"}});fireEvent.keyDown(box,{key:"Enter"});
  await screen.findByText(/Saved to Inbox/);
  expect(appended[0].page).toBe("second");expect(calls.filter(c=>c==="create_page").length).toBe(0);
+});
+const openSplitFromMenu = async (name: string) => { fireEvent.click(screen.getByLabelText("More options for " + name)); fireEvent.click(screen.getByRole("menuitem", { name: "Open in split view" })); };
+it("Open in split view shows a second page beside the open one, with its own editor", async () => {
+ render(<App/>);fireEvent.click(await screen.findByText("Test note"));
+ expect((await screen.findByTestId("main-editor")).getAttribute("data-page")).toBe("page");
+ await openSplitFromMenu("Second note");
+ const split = await screen.findByTestId("split-editor");
+ expect(split.getAttribute("data-page")).toBe("second");
+ expect(screen.getByTestId("main-editor").getAttribute("data-page")).toBe("page");
+ expect(screen.getByLabelText("Split view")).toBeTruthy();
+});
+it("the split entry is not offered from Home, nor for the page that is already open",async()=>{
+ render(<App/>);await screen.findByText("Test note");
+ fireEvent.click(screen.getByLabelText("More options for Test note"));
+ expect(screen.queryByRole("menuitem",{name:"Open in split view"})).toBeNull();
+ fireEvent.keyDown(document,{key:"Escape"});
+ fireEvent.click(screen.getByText("Test note"));await screen.findByTestId("main-editor");
+ fireEvent.click(screen.getByLabelText("More options for Test note"));
+ expect(screen.queryByRole("menuitem",{name:"Open in split view"})).toBeNull();
+ fireEvent.keyDown(document,{key:"Escape"});
+ fireEvent.click(screen.getByLabelText("More options for Second note"));
+ expect(screen.queryByRole("menuitem",{name:"Open in split view"})).not.toBeNull();
+});
+it("closing the split leaves the main page alone; Open alone and Swap move pages around",async()=>{
+ render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByTestId("main-editor");
+ await openSplitFromMenu("Second note");await screen.findByTestId("split-editor");
+ fireEvent.click(screen.getByText("Swap"));
+ await waitFor(()=>expect(screen.getByTestId("main-editor").getAttribute("data-page")).toBe("second"));
+ expect(screen.getByTestId("split-editor").getAttribute("data-page")).toBe("page");
+ fireEvent.click(screen.getByLabelText("Close split view"));
+ await waitFor(()=>expect(screen.queryByTestId("split-editor")).toBeNull());
+ expect(screen.getByTestId("main-editor").getAttribute("data-page")).toBe("second");
+ await openSplitFromMenu("Test note");await screen.findByTestId("split-editor");
+ fireEvent.click(screen.getByText("Open alone"));
+ await waitFor(()=>expect(screen.queryByTestId("split-editor")).toBeNull());
+ expect(screen.getByTestId("main-editor").getAttribute("data-page")).toBe("page");
+});
+it("opening the split page from the sidebar closes the split instead of showing it twice",async()=>{
+ render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByTestId("main-editor");
+ await openSplitFromMenu("Second note");await screen.findByTestId("split-editor");
+ fireEvent.click(screen.getAllByText("Second note").find(el=>el.closest(".sidebar"))!);
+ await waitFor(()=>expect(screen.queryByTestId("split-editor")).toBeNull());
+ expect(screen.getByTestId("main-editor").getAttribute("data-page")).toBe("second");
+});
+it("a pending save in the split pane blocks switching pages and closing it, until it is saved",async()=>{
+ render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByTestId("main-editor");
+ await openSplitFromMenu("Second note");const split=await screen.findByTestId("split-editor");
+ fireEvent.click(within(split).getByText("Simulate pending save"));
+ expect((screen.getByLabelText("Close split view") as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.click(screen.getAllByText("Child note").find(el=>el.closest(".sidebar"))!);
+ expect(screen.getByTestId("main-editor").getAttribute("data-page")).toBe("page");
+ fireEvent.click(within(split).getByText("Simulate durable save"));
+ await waitFor(()=>expect((screen.getByLabelText("Close split view") as HTMLButtonElement).disabled).toBe(false));
+});
+it("remembers the split page across restarts, but not when it is the same as the open page or no longer exists",async()=>{
+ localStorage.setItem("nou-split-page",JSON.stringify("second"));localStorage.setItem("nou-active-tab",JSON.stringify("page"));localStorage.setItem("nou-open-tabs",JSON.stringify(["page"]));
+ const first=render(<App/>);
+ expect((await screen.findByTestId("split-editor")).getAttribute("data-page")).toBe("second");first.unmount();
+ localStorage.setItem("nou-split-page",JSON.stringify("page"));
+ const second=render(<App/>);await screen.findByTestId("main-editor");
+ await waitFor(()=>expect(screen.queryByTestId("split-editor")).toBeNull());second.unmount();
+ localStorage.setItem("nou-split-page",JSON.stringify("gone-page"));
+ render(<App/>);await screen.findByTestId("main-editor");
+ await waitFor(()=>expect(screen.queryByTestId("split-editor")).toBeNull());
 });

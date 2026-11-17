@@ -39,12 +39,20 @@ export default function App(){
  const [error,setError]=useState("");const [busy,setBusy]=useState(false);const busyRef=useRef(false);
  const [recoveryBlocked,setRecoveryBlocked]=useState(false);const [editorStatus,setEditorStatus]=useState<SaveStatus>("saved");
  const saveStatusRef=useRef<SaveStatus>("saved");
+ // Split view: a second page shown beside the open one. It has its own editor, so it has its own save status; nothing can be switched while either is saving.
+ const [splitId,setSplitId]=useState<string|null>(()=>{const v=readSetting<unknown>("nou-split-page",null);return typeof v==="string"?v:null});
+ const [splitStatus,setSplitStatus]=useState<SaveStatus>("saved");const splitStatusRef=useRef<SaveStatus>("saved");const splitIdRef=useRef<string|null>(null);splitIdRef.current=splitId;
+ const onSplitStatus=useCallback((s:SaveStatus)=>{splitStatusRef.current=s;setSplitStatus(s)},[]);
+ useEffect(()=>writeSetting("nou-split-page",splitId),[splitId]);
  const [theme,setTheme]=useState<"light"|"dark">(()=>readSetting<string>("nou-theme","light")==="dark"?"dark":"light");
  const [sidebarOpen,setSidebarOpen]=useState<boolean>(()=>readSetting<unknown>("nou-sidebar-open",true)!==false);
  const [sidebarWidth,setSidebarWidth]=useState<number>(()=>{const w=Number(readSetting<unknown>("nou-sidebar-width",260));return Number.isFinite(w)?clampSidebar(w):260});
  const [favoritesOpen,setFavoritesOpen]=useState(true);const [menu,setMenu]=useState<RowMenu|null>(null);const [renaming,setRenaming]=useState<string|null>(null);
  const menuRef=useRef<HTMLDivElement>(null);const cancelRename=useRef(false);
  useDismiss(menu!==null,()=>setMenu(null),menuRef);
+ // A split page that no longer exists (deleted, trashed, restored from an older backup) closes the split.
+ useEffect(()=>{if(splitId&&splitId===selected){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}},[selected,splitId]);
+ useEffect(()=>{if(splitId&&pages.length&&!pages.some(p=>p.id===splitId)){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}},[pages,splitId]);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
  const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
@@ -58,7 +66,7 @@ export default function App(){
  useDismiss(iconPicker,()=>setIconPicker(false),iconPickerRef);
  const onEditorStatus=useCallback((s:SaveStatus)=>{saveStatusRef.current=s;setEditorStatus(s)},[]);
  function markBusy(value:boolean){busyRef.current=value;setBusy(value)}
- const guard=busy||editorStatus!=="saved"||peekBusy;
+ const guard=busy||editorStatus!=="saved"||peekBusy||(splitId!==null&&splitStatus!=="saved");
  // Saving after a pause in typing briefly sets the guard on every few keystrokes. That must not be visible: the sidebar and toolbar keep their normal look.
  const typing=!busy&&!peekBusy&&(editorStatus==="saving"||editorStatus==="loading");
  const current=pages.find(p=>p.id===selected);
@@ -85,7 +93,19 @@ export default function App(){
   check();const timer=window.setInterval(check,30000);return()=>{cancelled=true;window.clearInterval(timer)};
  },[]);
  async function run(action:()=>Promise<unknown>){markBusy(true);setError("");try{await action();await reload()}catch(e){setError(String(e))}finally{markBusy(false)}}
- function openPage(id:string){if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved")return;setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setShowGraph(false);setIconPicker(false)}
+ function closeSplit(){if(splitIdRef.current&&splitStatusRef.current!=="saved")return;splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}
+ function openSplit(id:string){
+  if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved"||splitStatusRef.current!=="saved")return;
+  if(!selected){openPage(id);return}
+  if(id===selected)return;
+  splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(id);
+ }
+ function swapSplit(){
+  const other=splitIdRef.current;
+  if(!other||!selected||busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved"||splitStatusRef.current!=="saved")return;
+  const was=selected;setTabs(old=>old.includes(other)?old:[...old,other]);setSelected(other);setSplitId(was);
+ }
+ function openPage(id:string){if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved"||(splitIdRef.current!==null&&splitStatusRef.current!=="saved"))return;if(id===splitIdRef.current){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setShowGraph(false);setIconPicker(false)}
  function closeTab(id:string){if(guard)return;closedTabs.current.push(id);const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
  function reopenTab(){if(guard)return;while(closedTabs.current.length){const id=closedTabs.current.pop()!;if(!tabs.includes(id)&&pagesRef.current.some(p=>p.id===id)){openPage(id);return}}}
  function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
@@ -219,13 +239,14 @@ export default function App(){
    <div className="sb-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuenow={sidebarWidth} aria-valuemin={200} aria-valuemax={480} tabIndex={0} onPointerDown={startSidebarResize}
     onKeyDown={e=>{if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();setSidebarWidth(w=>clampSidebar(w+(e.key==="ArrowRight"?16:-16)))}}}/>
   </aside>}
-  <section className="workspace">
+  <section className={"workspace"+(splitId&&current?" split":"")}>
    <header className="workspace-topbar">{!sidebarOpen&&<button className="sb-open" aria-label="Open sidebar" title="Open sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(true)}><Icon name="menu" size={18}/></button>}<div className="page-tabs" role="tablist" aria-label="Open pages">{tabs.map(id=>{const page=pages.find(p=>p.id===id);return page&&<div className={"page-tab "+(id===selected&&!showTrash?"selected":"")} key={id}><button role="tab" aria-selected={id===selected&&!showTrash} disabled={guard} onClick={()=>openPage(id)}><Icon name={page.icon} size={15}/><span>{page.title}</span></button><button className="close-tab" aria-label={"Close "+page.title+" tab"} disabled={guard} onClick={()=>closeTab(id)}>×</button></div>})}</div>
     <div className="window-tools"><button aria-label={"Switch to "+(theme==="light"?"dark":"light")+" mode"} title="Light / dark mode" onClick={()=>setTheme(v=>v==="light"?"dark":"light")}>{theme==="light"?"☾":"☀"}</button><button aria-label="Toggle fullscreen" title="Fullscreen (F11)" onClick={()=>void toggleFullscreen()}>⛶</button></div>
    </header>
    {backupNotice&&<p className="notice" role="status">{backupNotice} Open Workspace tools → Backups & restore.</p>}
    {recoveryBlocked&&<p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
    {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>Dismiss</button></div>}
+   <div className={splitId&&current&&!showTrash&&!showGraph?"workspace-body split":"workspace-body"}>
    {showTrash?<div className="document trash-screen"><h1>Trash</h1><p>Restoring a page also restores its subpages deleted in the same operation.</p>{!trashed.length&&<p>Trash is empty.</p>}{trashed.map(page=><div className="trash-row" key={page.id}><span><Icon name={page.icon}/>{page.title}</span><button disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("restore_page",{pageId:page.id}))}>Restore</button></div>)}</div>
    :showGraph?<Suspense fallback={<p role="status">Opening graph…</p>}><GraphView pages={pages} onOpen={openPage} disabled={guard}/></Suspense>
    :current?<div className="document" key={current.id}><div className="toolbar"><nav className="breadcrumb" aria-label="Breadcrumb"><button disabled={guard} onClick={()=>setSelected(null)}>Workspace</button>{crumbs.map((page,i)=><span key={page.id}><span aria-hidden="true"> / </span>{i<crumbs.length-1?<button disabled={guard} onClick={()=>openPage(page.id)}>{page.title}</button>:<span aria-current="page">{page.title}</span>}</span>)}</nav><div className="actions">
@@ -239,9 +260,18 @@ export default function App(){
     <input className="title-input" aria-label="Page title" readOnly={guard||recoveryBlocked} defaultValue={current.title} onBlur={e=>{const title=e.target.value.trim()||"Untitled";if(!recoveryBlocked&&title!==current.title)void run(()=>invoke("rename_page",{pageId:current.id,title}))}} onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur()}}/>
    </div><PageTags pageId={current.id} readOnly={recoveryBlocked} onError={e=>setError(String(e))}/><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense><Backlinks pageId={current.id} onOpen={openPage}/></div>
    :<Home pages={pages} open={openPage} searchTag={tag=>{setQuickFindText("#"+tag);setQuickFind(true)}} newPage={()=>void newRootPage()} disabled={guard||recoveryBlocked} refresh={reload} onManageAccess={()=>setShowGateway(true)}/>}
+   {splitId&&current&&!showTrash&&!showGraph&&(()=>{const other=pages.find(p=>p.id===splitId);return other?<aside className="split-pane" aria-label="Split view">
+    <header className="split-header"><strong title={other.title}>{other.title||"Untitled"}</strong>
+     <button disabled={guard} onClick={swapSplit} title="Swap the two pages">Swap</button>
+     <button disabled={guard} onClick={()=>{const id=other.id;closeSplit();openPage(id)}} title="Open this page on its own">Open alone</button>
+     <button disabled={splitStatus!=="saved"} onClick={closeSplit} aria-label="Close split view">Close</button></header>
+    <div className="split-body"><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor key={other.id} pageId={other.id} title={other.title} onStatus={onSplitStatus} readOnly={recoveryBlocked} secondary/></Suspense></div>
+   </aside>:null})()}
+   </div>
   </section>
  {menu&&menuPage&&<div className="row-menu" role="menu" ref={menuRef} style={{left:Math.min(menu.x,window.innerWidth-230),top:Math.min(menu.y,window.innerHeight-190)}}>
   <button role="menuitem" onClick={()=>{setMenu(null);void toggleFavorite(menuPage)}}>{menuPage.is_favorite?"Remove from Favorites":"Add to Favorites"}</button>
+  {current&&menuPage.id!==selected&&<button role="menuitem" disabled={guard} onClick={()=>{setMenu(null);openSplit(menuPage.id)}}>Open in split view</button>}
   <button role="menuitem" onClick={()=>{setMenu(null);setRenaming(menuPage.id)}}>Rename</button>
   <button role="menuitem" onClick={()=>{setMenu(null);void addSubpage(menuPage)}}>Add subpage</button>
   <hr/><button role="menuitem" className="danger" onClick={()=>{setMenu(null);trashPage(menuPage)}}>Move to Trash</button></div>}
