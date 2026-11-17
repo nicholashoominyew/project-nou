@@ -570,3 +570,7 @@ html{touch-action:pan-x pan-y}
 .lock-screen h2{margin:4px 0 0;font-size:22px}
 .lock-screen form{display:flex;gap:8px;width:100%}
 .lock-screen input{flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:inherit}
+.home-list.resurface li{display:flex;align-items:center;gap:6px}
+.home-list.resurface li>button:first-child{flex:1;min-width:0}
+.resurface-later{border:0;background:transparent;color:var(--muted);font-size:12px;padding:3px 8px;border-radius:10px;white-space:nowrap}
+.resurface-later:hover{background:var(--hover);color:var(--text)}

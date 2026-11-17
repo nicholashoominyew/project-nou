@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icons";
 import type { PageInfo } from "./EditorContext";
 import Approvals from "./Approvals";
+import { localDate, readSnoozed, reasonText, snooze, visible, SNOOZE_KEY, SNOOZE_DAYS, type Resurfaced } from "./resurface";
 import { DEFAULT_LAYOUT_KEY, moveWidget, normalizeLayout, setWidgetHidden, type HomeLayout } from "./homeLayout";
 
 /** What every widget may use. Widgets never reach into the app directly; later features (inbox, approvals, bot queue,
@@ -48,9 +49,40 @@ function TagsWidget({ ctx }: { ctx: HomeContext }) {
   return <div className="home-tags">{tags.map(t => <button key={t.name} disabled={ctx.disabled} onClick={() => ctx.searchTag(t.name)}>#{t.name}<em>{t.count}</em></button>)}</div>;
 }
 
+/**
+ * Old notes worth another look: pages you have not edited for a month or more (a different few each day) and notes you wrote on this date in an
+ * earlier year. "Not now" hides a note for two weeks. The snooze is only a preference kept on this computer.
+ */
+function ResurfaceWidget({ ctx }: { ctx: HomeContext }) {
+  const today = useMemo(() => localDate(), []);
+  const [items, setItems] = useState<Resurfaced[] | null>(null);
+  const [snoozed, setSnoozed] = useState<Record<string, string>>(() => { try { return readSnoozed(JSON.parse(localStorage.getItem(SNOOZE_KEY) || "null"), today); } catch { return {}; } });
+  useEffect(() => {
+    let off = false;
+    // Ask for a few extra so snoozed ones can be skipped and the widget still shows up to three.
+    void invoke<Resurfaced[]>("list_resurfaced_pages", { today, staleLimit: 8, anniversaryLimit: 4 }).then(r => { if (!off) setItems(Array.isArray(r) ? r : []); }).catch(() => { if (!off) setItems([]); });
+    return () => { off = true; };
+  }, [today, ctx.pages]);
+  function later(id: string) {
+    const next = snooze(snoozed, id, today);
+    setSnoozed(next);
+    try { localStorage.setItem(SNOOZE_KEY, JSON.stringify(next)); } catch { /* a preference only */ }
+  }
+  if (items === null) return <p className="hint">Loading…</p>;
+  const shown = visible(items, snoozed, today);
+  const anniversaries = shown.filter(p => p.reason === "anniversary").slice(0, 3), stale = shown.filter(p => p.reason !== "anniversary").slice(0, 3);
+  const list = [...anniversaries, ...stale];
+  if (!list.length) return <p className="hint">{items.length ? "Nothing else to revisit today." : "No old notes to bring back yet. Notes you have not touched for a month will appear here."}</p>;
+  return <ul className="home-list resurface">{list.map(p => <li key={p.id}>
+    <button disabled={ctx.disabled} onClick={() => ctx.open(p.id)}><span>{p.title || "Untitled"}</span><em>{reasonText(p)}</em></button>
+    <button className="resurface-later" aria-label={`Not now: ${p.title || "Untitled"}`} title={`Hide for ${SNOOZE_DAYS} days`} onClick={() => later(p.id)}>Not now</button>
+  </li>)}</ul>;
+}
+
 export const HOME_WIDGETS: HomeWidget[] = [
   { id: "approvals", title: "Waiting for your approval", hint: "AI tools can ask; only you can approve", render: ctx => <Approvals disabled={ctx.disabled} refresh={ctx.refresh} /> },
   { id: "recent", title: "Recently edited", render: ctx => <RecentWidget ctx={ctx} /> },
+  { id: "resurface", title: "Worth revisiting", hint: "Old notes, and what you wrote on this day", render: ctx => <ResurfaceWidget ctx={ctx} /> },
   { id: "favorites", title: "Favorites", render: ctx => <FavoritesWidget ctx={ctx} /> },
   { id: "tags", title: "Tags", hint: "Click a tag to find its pages", render: ctx => <TagsWidget ctx={ctx} /> },
 ];

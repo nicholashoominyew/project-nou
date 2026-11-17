@@ -2,7 +2,10 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import Home, { type HomeWidget } from "./Home";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
+const { calls, resurfaced } = vi.hoisted(() => ({ calls: [] as { command: string; args: any }[], resurfaced: { items: [] as any[] } }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
+  calls.push({ command, args });
+  if (command === "list_resurfaced_pages") return resurfaced.items;
   if (command === "list_recent_pages") return [{ id: "a", title: "Alpha", updated_at: new Date(Date.now() - 5 * 60000).toISOString() }, { id: "b", title: "Beta", updated_at: "2020-01-01T00:00:00.000Z" }];
   if (command === "list_tags") return [{ name: "research", count: 3 }];
 } }));
@@ -11,7 +14,7 @@ const pages = [
   { id: "b", title: "Beta", parent_id: null, sort_key: "2", icon: "document", is_favorite: false },
 ] as any;
 const show = (extra: Partial<React.ComponentProps<typeof Home>> = {}) => render(<Home pages={pages} open={() => {}} searchTag={() => {}} newPage={() => {}} disabled={false} {...extra} />);
-beforeEach(() => localStorage.clear());
+beforeEach(() => { localStorage.clear(); calls.length = 0; resurfaced.items = []; });
 
 describe("Home", () => {
   it("shows the built-in widgets: recent pages, favorites and tags", async () => {
@@ -50,17 +53,17 @@ describe("Home", () => {
     expect(screen.queryByLabelText("Favorites")).toBeNull();
     fireEvent.click(screen.getByLabelText("Move Tags up"));
     const order = () => screen.getAllByRole("heading", { level: 2 }).map(h => h.textContent);
-    expect(order().slice(0, 3)).toEqual(["Waiting for your approval", "Tags", "Recently edited"]);
+    expect(order().slice(0, 4)).toEqual(["Waiting for your approval", "Recently edited", "Tags", "Worth revisiting"]);
     unmount();
     show(); // a fresh mount reads the saved layout
     expect(screen.queryByLabelText("Favorites")).toBeNull();
-    expect(screen.getAllByRole("heading", { level: 2 })[1].textContent).toBe("Tags");
+    expect(screen.getAllByRole("heading", { level: 2 })[2].textContent).toBe("Tags");
     fireEvent.click(screen.getByText("Customize"));
     fireEvent.click(screen.getByText("Show Favorites"));
     expect(screen.getByLabelText("Favorites")).toBeTruthy();
   });
   it("shows a message when every widget is hidden", () => {
-    localStorage.setItem("nou-home-layout", JSON.stringify({ order: ["approvals", "recent", "favorites", "tags"], hidden: ["approvals", "recent", "favorites", "tags"] }));
+    localStorage.setItem("nou-home-layout", JSON.stringify({ order: ["approvals", "recent", "resurface", "favorites", "tags"], hidden: ["approvals", "recent", "resurface", "favorites", "tags"] }));
     show();
     expect(screen.getByText(/All widgets are hidden/)).toBeTruthy();
   });
@@ -69,5 +72,53 @@ describe("Home", () => {
     show({ widgets: [extra] });
     expect(within(screen.getByLabelText("Inbox")).getByText("captured thought")).toBeTruthy();
     await waitFor(() => expect(screen.queryByLabelText("Favorites")).toBeNull());
+  });
+  describe("Worth revisiting", () => {
+    const item = (id: string, title: string, reason: string, extra: object = {}) => ({ id, title, updated_at: "2025-01-01T00:00:00.000Z", created_at: "2024-11-17T00:00:00.000Z", reason, years_ago: null, ...extra });
+    it("asks for today's local date and shows anniversaries first, then old notes, with why each is shown", async () => {
+      resurfaced.items = [item("s1", "Old plan", "stale"), item("a1", "Trip notes", "anniversary", { years_ago: 2 }), item("a2", "Last year", "anniversary", { years_ago: 1 })];
+      show();
+      const box = await screen.findByLabelText("Worth revisiting");
+      const titles = within(box).getAllByRole("listitem").map(li => li.querySelector("span")!.textContent);
+      expect(titles).toEqual(["Trip notes", "Last year", "Old plan"]);
+      expect(within(box).getByText("Written 2 years ago today")).toBeTruthy();
+      expect(within(box).getByText("Written a year ago today")).toBeTruthy();
+      expect(within(box).getByText(/Not edited for/)).toBeTruthy();
+      const asked = calls.find(c => c.command === "list_resurfaced_pages")!;
+      expect(asked.args.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+    it("opens the note when clicked", async () => {
+      resurfaced.items = [item("s1", "Old plan", "stale")];
+      const open = vi.fn();
+      show({ open });
+      fireEvent.click(await screen.findByText("Old plan"));
+      expect(open).toHaveBeenCalledWith("s1");
+    });
+    it("Not now hides a note, remembers it for next time, and the next suggestion fills in", async () => {
+      resurfaced.items = [item("s1", "Old plan", "stale"), item("s2", "Another", "stale")];
+      const { unmount } = show();
+      fireEvent.click(await screen.findByLabelText("Not now: Old plan"));
+      expect(screen.queryByText("Old plan")).toBeNull();
+      expect(screen.getByText("Another")).toBeTruthy();
+      unmount();
+      show(); // a fresh mount reads the saved snooze
+      expect(await screen.findByText("Another")).toBeTruthy();
+      expect(screen.queryByText("Old plan")).toBeNull();
+    });
+    it("says what is going on when nothing is suggested, and when everything is snoozed", async () => {
+      const { unmount } = show();
+      expect(await screen.findByText(/No old notes to bring back yet/)).toBeTruthy();
+      unmount();
+      resurfaced.items = [item("s1", "Old plan", "stale")];
+      show();
+      fireEvent.click(await screen.findByLabelText("Not now: Old plan"));
+      expect(screen.getByText("Nothing else to revisit today.")).toBeTruthy();
+    });
+    it("shows at most three of each kind", async () => {
+      resurfaced.items = Array.from({ length: 6 }, (_, i) => item("s" + i, "Stale " + i, "stale")).concat(Array.from({ length: 5 }, (_, i) => item("a" + i, "Anniv " + i, "anniversary", { years_ago: 1 })));
+      show();
+      const box = await screen.findByLabelText("Worth revisiting");
+      expect(within(box).getAllByRole("listitem").length).toBe(6);
+    });
   });
 });
