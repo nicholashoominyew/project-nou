@@ -73,3 +73,11 @@ export function pageDepths(pages: { id: string; parent_id: string | null }[]): M
 
 /** Dot size by depth: main pages are the biggest and each level of subpage is smaller, down to a floor so deep pages stay clickable. */
 export const dotRadius = (depth: number) => Math.max(5, 15 - 3.5 * depth);
+
+/**
+ * How a page is drawn in the graph, by how deep it sits. Main pages (top level) are solid white stars. Every subpage is a ring: a white outline with
+ * no fill. The depth also sets the size, so a sub-subpage is a smaller ring than a subpage.
+ */
+export type StarKind = "solid" | "ring";
+export const starKind = (depth: number): StarKind => (depth <= 0 ? "solid" : "ring");
+export const starRadius = (depth: number) => Math.max(3.5, 8.5 - 1.7 * Math.max(0, depth));

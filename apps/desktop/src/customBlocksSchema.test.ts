@@ -16,6 +16,12 @@ describe("custom blocks in the real note schema", () => {
     expect(block?.props.data).toBe(data);
     expect(blocksToPlainText(editor.document as never)).toContain("Start → Check the file");
   });
+  it("a flowchart block has a mode that defaults to edit and keeps view", () => {
+    const editor = BlockNoteEditor.create({ schema: noteSchema });
+    editor.insertBlocks([{ type: "nouFlowchart", props: { data: "" } }, { type: "nouFlowchart", props: { data: "", mode: "view" } }] as never, editor.document[0], "after");
+    const modes = editor.document.filter(b => b.type === ("nouFlowchart" as never)).map(b => (b as unknown as { props: { mode: string } }).props.mode);
+    expect(modes).toEqual(["edit", "view"]);
+  });
   it("a linked to-do block keeps its id, text and tick, and is found by the index and by search", () => {
     const editor = BlockNoteEditor.create({ schema: noteSchema });
     editor.insertBlocks([{ type: "nouLinkedTodo", props: { todoId: "todo-12345678", text: "Buy milk", checked: true } } as never], editor.document[0], "after");

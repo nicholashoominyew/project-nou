@@ -5,7 +5,8 @@ import { createPortal } from "react-dom";
 import {useEditorFeatures} from "./EditorContext";
 import {DismissibleDetails} from "./Dismissible";
 import {filterSuggestionItems,insertOrUpdateBlockForSlashMenu} from "@blocknote/core/extensions";
-import {getDefaultReactSlashMenuItems,SuggestionMenuController} from "@blocknote/react";
+import {getDefaultReactSlashMenuItems,SideMenuController,SuggestionMenuController} from "@blocknote/react";
+import {NouSideMenu,PageIdContext} from "./NouSideMenu";
 import {blockAttachmentIds,documentAttachmentIds,documentLinkedTodoIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
@@ -45,7 +46,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
       if(kind==="page"){
         const page=await context.create();
         if(!editor.getBlock(anchor))throw Error("Insertion point changed; the new page is available in the sidebar.");
-        editor.setTextCursorPosition(anchor,"end");insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium"}});
+        editor.setTextCursorPosition(anchor,"end");insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium",style:"line"}});
       }else if(kind==="database"){
         const database=await invoke<{id:string}>("create_database",{parentId:pageId,title:"Untitled database",initialUpdate:await newRichUpdate()});
         if(!editor.getBlock(anchor))throw Error("Insertion point changed. Choose Database again to insert it.");
@@ -108,12 +109,14 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     try{const t=await invoke<{id:string;text:string;checked:boolean}>("linked_todo_create",{text:""});insertOrUpdateBlockForSlashMenu(editor,{type:"nouLinkedTodo",props:{todoId:t.id,text:"",checked:false}} as never)}
     catch(e){context.onError(e)}
   }
-  const pageItems=(query:string)=>filterSuggestionItems(context.pages.map(page=>({title:page.title,aliases:[],group:"Pages",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium"}} as never)})),query).slice(0,12);
+  const pageItems=(query:string)=>filterSuggestionItems(context.pages.map(page=>({title:page.title,aliases:[],group:"Pages",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium",style:"line"}} as never)})),query).slice(0,12);
   const items=()=>[...getDefaultReactSlashMenuItems(editor),
     {title:"Page",aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
     {title:"Database",aliases:["database","table","board","calendar","timeline","gallery","list"],group:"NOU",onItemClick:()=>void create("database")},
+    {title:"2 columns",aliases:["columns","column","side by side","split","2 column"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouColumns",children:[{type:"paragraph"},{type:"paragraph"}]} as never)},
+    {title:"3 columns",aliases:["columns","column","side by side","3 column"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouColumns",children:[{type:"paragraph"},{type:"paragraph"},{type:"paragraph"}]} as never)},
     {title:"Flowchart",aliases:["flowchart","diagram","chart","flow","process"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouFlowchart",props:{data:""}} as never)},
-    {title:"Linked to-do",aliases:["linked","shared","todo","to-do","checklist","task"],group:"NOU",onItemClick:()=>void newLinkedTodo()},
+    {title:"Linked to-do",aliases:["[]","[ ]","linked","shared","todo","to-do","checklist","task"],group:"NOU",onItemClick:()=>void newLinkedTodo()},
     {title:"Bookmark",aliases:["bookmark","link"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouBookmark"})},
     {title:"Image",aliases:["image","photo","upload"],group:"NOU",onItemClick:()=>void create("image")},
     {title:"PDF",aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
@@ -123,10 +126,11 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     onDragOverCapture={e=>{if(hasFiles(e)){e.preventDefault();e.dataTransfer.dropEffect=disabled?"none":"copy";setOver(!disabled)}}}
     onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
     onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
-  <BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
+  <PageIdContext.Provider value={pageId}><BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} sideMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
     <SuggestionMenuController triggerCharacter="/" getItems={async query=>{const linked=wantsExistingDatabases(query)?await linkedDatabaseItems():[];const todos=wantsExistingTodos(query)?await linkedTodoItems():[];return filterSuggestionItems([...items(),...linked,...todos],query)}}/>
+    <SideMenuController sideMenu={NouSideMenu}/>
     <SuggestionMenuController triggerCharacter="@" getItems={async query=>pageItems(query)}/>
-  </BlockNoteView></div>;
+  </BlockNoteView></PageIdContext.Provider></div>;
 }
 
 export default function NoteEditor({ pageId, onStatus, readOnly = false, title = "Untitled", secondary = false }: { pageId: string; title?: string; onStatus: (status: SaveStatus) => void; readOnly?: boolean; secondary?: boolean }) {

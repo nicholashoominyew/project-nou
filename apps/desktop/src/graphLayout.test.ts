@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layoutGraph, MAX_GRAPH_NODES, pageDepths, dotRadius } from "./graphLayout";
+import { layoutGraph, MAX_GRAPH_NODES, pageDepths, dotRadius, starKind, starRadius } from "./graphLayout";
 
 const ids = (n: number) => Array.from({ length: n }, (_, i) => ({ id: "p" + i }));
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -49,5 +49,16 @@ describe("hierarchy sizing", () => {
     expect(dotRadius(1)).toBeGreaterThan(dotRadius(2));
     expect(dotRadius(2)).toBeGreaterThan(dotRadius(3));
     expect(dotRadius(30)).toBe(5);
+  });
+});
+
+describe("how a page is drawn", () => {
+  it("top-level pages are solid and every subpage is a ring", () => {
+    expect([0, 1, 2, 5].map(starKind)).toEqual(["solid", "ring", "ring", "ring"]);
+    expect(starKind(-1)).toBe("solid");
+  });
+  it("the radius shrinks with depth down to a floor", () => {
+    expect(starRadius(0)).toBeGreaterThan(starRadius(1)); expect(starRadius(1)).toBeGreaterThan(starRadius(2)); expect(starRadius(2)).toBeGreaterThan(starRadius(3));
+    expect(starRadius(40)).toBe(3.5); expect(starRadius(-3)).toBe(starRadius(0));
   });
 });

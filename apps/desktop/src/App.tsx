@@ -12,6 +12,7 @@ import Backlinks from "./Backlinks";
 import PageTags from "./PageTags";
 import Home from "./Home";
 import QuickCapture from "./QuickCapture";
+import { SidebarResults, SidebarSearchBox } from "./SidebarSearch";
 import { LockButton, LockGate } from "./PageLock";
 import { appendBlocksToNote } from "./noteAppend";
 import { INBOX_KEY, parseCapture, pickInbox } from "./captureParse";
@@ -57,7 +58,7 @@ export default function App(){
  useEffect(()=>{if(splitId&&pages.length&&!pages.some(p=>p.id===splitId)){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}},[pages,splitId]);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [lockedIds,setLockedIds]=useState<string[]>([]);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [sbQuery,setSbQuery]=useState("");const [lockedIds,setLockedIds]=useState<string[]>([]);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -220,11 +221,12 @@ export default function App(){
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>
      <button aria-label="New page" title="New page (Ctrl+N)" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="compose" size={16}/></button></div></div>
    <button className={"sb-item"+(!current&&!showTrash&&!showGraph&&!showFiles?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false);setShowFiles(false)}}><Icon name="home" size={17}/><span>Home</span></button>
-   <button className="sb-item" disabled={guard} onClick={()=>{setQuickFindText("");setQuickFind(true)}}><Icon name="search" size={17}/><span>Search</span><kbd>Ctrl+Q</kbd></button>
+   <SidebarSearchBox query={sbQuery} onQuery={setSbQuery} disabled={guard}/>
    <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowFiles(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
    <button className={"sb-item"+(showFiles?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowFiles(v=>!v)}}><Icon name="folder" size={17}/><span>Files</span></button>
    <button className="sb-item" disabled={recoveryBlocked||busy} onClick={()=>setShowCapture(true)}><Icon name="compose" size={17}/><span>Quick capture</span><kbd>Ctrl+Shift+A</kbd></button>
-   <div className="sb-scroll">
+   {sbQuery.trim()&&<div className="sb-scroll"><SidebarResults query={sbQuery} pages={pages} disabled={guard} onOpen={id=>{setSbQuery("");openPage(id)}}/></div>}
+   <div className="sb-scroll" style={sbQuery.trim()?{display:"none"}:undefined}>
     {favorites.length>0&&<section aria-label="Favorites"><div className="sb-section"><button className="sb-section-title" aria-expanded={favoritesOpen} onClick={()=>setFavoritesOpen(v=>!v)}>Favorites</button></div>
      {favoritesOpen&&<nav aria-label="Favorite pages">{favorites.map(page=><div key={page.id}>{pageRow(page,0,true)}</div>)}</nav>}</section>}
     <section aria-label="Private pages"><div className="sb-section" onDragOver={e=>{if(dragged){e.preventDefault();setDropHint("root")}}} onDrop={e=>void move(e,null,"inside")}>
@@ -278,6 +280,8 @@ export default function App(){
   <button role="menuitem" onClick={()=>{setMenu(null);void toggleFavorite(menuPage)}}>{menuPage.is_favorite?"Remove from Favorites":"Add to Favorites"}</button>
   {current&&menuPage.id!==selected&&<button role="menuitem" disabled={guard} onClick={()=>{setMenu(null);openSplit(menuPage.id)}}>Open in split view</button>}
   <button role="menuitem" onClick={()=>{setMenu(null);setRenaming(menuPage.id)}}>Rename</button>
+  <button role="menuitem" disabled={guard} onClick={()=>{setMenu(null);void run(()=>invoke("move_page",{pageId:menuPage.id,direction:"up"}))}}>Move up</button>
+  <button role="menuitem" disabled={guard} onClick={()=>{setMenu(null);void run(()=>invoke("move_page",{pageId:menuPage.id,direction:"down"}))}}>Move down</button>
   <button role="menuitem" onClick={()=>{setMenu(null);void addSubpage(menuPage)}}>Add subpage</button>
   <hr/><button role="menuitem" className="danger" onClick={()=>{setMenu(null);trashPage(menuPage)}}>Move to Trash</button></div>}
  {focus&&<button className="focus-exit" onClick={()=>setFocus(false)} title="Leave focus mode (Esc)">Exit focus mode</button>}

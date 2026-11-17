@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import QuickCapture from "./QuickCapture";
-import { parseCapture, pickInbox, MAX_CAPTURE_LINES } from "./captureParse";
+import { parseCapture, pickInbox, showBullets, continueBullet, MAX_CAPTURE_LINES } from "./captureParse";
 
 const page = (id: string, title: string, parent_id: string | null = null) => ({ id, title, parent_id, sort_key: id });
 
@@ -23,6 +23,33 @@ describe("parseCapture", () => {
     expect(() => parseCapture("x".repeat(20001))).toThrow(/too long/);
     expect(() => parseCapture(Array.from({ length: MAX_CAPTURE_LINES + 1 }, (_, i) => "l" + i).join("\n"))).toThrow(/Too many lines/);
     expect(() => parseCapture("y".repeat(2001))).toThrow(/Too many lines/);
+  });
+});
+
+describe("bullet points", () => {
+  it("lines starting with -, * or • and a space become bullet points; the dash is not kept", () => {
+    expect(parseCapture("- milk\n* eggs\n• bread\n-   spaced")).toEqual([
+      { type: "bulletListItem", text: "milk" }, { type: "bulletListItem", text: "eggs" }, { type: "bulletListItem", text: "bread" }, { type: "bulletListItem", text: "spaced" }]);
+  });
+  it("a dash without a space, a number, a lone dash and a dash mid-line stay ordinary text", () => {
+    expect(parseCapture("-5 degrees\n-\n2 - 1\nwell-known")).toEqual([
+      { type: "paragraph", text: "-5 degrees" }, { type: "paragraph", text: "-" }, { type: "paragraph", text: "2 - 1" }, { type: "paragraph", text: "well-known" }]);
+  });
+  it("to-dos still win over bullets, including a typed bullet in front of the box", () => {
+    expect(parseCapture("- [ ] pay rent\n• [x] done\n- plain")).toEqual([
+      { type: "checkListItem", text: "pay rent", checked: false }, { type: "checkListItem", text: "done", checked: true }, { type: "bulletListItem", text: "plain" }]);
+  });
+  it("typing '- ' at the start of a line shows a bullet; elsewhere it is left alone", () => {
+    expect(showBullets("- one")).toBe("• one");
+    expect(showBullets("intro\n- one\n- two")).toBe("intro\n• one\n• two");
+    expect(showBullets("a - b\n-x\nwell- known")).toBe("a - b\n-x\nwell- known");
+    expect(showBullets("• already")).toBe("• already");
+  });
+  it("Shift+Enter in a bullet starts the next bullet, an empty bullet ends the list, other lines are left to the browser", () => {
+    expect(continueBullet("• one", 5)).toEqual({ text: "• one\n• ", caret: 8 });
+    expect(continueBullet("• one\n• two", 5)).toEqual({ text: "• one\n• \n• two", caret: 8 });
+    expect(continueBullet("intro\n• one\n• ", 14)).toEqual({ text: "intro\n• one\n", caret: 12 });
+    expect(continueBullet("plain text", 5)).toBeNull();
   });
 });
 
@@ -52,6 +79,16 @@ describe("QuickCapture", () => {
     expect(box.value).toBe("");
     fireEvent.click(screen.getByText("Open Inbox"));
     expect(onOpenInbox).toHaveBeenCalled();
+  });
+  it("typing a dash and a space turns into a bullet, and saving sends the bullet text", async () => {
+    const { save, box } = setup();
+    fireEvent.change(box, { target: { value: "- milk" } });
+    expect(box.value).toBe("• milk");
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(box.value).toBe("• milk\n• ");
+    fireEvent.change(box, { target: { value: "• milk\n• eggs" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(save).toHaveBeenCalledWith("• milk\n• eggs"));
   });
   it("Shift+Enter is a new line, not a save", () => {
     const { save, box } = setup();

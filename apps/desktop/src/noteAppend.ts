@@ -6,7 +6,8 @@ import { blocksToPlainText, FRAGMENT, noteSchema } from "./blockModel";
 import { blockAttachmentIds } from "./noteTransfer";
 
 type Loaded = { updates: number[][]; format: string; legacy_text: string | null; seq: number; epoch: number };
-export type NewBlock = { type: "paragraph"; text: string } | { type: "checkListItem"; text: string; checked?: boolean };
+/** `raw` is a whole block (any type, with its props and children) as the editor holds it, used to move a block to another page. */
+export type NewBlock = { type: "paragraph"; text: string } | { type: "bulletListItem"; text: string } | { type: "checkListItem"; text: string; checked?: boolean } | { type: "raw"; block: unknown };
 export type AppendResult = { changed: boolean; message: string };
 
 const normal = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
@@ -36,12 +37,12 @@ export async function appendBlocksToNote(pageId: string, blocks: NewBlock[]): Pr
 
     const existing = new Set<string>();
     for (const b of walk(ed.document as readonly AnyBlock[])) if (b.type === "checkListItem") existing.add(normal(blocksToPlainText([b])));
-    const fresh = blocks.filter(b => b.type !== "checkListItem" || !existing.has(normal(b.text)));
+    const fresh = blocks.filter(b => b.type === "raw" || b.type !== "checkListItem" || !existing.has(normal(b.text)));
     if (!fresh.length) return { changed: false, message: "That to-do is already on the page, so nothing was added" };
 
-    const partial = fresh.map(b => b.type === "checkListItem"
+    const partial = fresh.map(b => b.type === "raw" ? b.block : b.type === "checkListItem"
       ? { type: "checkListItem", props: { checked: !!b.checked }, content: [{ type: "text", text: b.text, styles: {} }] }
-      : { type: "paragraph", content: [{ type: "text", text: b.text, styles: {} }] });
+      : { type: b.type === "bulletListItem" ? "bulletListItem" : "paragraph", content: [{ type: "text", text: b.text, styles: {} }] });
     const top = ed.document as readonly AnyBlock[];
     const last = top[top.length - 1] as { id: string; type?: string; content?: unknown } | undefined;
     const lastIsEmptyParagraph = !!last && last.type === "paragraph" && blocksToPlainText([last]).trim() === "";

@@ -2,7 +2,7 @@
 
 A map of the workspace, opened from **Graph** in the sidebar (under Search).
 
-- Each dot is a page. A solid line is a link written in a note (an `@` page mention); a faint dashed line means "this page sits under that one". Click a dot, or focus it and press Enter, to open the page.
+- Each dot is a page. **A main page (top level) is a solid dot; every subpage is a ring** (an outline with no fill), and the deeper a page sits the smaller its dot. A key above the graph shows both. A dot grows slightly when the pointer is over it or it has keyboard focus. The graph follows the app's light and dark theme; there is no decorative background. A solid line is a link written in a note (an `@` page mention); a faint dashed line means "this page sits under that one". Click a dot, or focus it and press Enter, to open the page.
 - It is only a view. The lines come from the same `page_links` index that powers "Linked from", which is rebuilt from the note bodies, so nothing is stored by the graph itself.
 - Data: the `list_link_edges` command returns links where both ends can be opened from the sidebar. Trashed pages, databases and database rows are left out, the same rule as backlinks. Capped at 20,000 links.
 - Layout: `graphLayout.ts` is a small force-directed layout that is deterministic, so the same pages always land in the same places. It lays out at most 400 pages; above that the screen asks you to narrow it with the two toggles instead of freezing the app.

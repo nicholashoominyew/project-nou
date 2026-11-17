@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from "react";
-import {createReactBlockSpec} from "@blocknote/react";
+import {createReactBlockSpec,useEditorChange} from "@blocknote/react";
 import {invoke} from "@tauri-apps/api/core";
 import {save} from "@tauri-apps/plugin-dialog";
 import {Icon} from "./Icons";
@@ -10,13 +10,15 @@ export function bookmarkUrl(value:string):string{
  if(!["https:","http:"].includes(u.protocol)||u.username||u.password)throw Error("Use an HTTP or HTTPS address without embedded credentials.");
  return u.href;
 }
-const sizes={small:18,medium:28,big:44} as const;
-export const pageBlock=createReactBlockSpec({type:"nouPage",propSchema:{pageId:{default:""},label:{default:"Untitled"},iconSize:{default:"medium",values:["small","medium","big"] as const}},content:"none"},{
- render:({block,editor})=>{
-  const context=useEditorFeatures();const page=context.pages.find(p=>p.id===block.props.pageId);
-  return <div className="page-link-card" contentEditable={false}>
-   <button className="page-link-open" disabled={!context.canNavigate||!page} onClick={()=>context.open(block.props.pageId)}><Icon name={page?.icon} size={sizes[block.props.iconSize]}/><span>{page?.title||block.props.label}{!page&&" (unavailable)"}</span></button>
-   {editor.isEditable&&<div className="icon-size-options" aria-label="Page link icon size">{(["small","medium","big"] as const).map(size=><button key={size} aria-pressed={block.props.iconSize===size} onClick={()=>editor.updateBlock(block,{props:{iconSize:size}})}>{size}</button>)}</div>}
+/**
+ * A link to another page, drawn as a plain line or as a bordered box. Switch between them from the block's ⠿ menu ("Show as a line / box").
+ * Links saved before this existed have no style and stay boxes. `iconSize` is no longer used; it stays in the block so older notes still load.
+ */
+export const pageBlock=createReactBlockSpec({type:"nouPage",propSchema:{pageId:{default:""},label:{default:"Untitled"},iconSize:{default:"medium",values:["small","medium","big"] as const},style:{default:"box",values:["line","box"] as const},boxBorder:{default:"default"},boxFill:{default:"default"}},content:"none"},{
+ render:({block})=>{
+  const context=useEditorFeatures();const page=context.pages.find(p=>p.id===block.props.pageId);const box=block.props.style==="box";
+  return <div className={"page-link "+(box?"page-link-box":"page-link-line")} data-border={box?boxColor(block.props.boxBorder):undefined} data-fill={box?boxColor(block.props.boxFill):undefined} contentEditable={false}>
+   <button className="page-link-open" disabled={!context.canNavigate||!page} onClick={()=>context.open(block.props.pageId)}><Icon name={page?.icon} size={box?26:18}/><span>{page?.title||block.props.label}{!page&&" (unavailable)"}</span></button>
   </div>;
  }
 });
@@ -31,6 +33,7 @@ export const bookmarkBlock=createReactBlockSpec({type:"nouBookmark",propSchema:{
 });
 import Database from "./DatabaseView";
 import FlowchartView from "./FlowchartView";
+import {boxColor} from "./blockOps";
 const MIN_IMAGE_WIDTH=80;
 function useBlobUrl(id:string){
  const [url,setUrl]=useState("");const [error,setError]=useState("");
@@ -66,15 +69,15 @@ function ResizableImage({url,name,width,editable,onWidth}:{url:string;name:strin
 }
 function StoredFile({id,name,pdf,image}:{id:string;name:string;pdf:boolean;image?:{width:number;editable:boolean;onWidth:(width:number)=>void}}){
  const context=useEditorFeatures();const {url,error}=useBlobUrl(id);const [preview,setPreview]=useState(false);
- return <div className="stored-file" contentEditable={false}>{error?<p role="alert">{error}</p>:!url?<p>Opening file…</p>:pdf?<><div className="pdf-caption"><Icon name="document"/><strong>{name}</strong><button onClick={()=>setPreview(v=>!v)}>{preview?"Hide preview":"Preview PDF"}</button></div>{preview&&<iframe title={name} src={url}/>}</>:<ResizableImage url={url} name={name} width={image?.width??0} editable={!!image?.editable} onWidth={image?.onWidth??(()=>{})}/>}
- {pdf&&<div className="file-caption"><span>{name}</span><button disabled={!url} onClick={()=>void saveCopy(id,name,pdf).catch(context.onError)}>Save a copy</button></div>}</div>;
+ // One compact row for a PDF (name, Preview, Save a copy) and a bare image; the controls only appear on hover or focus.
+ return <div className={"stored-file"+(pdf?" pdf-row":" image-row")} contentEditable={false}>{error?<p role="alert">{error}</p>:!url?<p>Opening file…</p>:pdf?<><div className="pdf-caption"><Icon name="document" size={16}/><strong title={name}>{name}</strong><button onClick={()=>setPreview(v=>!v)}>{preview?"Hide":"Preview"}</button><button onClick={()=>void saveCopy(id,name,pdf).catch(context.onError)}>Save a copy</button></div>{preview&&<iframe title={name} src={url}/>}</>:<ResizableImage url={url} name={name} width={image?.width??0} editable={!!image?.editable} onWidth={image?.onWidth??(()=>{})}/>}</div>;
 }
 export const imageBlock=createReactBlockSpec({type:"nouImage",propSchema:{fileId:{default:""},name:{default:"Image"},width:{default:0}},content:"none"},{render:({block,editor})=><StoredFile id={block.props.fileId} name={block.props.name} pdf={false} image={{width:block.props.width,editable:editor.isEditable,onWidth:width=>editor.updateBlock(block,{props:{width}})}}/>});
 export const pdfBlock=createReactBlockSpec({type:"nouPdf",propSchema:{fileId:{default:""},name:{default:"Document.pdf"}},content:"none"},{render:({block})=><StoredFile id={block.props.fileId} name={block.props.name} pdf/>});
 /** Any other file (HTML, documents, archives, ...). It is stored and can be saved back out; it is never opened or rendered in the app. */
 export const fileBlock=createReactBlockSpec({type:"nouFile",propSchema:{fileId:{default:""},name:{default:"File"}},content:"none"},{render:({block})=>{
  const context=useEditorFeatures();
- return <div className="stored-file file-card" contentEditable={false}><Icon name="document" size={22}/><strong>{block.props.name}</strong><button onClick={()=>void saveCopy(block.props.fileId,block.props.name,false).catch(context.onError)}>Save a copy</button></div>;
+ return <div className="stored-file file-card" contentEditable={false}><Icon name="document" size={16}/><strong>{block.props.name}</strong><button onClick={()=>void saveCopy(block.props.fileId,block.props.name,false).catch(context.onError)}>Save a copy</button></div>;
 }});
 /** An inline database: the block only stores the id; rows, columns and views live in the Notes database (ADR-003). */
 export const databaseBlock=createReactBlockSpec({type:"nouDatabase",propSchema:{databaseId:{default:""}},content:"none"},{render:({block,editor})=>{
@@ -120,6 +123,20 @@ export const linkedTodoBlock=createReactBlockSpec({type:"nouLinkedTodo",propSche
   onCache={t=>{if(t.text!==block.props.text||t.checked!==block.props.checked)editor.updateBlock(block,{props:{text:t.text,checked:t.checked}})}}/>
 });
 /** A flowchart drawn in the note. The chart is stored as JSON in the block (validated on every read); it uses no outside libraries. */
-export const flowchartBlock=createReactBlockSpec({type:"nouFlowchart",propSchema:{data:{default:""}},content:"none"},{
- render:({block,editor})=><FlowchartView data={block.props.data} editable={editor.isEditable} onChange={json=>editor.updateBlock(block,{props:{data:json}})}/>
+export const flowchartBlock=createReactBlockSpec({type:"nouFlowchart",propSchema:{data:{default:""},mode:{default:"edit",values:["edit","view"] as const}},content:"none"},{
+ render:({block,editor})=><FlowchartView data={block.props.data} editable={editor.isEditable} mode={block.props.mode} onChange={json=>editor.updateBlock(block,{props:{data:json}})}/>
+});
+/**
+ * Side-by-side columns. The block's child blocks are the columns: each direct child sits in its own column and can hold anything (text, lists,
+ * images, pages). Drag blocks into a column, or press Tab to nest them, as with any block. The layout itself is done by the stylesheet.
+ */
+function ColumnsHeader({block,editor}:{block:{id:string};editor:any}){
+ const read=()=>(editor.getBlock(block.id)?.children??[]).length as number;
+ const [count,setCount]=useState(read);
+ useEditorChange(()=>setCount(read()),editor);
+ return <div className="columns-header" contentEditable={false}><span>{count} column{count===1?"":"s"}</span>
+  {editor.isEditable&&count<5&&<button aria-label="Add a column" onClick={()=>{const kids=editor.getBlock(block.id)?.children??[];const last=kids[kids.length-1];if(last)editor.insertBlocks([{type:"paragraph"}] as never,last,"after");else editor.updateBlock(block as never,{children:[{type:"paragraph"}]} as never);setCount(read())}}>+ Add column</button>}</div>;
+}
+export const columnsBlock=createReactBlockSpec({type:"nouColumns",propSchema:{},content:"none"},{
+ render:({block,editor})=><ColumnsHeader block={block} editor={editor}/>
 });

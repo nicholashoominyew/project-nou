@@ -1,4 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+// @ts-ignore node built-ins are available in the test runner
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import GraphView from "./GraphView";
 
@@ -18,7 +20,8 @@ describe("GraphView", () => {
   it("draws main pages bigger than subpages, and gives main pages a bold label", async () => {
     const { container } = render(<GraphView pages={[page("a", "Main"), page("b", "Sub", "a"), page("c", "Subsub", "b")]} onOpen={() => {}} />);
     await screen.findByLabelText("Open Main");
-    const r = (t: string) => Number(screen.getByLabelText("Open " + t).querySelector("circle")!.getAttribute("r"));
+    const star = (t: string) => screen.getByLabelText("Open " + t).querySelector(".star-solid, .star-ring")!;
+    const r = (t: string) => Number(star(t).getAttribute("r"));
     expect(r("Main")).toBeGreaterThan(r("Sub")); expect(r("Sub")).toBeGreaterThan(r("Subsub"));
     expect(screen.getByLabelText("Open Main").getAttribute("class")).toContain("main");
     expect(screen.getByLabelText("Open Sub").getAttribute("class")).not.toContain("main");
@@ -101,5 +104,35 @@ describe("GraphView", () => {
     expect(pinch.defaultPrevented).toBe(true);
     await waitFor(() => expect(g()).toMatch(/scale\(1\.0/));
     expect(g()).not.toBe(start);
+  });
+  it("a main page is a solid dot and every subpage is a ring, smaller the deeper it sits", async () => {
+    render(<GraphView pages={[page("a", "Main"), page("b", "Sub", "a"), page("c", "Subsub", "b")]} onOpen={() => {}} />);
+    await screen.findByLabelText("Open Main");
+    const kind = (t: string) => screen.getByLabelText("Open " + t).querySelector(".star-solid, .star-ring")!.getAttribute("class");
+    expect(kind("Main")).toBe("star-solid");
+    expect(kind("Sub")).toBe("star-ring");
+    expect(kind("Subsub")).toBe("star-ring");
+    const radius = (t: string) => Number(screen.getByLabelText("Open " + t).querySelector(".star-solid, .star-ring")!.getAttribute("r"));
+    expect(radius("Main")).toBeGreaterThan(radius("Sub")); expect(radius("Sub")).toBeGreaterThan(radius("Subsub"));
+  });
+  it("has no decorative background: no sky, field stars, shooting star or glow", async () => {
+    const { container } = render(<GraphView pages={pages} onOpen={() => {}} />);
+    await screen.findByLabelText("Open Alpha");
+    expect(container.querySelector(".graph-sky, .graph-field, .graph-lens, .graph-shoot, radialGradient")).toBeNull();
+    expect(container.querySelector("svg.sky")).toBeNull();
+  });
+  it("a page grows slightly under the pointer, and the stylesheet says how", async () => {
+    // @ts-ignore process is available in the test runner
+    const css = readFileSync(process.cwd() + "/src/styles.css", "utf8") as string;
+    expect(css).toMatch(/\.graph-node:hover \.star-solid,\.graph-node:hover \.star-ring,\.graph-node\.lit \.star-solid,\.graph-node\.lit \.star-ring\{transform:scale\(1\.4\)\}/);
+    expect(css).toMatch(/\.graph-node \.star-solid,\.graph-node \.star-ring\{transform-box:fill-box;transform-origin:center;transition:transform/);
+    expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.graph-node \.star-solid,\.graph-node \.star-ring\{transition:none\}\}/);
+    // hovering marks the page as lit, which is what the rule above keys on, and brightens its lines
+    render(<GraphView pages={pages} onOpen={() => {}} />);
+    const node = await screen.findByLabelText("Open Alpha");
+    fireEvent.mouseEnter(node);
+    expect(node.getAttribute("class")).toContain("lit");
+    fireEvent.mouseLeave(node);
+    expect(node.getAttribute("class")).not.toContain("lit");
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { layoutGraph, MAX_GRAPH_NODES, pageDepths, dotRadius } from "./graphLayout";
+import { layoutGraph, MAX_GRAPH_NODES, pageDepths, starKind, starRadius } from "./graphLayout";
 import { wheelAction, zoomAround } from "./graphGestures";
 import type { PageInfo } from "./EditorContext";
 
@@ -9,7 +9,8 @@ const W = 1000, H = 700;
 const short = (s: string) => (s.length > 26 ? s.slice(0, 25) + "…" : s);
 
 /**
- * A map of the workspace: every page is a dot, a solid line is a link written in a note, a faint line is "this page lives under that one".
+ * A map of the workspace: every page is a dot, a solid line is a link written in a note, a faint dashed line is "this page lives under that one".
+ * A main page is a solid dot and each subpage is a ring (an outline with no fill), smaller the deeper it sits.
  * Click a page to open it. The picture is built from the same link index as "Linked from", so it is only ever a view of the notes.
  */
 export default function GraphView({ pages, onOpen, disabled }: { pages: PageInfo[]; onOpen: (id: string) => void; disabled?: boolean }) {
@@ -75,11 +76,12 @@ export default function GraphView({ pages, onOpen, disabled }: { pages: PageInfo
 
   return <div className="document graph-screen">
     <h1>Graph</h1>
-    <p className="hint">Each dot is a page; main pages are the biggest dots and each level of subpage gets smaller. A solid line is a link you wrote in a note; a faint line shows which page it sits under. Click a page to open it. Pinch or use Ctrl and the wheel to zoom, scroll with two fingers or drag the background to move around.</p>
+    <p className="hint">Each dot is a page. A solid dot is a main page and a ring is a subpage, smaller the deeper it sits. A solid line is a link you wrote in a note; a faint dashed line shows which page it sits under. Click a page to open it. Pinch or use Ctrl and the wheel to zoom, scroll with two fingers or drag the background to move around.</p>
     {error && <p className="error" role="alert">{error}</p>}
     <div className="graph-tools">
       <label><input type="checkbox" checked={hierarchy} onChange={e => setHierarchy(e.target.checked)} /> Show page hierarchy</label>
       <label><input type="checkbox" checked={loose} onChange={e => setLoose(e.target.checked)} /> Show pages with no lines</label>
+      <span className="graph-key" aria-label="Key"><i className="solid" aria-hidden="true" /> Main page <i className="ring" aria-hidden="true" /> Subpage</span>
       <span className="graph-zoom"><button aria-label="Zoom in" onClick={() => zoom(1.25)}>+</button><button aria-label="Zoom out" onClick={() => zoom(0.8)}>−</button><button onClick={() => setView({ k: 1, x: 0, y: 0 })}>Reset</button></span>
       <span className="hint" role="status">{edges === null ? "Loading…" : `${shown.length} page${shown.length === 1 ? "" : "s"}, ${links.length} link${links.length === 1 ? "" : "s"}`}</span>
     </div>
@@ -94,14 +96,14 @@ export default function GraphView({ pages, onOpen, disabled }: { pages: PageInfo
           {links.map(e => line(e, false))}
           {shown.map(p => {
             const at = pos.get(p.id); if (!at) return null;
-            const d = degree.get(p.id) ?? 0, depth = depths.get(p.id) ?? 0, r = dotRadius(depth);
+            const d = degree.get(p.id) ?? 0, depth = depths.get(p.id) ?? 0, r = starRadius(depth), kind = starKind(depth);
             const dim = hover !== null && !near.has(p.id);
             const label = labelAll || d >= 3 || near.has(p.id);
             return <g key={p.id} className={"graph-node" + (depth === 0 ? " main" : "") + (dim ? " dim" : "") + (hover === p.id ? " lit" : "") + (disabled ? " disabled" : "")} transform={`translate(${at.x} ${at.y})`} role="button" tabIndex={disabled ? -1 : 0} aria-label={"Open " + p.title} aria-disabled={disabled || undefined}
               onMouseEnter={() => setHover(p.id)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(p.id)} onBlur={() => setHover(null)}
               onClick={() => { if (!disabled) onOpen(p.id); }} onKeyDown={e => { if ((e.key === "Enter" || e.key === " ") && !disabled) { e.preventDefault(); onOpen(p.id); } }}>
-              <circle r={r} /><title>{titles.get(p.id)}</title>
-              {label && <text y={-r - 5} textAnchor="middle">{short(p.title || "Untitled")}</text>}
+              <circle className="pad" r={Math.max(14, r + 6)} /><circle className={"star-" + kind} r={r} /><title>{titles.get(p.id)}</title>
+              {label && <text y={-r - 7} textAnchor="middle">{short(p.title || "Untitled")}</text>}
             </g>;
           })}
         </g>

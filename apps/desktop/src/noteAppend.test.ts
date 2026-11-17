@@ -27,6 +27,12 @@ function startWith(...paragraphs: string[]) {
 beforeEach(() => { calls.length = 0; startWith(); });
 
 describe("appendBlocksToNote", () => {
+  it("adds bullet points as real bullet list items", async () => {
+    const out = await appendBlocksToNote("p1", [{ type: "bulletListItem", text: "first point" }, { type: "bulletListItem", text: "second point" }]);
+    expect(out.changed).toBe(true);
+    const bullets = savedBlocks().filter(b => b.type === "bulletListItem");
+    expect(bullets.map(textOf)).toEqual(["first point", "second point"]);
+  });
   it("adds paragraphs to a note through the normal save command, keeping the trailing empty line last", async () => {
     const out = await appendBlocksToNote("p1", [{ type: "paragraph", text: "First added line" }, { type: "paragraph", text: "Second added line" }]);
     expect(out).toEqual({ changed: true, message: "Added 2 blocks" });

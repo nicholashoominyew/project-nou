@@ -5,7 +5,8 @@ Jot something down without leaving the page you are on.
 ## Using it
 - Press **Ctrl+Shift+A** (or click **Quick capture** in the sidebar). Type, then press **Enter** to save. **Shift+Enter** starts a new line, **Esc** closes.
 - What you type goes to the end of a page called **Inbox**. The first time, NOU creates it at the top level; after that it reuses it. If you rename or move it, NOU remembers it by id, and if it is gone it looks for a top-level page called Inbox before making a new one.
-- Each non-empty line becomes a paragraph. Start a line with `[]`, `[ ]` or `- [ ]` to make it a to-do, or `[x]` for a ticked one. Nothing is read as markup.
+- Each non-empty line becomes a paragraph. Typing `- ` (a dash and a space) at the start of a line turns it into a bullet point (`•`) as you type, and it is saved as a real bullet list item. **Shift+Enter** in a bullet starts the next bullet; on an empty bullet it ends the list. A dash without a space (`-5 degrees`), a lone dash or a dash inside a line stays ordinary text. `*` and `•` at the start of a line also make bullets.
+- Start a line with `[]`, `[ ]` or `- [ ]` to make it a to-do, or `[x]` for a ticked one (to-dos win over bullets). Nothing is read as markup.
 - After saving, the box clears so you can capture again, and **Open Inbox** takes you there. If the Inbox is open, it refreshes by itself when it has no unsaved text.
 - Limits: 50 lines, 2,000 characters a line, 20,000 in all. A to-do that is already on the Inbox page is not added twice.
 - It is blocked while a restore needs review or a restore is running, like other writes.
