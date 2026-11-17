@@ -30,6 +30,7 @@ export const bookmarkBlock=createReactBlockSpec({type:"nouBookmark",propSchema:{
  }
 });
 import Database from "./DatabaseView";
+import FlowchartView from "./FlowchartView";
 const MIN_IMAGE_WIDTH=80;
 function useBlobUrl(id:string){
  const [url,setUrl]=useState("");const [error,setError]=useState("");
@@ -117,4 +118,8 @@ export function LinkedTodoView({todoId,cachedText,cachedChecked,editable,onCache
 export const linkedTodoBlock=createReactBlockSpec({type:"nouLinkedTodo",propSchema:{todoId:{default:""},text:{default:""},checked:{default:false}},content:"none"},{
  render:({block,editor})=><LinkedTodoView todoId={block.props.todoId} cachedText={block.props.text} cachedChecked={block.props.checked} editable={editor.isEditable}
   onCache={t=>{if(t.text!==block.props.text||t.checked!==block.props.checked)editor.updateBlock(block,{props:{text:t.text,checked:t.checked}})}}/>
+});
+/** A flowchart drawn in the note. The chart is stored as JSON in the block (validated on every read); it uses no outside libraries. */
+export const flowchartBlock=createReactBlockSpec({type:"nouFlowchart",propSchema:{data:{default:""}},content:"none"},{
+ render:({block,editor})=><FlowchartView data={block.props.data} editable={editor.isEditable} onChange={json=>editor.updateBlock(block,{props:{data:json}})}/>
 });

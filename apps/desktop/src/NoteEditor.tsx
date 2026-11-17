@@ -112,6 +112,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
   const items=()=>[...getDefaultReactSlashMenuItems(editor),
     {title:"Page",aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
     {title:"Database",aliases:["database","table","board","calendar","timeline","gallery","list"],group:"NOU",onItemClick:()=>void create("database")},
+    {title:"Flowchart",aliases:["flowchart","diagram","chart","flow","process"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouFlowchart",props:{data:""}} as never)},
     {title:"Linked to-do",aliases:["linked","shared","todo","to-do","checklist","task"],group:"NOU",onItemClick:()=>void newLinkedTodo()},
     {title:"Bookmark",aliases:["bookmark","link"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouBookmark"})},
     {title:"Image",aliases:["image","photo","upload"],group:"NOU",onItemClick:()=>void create("image")},

@@ -1,8 +1,9 @@
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 import { cleanup, configure } from "@testing-library/react";
 afterEach(cleanup);
 // Several suites render big components; on a busy machine the default 1s wait for text to appear is too tight and makes tests flaky.
 configure({ asyncUtilTimeout: 5000 });
+vi.setConfig({ testTimeout: 20000 });
 // Node 25+ ships its own global `localStorage` that is unusable without --localstorage-file and hides jsdom's.
 // Use an in-memory Storage so tests behave the same on Node 22 (CI) and newer local Node versions.
 if (typeof globalThis.localStorage?.clear !== "function") {

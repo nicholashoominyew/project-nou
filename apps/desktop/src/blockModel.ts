@@ -4,6 +4,7 @@ import * as Y from "yjs";
 
 import {noteSchema} from "./schema";
 export {noteSchema} from "./schema";
+import { flowchartText } from "./flowchart";
 export const FRAGMENT = "nou-blocks-v1";
 /** Convert a copy only; commit its bytes and format marker in one SQLite transaction. */
 export function migrateLegacy(source: Y.Doc): Y.Doc {
@@ -25,7 +26,7 @@ function inlineText(content: unknown): string {
   return inlineText(item.content);
 }
 export function blocksToPlainText(blocks: readonly { type?:string; props?:Record<string,unknown>; content?: unknown; children?: readonly any[] }[]): string {
-  return blocks.map(b => (b.type==="nouBookmark" ? String(b.props?.title||"")+" "+String(b.props?.url||"") : b.type==="nouPage" ? String(b.props?.label||"") : b.type==="nouLinkedTodo" ? String(b.props?.text||"") : b.type==="nouImage"||b.type==="nouPdf" ? String(b.props?.name||"") : inlineText(b.content)) + (b.children?.length ? "\n" + blocksToPlainText(b.children) : "")).join("\n");
+  return blocks.map(b => (b.type==="nouBookmark" ? String(b.props?.title||"")+" "+String(b.props?.url||"") : b.type==="nouPage" ? String(b.props?.label||"") : b.type==="nouFlowchart" ? flowchartText(b.props?.data) : b.type==="nouLinkedTodo" ? String(b.props?.text||"") : b.type==="nouImage"||b.type==="nouPdf" ? String(b.props?.name||"") : inlineText(b.content)) + (b.children?.length ? "\n" + blocksToPlainText(b.children) : "")).join("\n");
 }
 /** Failed writes stop later saves until an explicit complete-state retry. */
 export class SaveQueue {
