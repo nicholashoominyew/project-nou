@@ -12,6 +12,7 @@ import Backlinks from "./Backlinks";
 import PageTags from "./PageTags";
 import Home from "./Home";
 import QuickCapture from "./QuickCapture";
+import { LockButton, LockGate } from "./PageLock";
 import { appendBlocksToNote } from "./noteAppend";
 import { INBOX_KEY, parseCapture, pickInbox } from "./captureParse";
 const GatewayPanel=lazy(()=>import("./GatewayPanel"));
@@ -56,7 +57,7 @@ export default function App(){
  useEffect(()=>{if(splitId&&pages.length&&!pages.some(p=>p.id===splitId)){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}},[pages,splitId]);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [lockedIds,setLockedIds]=useState<string[]>([]);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -72,8 +73,8 @@ export default function App(){
  const typing=!busy&&!peekBusy&&(editorStatus==="saving"||editorStatus==="loading");
  const current=pages.find(p=>p.id===selected);
  const reload=useCallback(async()=>{
-  const [active,deleted,status]=await Promise.all([invoke<Page[]>("list_pages"),invoke<Page[]>("list_trashed_pages"),invoke<boolean>("notes_write_blocked")]);
-  setPages(active);setTrashed(deleted);setRecoveryBlocked(!!status);
+  const [active,deleted,status,locked]=await Promise.all([invoke<Page[]>("list_pages"),invoke<Page[]>("list_trashed_pages"),invoke<boolean>("notes_write_blocked"),invoke<string[]>("list_locked_pages").catch(()=>[] as string[])]);
+  setPages(active);setTrashed(deleted);setRecoveryBlocked(!!status);setLockedIds(Array.isArray(locked)?locked:[]);
   setTabs(old=>old.filter(id=>active.some(p=>p.id===id)));setSelected(old=>old&&active.some(p=>p.id===old)?old:null);
  },[]);
  useEffect(()=>{void reload().catch(e=>setError(String(e)))},[reload]);
@@ -193,7 +194,7 @@ export default function App(){
    {editing?<input className="row-rename" aria-label={"Rename "+page.title} autoFocus defaultValue={page.title} onFocus={e=>e.currentTarget.select()}
      onBlur={e=>{if(cancelRename.current){cancelRename.current=false;return}void renamePage(page,e.target.value)}}
      onKeyDown={e=>{if(e.nativeEvent.isComposing)return;if(e.key==="Enter")e.currentTarget.blur();else if(e.key==="Escape"){cancelRename.current=true;setRenaming(null)}}}/>
-   :<button className="tree-page" disabled={guard} onClick={()=>openPage(page.id)} onDoubleClick={()=>{if(editable)setRenaming(page.id)}}><span>{page.title}</span></button>}
+   :<button className="tree-page" disabled={guard} onClick={()=>openPage(page.id)} onDoubleClick={()=>{if(editable)setRenaming(page.id)}}><span>{page.title}{lockedIds.includes(page.id)&&<span className="row-lock" title="Locked with a password"><Icon name="lock" size={12}/></span>}</span></button>}
    {!editing&&<span className="row-actions">
     <button aria-label={"More options for "+page.title} aria-haspopup="menu" aria-expanded={menu?.id===page.id} disabled={!editable} onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();openMenu(r.left,r.bottom+4)}}>{"\u22EF"}</button>
     <button aria-label={"Add a subpage to "+page.title} title="Add a subpage" disabled={!editable} onClick={()=>void addSubpage(page)}>+</button></span>}
@@ -253,6 +254,7 @@ export default function App(){
    :showFiles?<Suspense fallback={<p role="status">Opening files…</p>}><FileTracker onOpen={openPage} disabled={guard}/></Suspense>
    :showGraph?<Suspense fallback={<p role="status">Opening graph…</p>}><GraphView pages={pages} onOpen={openPage} disabled={guard}/></Suspense>
    :current?<div className="document" key={current.id}><div className="toolbar"><nav className="breadcrumb" aria-label="Breadcrumb"><button disabled={guard} onClick={()=>setSelected(null)}>Workspace</button>{crumbs.map((page,i)=><span key={page.id}><span aria-hidden="true"> / </span>{i<crumbs.length-1?<button disabled={guard} onClick={()=>openPage(page.id)}>{page.title}</button>:<span aria-current="page">{page.title}</span>}</span>)}</nav><div className="actions">
+    <LockButton pageId={current.id} locked={lockedIds.includes(current.id)} disabled={guard||recoveryBlocked} onChanged={()=>void reload().catch(e=>setError(String(e)))}/>
     <button aria-label="Focus mode" title="Focus mode (Ctrl+Shift+F)" onClick={()=>setFocus(true)}>Focus</button>
     <button disabled={guard||recoveryBlocked} onClick={()=>void run(async()=>{const page=await createRichPage(current.id,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setCollapsed(old=>old.filter(id=>id!==current.id))})}>+ Subpage</button>
     <button aria-label="Move page up" title="Move page up" disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("move_page",{pageId:current.id,direction:"up"}))}>↑</button>
@@ -261,14 +263,14 @@ export default function App(){
    </div></div>
    <div className="document-heading"><div className="page-icon-picker" ref={iconPickerRef}><button className="document-icon" aria-label="Assign page icon" disabled={guard||recoveryBlocked} onClick={()=>setIconPicker(v=>!v)}><Icon name={current.icon} size={32}/></button>{iconPicker&&<div className="icon-picker-popover" role="group" aria-label="Monochrome page icons">{iconNames.map(icon=><button key={icon} aria-label={icon+" icon"} aria-pressed={current.icon===icon} disabled={guard} onClick={()=>void run(async()=>{await invoke("set_page_icon",{pageId:current.id,icon});setIconPicker(false)})}><Icon name={icon} size={22}/></button>)}</div>}</div>
     <input className="title-input" aria-label="Page title" readOnly={guard||recoveryBlocked} defaultValue={current.title} onBlur={e=>{const title=e.target.value.trim()||"Untitled";if(!recoveryBlocked&&title!==current.title)void run(()=>invoke("rename_page",{pageId:current.id,title}))}} onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur()}}/>
-   </div><PageTags pageId={current.id} readOnly={recoveryBlocked} onError={e=>setError(String(e))}/><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense><Backlinks pageId={current.id} onOpen={openPage}/></div>
+   </div><PageTags pageId={current.id} readOnly={recoveryBlocked} onError={e=>setError(String(e))}/><LockGate pageId={current.id} locked={lockedIds.includes(current.id)} title={current.title}><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense></LockGate><Backlinks pageId={current.id} onOpen={openPage}/></div>
    :<Home pages={pages} open={openPage} searchTag={tag=>{setQuickFindText("#"+tag);setQuickFind(true)}} newPage={()=>void newRootPage()} disabled={guard||recoveryBlocked} refresh={reload} onManageAccess={()=>setShowGateway(true)}/>}
    {splitId&&current&&!showTrash&&!showGraph&&!showFiles&&(()=>{const other=pages.find(p=>p.id===splitId);return other?<aside className="split-pane" aria-label="Split view">
     <header className="split-header"><strong title={other.title}>{other.title||"Untitled"}</strong>
      <button disabled={guard} onClick={swapSplit} title="Swap the two pages">Swap</button>
      <button disabled={guard} onClick={()=>{const id=other.id;closeSplit();openPage(id)}} title="Open this page on its own">Open alone</button>
      <button disabled={splitStatus!=="saved"} onClick={closeSplit} aria-label="Close split view">Close</button></header>
-    <div className="split-body"><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor key={other.id} pageId={other.id} title={other.title} onStatus={onSplitStatus} readOnly={recoveryBlocked} secondary/></Suspense></div>
+    <div className="split-body"><LockGate pageId={other.id} locked={lockedIds.includes(other.id)} title={other.title}><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor key={other.id} pageId={other.id} title={other.title} onStatus={onSplitStatus} readOnly={recoveryBlocked} secondary/></Suspense></LockGate></div>
    </aside>:null})()}
    </div>
   </section>

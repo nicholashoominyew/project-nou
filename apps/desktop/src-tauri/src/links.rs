@@ -16,6 +16,7 @@ pub fn replace_links(tx: &Transaction<'_>, source: &str, targets: &[String]) -> 
     let exists: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pages WHERE id=?1 AND workspace_id='personal')", [source], |r| r.get(0)).map_err(e)?;
     if !exists { return Err("Page not found".into()); }
     tx.execute("DELETE FROM page_links WHERE source_id=?1", [source]).map_err(e)?;
+    if crate::locks::is_locked(tx, source)? { return Ok(0); } // what a locked note links to is not revealed
     let mut kept = 0;
     for target in targets {
         if target == source { continue; }

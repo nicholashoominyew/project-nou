@@ -557,3 +557,16 @@ html{touch-action:pan-x pan-y}
 .files-pages{display:flex;flex-wrap:wrap;gap:2px 12px;min-width:0}
 .files-pages em{color:var(--muted);font-size:13px}
 .files-unused{color:var(--accent)}
+.row-lock{display:inline-flex;margin-left:5px;color:var(--muted);vertical-align:-1px}
+.page-lock{position:relative;display:inline-block}
+.page-lock-popover{position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:300px;padding:12px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.page-lock-popover form{display:flex;flex-direction:column;gap:8px}
+.page-lock-popover input{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:inherit}
+.page-lock-popover p{margin:0}
+.page-lock-menu{display:flex;flex-direction:column;gap:2px}
+.page-lock-menu button{border:0;background:transparent;text-align:left;padding:7px 8px;border-radius:6px;font:inherit}
+.page-lock-menu button:hover{background:var(--hover)}
+.lock-screen{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin:48px 0;max-width:420px;color:var(--text)}
+.lock-screen h2{margin:4px 0 0;font-size:22px}
+.lock-screen form{display:flex;gap:8px;width:100%}
+.lock-screen input{flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:inherit}

@@ -101,6 +101,7 @@ pub fn validate_notes(path: &Path) -> Result<(i64, i64)> {
     if schema >= 5 { expected.execute_batch(include_str!("../../../../db/notes/005_page_links.sql")).map_err(|e|e.to_string())?; }
     if schema >= 6 { expected.execute_batch(include_str!("../../../../db/notes/006_gateway.sql")).map_err(|e|e.to_string())?; }
     if schema >= 7 { expected.execute_batch(include_str!("../../../../db/notes/007_linked_todos.sql")).map_err(|e|e.to_string())?; }
+    if schema >= 8 { expected.execute_batch(include_str!("../../../../db/notes/008_page_locks.sql")).map_err(|e|e.to_string())?; }
     fn definitions(c: &Connection) -> Result<Vec<(String, String, String)>> {
         let mut s = c.prepare("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").map_err(|e| e.to_string())?;
         let rows = s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, String>(2)?.split_whitespace().collect::<Vec<_>>().join(" ")))).map_err(|e| e.to_string())?;

@@ -19,6 +19,8 @@ compose:"M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z",
 chevronLeft:"m14 6-6 6 6 6M20 6l-6 6 6 6",
 menu:"M4 6h16M4 12h16M4 18h16",
 archive:"M3 4h18v4H3V4m1 4v12h16V8M10 12h4",
-import:"M12 3v12m0 0-4-4m4 4 4-4M4 17v4h16v-4"
+import:"M12 3v12m0 0-4-4m4 4 4-4M4 17v4h16v-4",
+lock:"M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5V11Zm7 4v2",
+unlock:"M7 11V8a5 5 0 0 1 9.6-2M5 11h14v10H5V11Zm7 4v2"
 };
 export function Icon({name="document",size=18}:{name?:string;size?:number}){return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]||paths.document}/></svg>;}

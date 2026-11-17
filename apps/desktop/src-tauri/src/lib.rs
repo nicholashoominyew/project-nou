@@ -10,6 +10,7 @@ mod editor;
 mod databases;
 mod links;
 mod todos;
+mod locks;
 mod file_tracker;
 mod tags;
 mod home;
@@ -74,11 +75,11 @@ fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     } else {
         let version: i64 = conn.query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version != 1 && version != 2 && version != 3 && version != 4 && version != 5 && version != 6 && version != 7 { return Err(format!("Unsupported Notes database version: {version}")); }
+        if version != 1 && version != 2 && version != 3 && version != 4 && version != 5 && version != 6 && version != 7 && version != 8 { return Err(format!("Unsupported Notes database version: {version}")); }
     }
     conn.execute("INSERT OR IGNORE INTO workspaces (id,title) VALUES ('personal','Personal')", [])
         .map_err(|e| e.to_string())?;
-    if conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get::<_,i64>(0)).map_err(|e| e.to_string())? < 7 {
+    if conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get::<_,i64>(0)).map_err(|e| e.to_string())? < 8 {
         recovery::create(&conn, &folder.join("schema-rollback"))?;
         editor::upgrade(&conn)?;
     }
@@ -339,17 +340,21 @@ fn move_page(db: State<'_, Db>, page_id: String, direction: String) -> Result<()
 
 
 #[tauri::command]
-fn load_note(db: State<'_, Db>, page_id: String) -> Result<editor::Note, String> {
+fn load_note(db: State<'_, Db>, locks: State<'_, locks::Locks>, page_id: String) -> Result<editor::Note, String> {
     let c = db.0.lock().map_err(|_| "Database lock poisoned")?;
-    editor::load(&c, &page_id, db.1.load(Ordering::SeqCst))
+    let epoch = db.1.load(Ordering::SeqCst);
+    if locks::is_locked(&c, &page_id)? { let key = locks.key_for(&c, &page_id)?; return locks::load(&c, &page_id, epoch, &key); }
+    editor::load(&c, &page_id, epoch)
 }
 
 #[tauri::command]
-fn save_note(app:tauri::AppHandle, attachment_ids:Option<Vec<String>>, db: State<'_, Db>, page_id: String, update: Vec<u8>, plain_text: String, format: String, epoch: u64) -> Result<i64, String> {
+fn save_note(app:tauri::AppHandle, locks: State<'_, locks::Locks>, attachment_ids:Option<Vec<String>>, db: State<'_, Db>, page_id: String, update: Vec<u8>, plain_text: String, format: String, epoch: u64) -> Result<i64, String> {
     let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.check_epoch(epoch)?;
     let ids=attachment_ids.unwrap_or_default();
     attachments::require(&crate::data_dir(app.path()).map_err(|e|e.to_string())?,&ids)?;
+    // A locked note is saved encrypted and its text never reaches the search index.
+    if locks::is_locked(&c, &page_id)? { let key = locks.key_for(&c, &page_id)?; return locks::append(&mut c, &page_id, &update, &format, Some(&ids), &key); }
     editor::append_with_files(&mut c, &page_id, &update, &plain_text, &format, None,Some(&ids))
 }
 
@@ -414,6 +419,7 @@ pub fn run() {
             app.manage(BackupDirectory(backups));
             app.manage(Db(Mutex::new(conn), AtomicU64::new(0), AtomicBool::new(interrupted)));
             app.manage(recovery_commands::RecoveryState::default());
+            app.manage(locks::Locks::default());
             app.manage(gateway_http::ApiServer::default());
             gateway_http::start_if_enabled(app.handle());
             let handle = app.handle().clone();
@@ -435,7 +441,7 @@ pub fn run() {
             recovery_commands::preview_retention,recovery_commands::apply_retention,
             recovery_commands::create_encrypted_backup,recovery_commands::prepare_encrypted_restore,recovery_commands::review_restore,recovery_commands::reset_backup_schedule,recovery_commands::backup_schedule_status,recovery_commands::configure_backup_schedule,
             workspace_commands::notes_write_blocked,workspace_commands::relocate_page,workspace_commands::set_page_icon,workspace_commands::set_page_favorite,workspace_commands::upload_attachment,workspace_commands::upload_attachment_bytes,workspace_commands::read_attachment,workspace_commands::export_attachment,workspace_commands::open_bookmark,
-            databases::create_database,databases::get_database,databases::add_property,databases::rename_property,databases::delete_property,databases::change_property_type,databases::duplicate_property,databases::update_select_option,databases::delete_select_option,databases::list_databases,links::set_page_links,links::list_backlinks,links::list_link_edges,file_tracker::list_files,todos::linked_todo_create,todos::linked_todo_get,todos::linked_todo_set,todos::linked_todo_list,todos::linked_todo_pages,todos::set_page_todo_links,tags::set_page_tags,tags::get_page_tags,tags::list_tags,tags::find_pages_by_tag,home::list_recent_pages,gateway::gateway_create_token,gateway::gateway_list_tokens,gateway::gateway_revoke_token,gateway::gateway_list_proposals,gateway::gateway_decide,gateway::gateway_mark_applied,gateway::gateway_audit,gateway_http::gateway_api_status,gateway_http::gateway_api_set_enabled,databases::list_rows,databases::add_relation,databases::add_rollup,databases::add_select_option,databases::add_view,databases::update_view,databases::delete_view,databases::add_row,databases::set_value,
+            databases::create_database,databases::get_database,databases::add_property,databases::rename_property,databases::delete_property,databases::change_property_type,databases::duplicate_property,databases::update_select_option,databases::delete_select_option,databases::list_databases,links::set_page_links,links::list_backlinks,links::list_link_edges,file_tracker::list_files,locks::list_locked_pages,locks::lock_state,locks::lock_set,locks::lock_unlock,locks::lock_relock,locks::lock_change_password,locks::lock_remove,todos::linked_todo_create,todos::linked_todo_get,todos::linked_todo_set,todos::linked_todo_list,todos::linked_todo_pages,todos::set_page_todo_links,tags::set_page_tags,tags::get_page_tags,tags::list_tags,tags::find_pages_by_tag,home::list_recent_pages,gateway::gateway_create_token,gateway::gateway_list_tokens,gateway::gateway_revoke_token,gateway::gateway_list_proposals,gateway::gateway_decide,gateway::gateway_mark_applied,gateway::gateway_audit,gateway_http::gateway_api_status,gateway_http::gateway_api_set_enabled,databases::list_rows,databases::add_relation,databases::add_rollup,databases::add_select_option,databases::add_view,databases::update_view,databases::delete_view,databases::add_row,databases::set_value,
             background_task::background_backup_task,portability::write_note_export,portability::read_note_import,portability::import_note])
         .run(tauri::generate_context!())
         .expect("error running Project NOU");

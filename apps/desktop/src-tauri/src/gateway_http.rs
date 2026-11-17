@@ -56,6 +56,7 @@ pub fn handle(c: &Connection, req: &ApiRequest, port: u16) -> ApiResponse {
         }
         ("GET", ["v1", "pages", id]) => {
             if let Err(r) = needs(&who, "notes:read") { return r; }
+            if crate::locks::is_locked(c, id).unwrap_or(false) { return fail(423, "This note is locked"); }
             let row: Option<(String, String, String)> = c.query_row("SELECT title,updated_at,COALESCE((SELECT body FROM page_search WHERE page_id=pages.id),'') FROM pages WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NULL", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional().unwrap_or(None);
             match row { Some((title, updated, text)) => data(json!({ "id": id, "title": title, "updated_at": updated, "text": text.chars().take(MAX_TEXT).collect::<String>() })), None => fail(404, "Page not found") }
         }

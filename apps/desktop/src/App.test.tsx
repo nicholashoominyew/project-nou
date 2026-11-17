@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
-const {isFullscreen,setFullscreen,calls}=vi.hoisted(()=>({isFullscreen:vi.fn(),setFullscreen:vi.fn(),calls:[] as string[]}));
-beforeEach(()=>{localStorage.clear();calls.length=0;isFullscreen.mockReset().mockResolvedValue(false);setFullscreen.mockReset().mockResolvedValue(undefined)});
+const {isFullscreen,setFullscreen,calls,lockedPages}=vi.hoisted(()=>({isFullscreen:vi.fn(),setFullscreen:vi.fn(),calls:[] as string[],lockedPages:{value:[] as string[]}}));
+beforeEach(()=>{lockedPages.value=[];localStorage.clear();calls.length=0;isFullscreen.mockReset().mockResolvedValue(false);setFullscreen.mockReset().mockResolvedValue(undefined)});
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ onCloseRequested: async () => () => {},isFullscreen,setFullscreen }) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   calls.push(command);
@@ -13,6 +13,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   if (command === "list_tags") return [{ name: "research", count: 2 }];
   if (command === "list_backlinks") return [{ id: "second", title: "Linker page" }];
   if (command === "list_recent_pages") return [];
+  if (command === "list_locked_pages") return lockedPages.value;
+  if (command === "lock_state") return { locked: true, open: false };
   if (command === "list_link_edges") return [{ source: "page", target: "second" }];
   if (command === "list_files") return [{ id: "f".repeat(64), name: "report.pdf", mime: "application/pdf", bytes: 4096, pages: [{ id: "second", title: "Second note" }], trashed_pages: 0 }];
   if (command === "backup_status") return { interrupted: [] };
@@ -300,4 +302,18 @@ it("opens the file tracker from the sidebar, opens a page that uses a file, and 
  fireEvent.click(within(list).getByText("Second note"));
  await waitFor(()=>expect(screen.queryByRole("heading",{name:"Files"})).toBeNull());
  expect(screen.getByLabelText("Page title")).toHaveProperty("value","Second note");
+});
+it("a locked page shows the lock screen instead of its editor, with a lock mark in the sidebar; an unlocked page is unaffected",async()=>{
+ lockedPages.value=["second"];
+ render(<App/>);await screen.findByText("Test note");
+ expect(document.querySelectorAll(".sidebar .row-lock").length).toBe(1);
+ fireEvent.click(screen.getByText("Second note"));
+ expect(await screen.findByLabelText("Locked note")).toBeTruthy();
+ expect(screen.getByText("“Second note” is locked")).toBeTruthy();
+ expect(screen.queryByTestId("main-editor")).toBeNull();
+ expect(screen.getByLabelText("Page title")).toHaveProperty("value","Second note");
+ expect(screen.queryByLabelText("Lock options")).toBeNull();
+ fireEvent.click(screen.getByText("Test note"));
+ expect((await screen.findByTestId("main-editor")).getAttribute("data-page")).toBe("page");
+ expect(screen.getByLabelText("Lock this note")).toBeTruthy();
 });

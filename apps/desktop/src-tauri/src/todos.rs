@@ -74,6 +74,7 @@ pub fn replace_refs(tx: &Transaction<'_>, page: &str, ids: &[String]) -> Result<
     let exists: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pages WHERE id=?1 AND workspace_id='personal')", [page], |r| r.get(0)).map_err(e)?;
     if !exists { return Err("Page not found".into()); }
     tx.execute("DELETE FROM linked_todo_refs WHERE page_id=?1", [page]).map_err(e)?;
+    if crate::locks::is_locked(tx, page)? { return Ok(0); }
     let mut kept = 0;
     for id in ids {
         if !valid_id(id) { continue; }
