@@ -14,6 +14,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   if (command === "list_backlinks") return [{ id: "second", title: "Linker page" }];
   if (command === "list_recent_pages") return [];
   if (command === "list_link_edges") return [{ source: "page", target: "second" }];
+  if (command === "list_files") return [{ id: "f".repeat(64), name: "report.pdf", mime: "application/pdf", bytes: 4096, pages: [{ id: "second", title: "Second note" }], trashed_pages: 0 }];
   if (command === "backup_status") return { interrupted: [] };
 } }));
 const appended=vi.hoisted(()=>[] as {page:string;blocks:unknown[]}[]);
@@ -289,4 +290,14 @@ it("remembers the split page across restarts, but not when it is the same as the
  localStorage.setItem("nou-split-page",JSON.stringify("gone-page"));
  render(<App/>);await screen.findByTestId("main-editor");
  await waitFor(()=>expect(screen.queryByTestId("split-editor")).toBeNull());
+});
+it("opens the file tracker from the sidebar, opens a page that uses a file, and leaves the tracker",async()=>{
+ render(<App/>);await screen.findByText("Test note");
+ fireEvent.click(screen.getByRole("button",{name:"Files"}));
+ expect(await screen.findByRole("heading",{name:"Files"})).toBeTruthy();
+ expect(await screen.findByText("report.pdf")).toBeTruthy();
+ const list=await screen.findByRole("list",{name:"Files"});
+ fireEvent.click(within(list).getByText("Second note"));
+ await waitFor(()=>expect(screen.queryByRole("heading",{name:"Files"})).toBeNull());
+ expect(screen.getByLabelText("Page title")).toHaveProperty("value","Second note");
 });

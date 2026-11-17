@@ -544,3 +544,16 @@ html{touch-action:pan-x pan-y}
 .split-header strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .split-body{flex:1;min-height:0;overflow:auto;padding:16px 32px 80px}
 @media print{.split-pane{display:none!important}.workspace-body.split>.document{overflow:visible!important}}
+.files-screen h1{font-size:29px;margin:48px 0 8px}
+.files-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:10px 0 14px}
+.files-tools input[type=search]{min-width:220px;flex:1;max-width:340px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:inherit}
+.files-tools label{display:inline-flex;align-items:center;gap:6px;font-size:14px}
+.files-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.files-list li{display:grid;grid-template-columns:minmax(160px,1.2fr) minmax(160px,2fr) auto;gap:12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.files-list li:last-child{border-bottom:0}
+.files-list li.unused{background:var(--panel)}
+.files-main{display:flex;flex-direction:column;min-width:0}
+.files-main strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files-pages{display:flex;flex-wrap:wrap;gap:2px 12px;min-width:0}
+.files-pages em{color:var(--muted);font-size:13px}
+.files-unused{color:var(--accent)}

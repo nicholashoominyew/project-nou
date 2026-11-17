@@ -16,6 +16,7 @@ import { appendBlocksToNote } from "./noteAppend";
 import { INBOX_KEY, parseCapture, pickInbox } from "./captureParse";
 const GatewayPanel=lazy(()=>import("./GatewayPanel"));
 const GraphView=lazy(()=>import("./GraphView"));
+const FileTracker=lazy(()=>import("./FileTracker"));
 import QuickFind from "./QuickFind";
 import {DismissibleDetails,useDismiss} from "./Dismissible";
 const NoteEditor=lazy(()=>import("./NoteEditor"));
@@ -55,7 +56,7 @@ export default function App(){
  useEffect(()=>{if(splitId&&pages.length&&!pages.some(p=>p.id===splitId)){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}},[pages,splitId]);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -105,7 +106,7 @@ export default function App(){
   if(!other||!selected||busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved"||splitStatusRef.current!=="saved")return;
   const was=selected;setTabs(old=>old.includes(other)?old:[...old,other]);setSelected(other);setSplitId(was);
  }
- function openPage(id:string){if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved"||(splitIdRef.current!==null&&splitStatusRef.current!=="saved"))return;if(id===splitIdRef.current){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setShowGraph(false);setIconPicker(false)}
+ function openPage(id:string){if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved"||(splitIdRef.current!==null&&splitStatusRef.current!=="saved"))return;if(id===splitIdRef.current){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setShowGraph(false);setShowFiles(false);setIconPicker(false)}
  function closeTab(id:string){if(guard)return;closedTabs.current.push(id);const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
  function reopenTab(){if(guard)return;while(closedTabs.current.length){const id=closedTabs.current.pop()!;if(!tabs.includes(id)&&pagesRef.current.some(p=>p.id===id)){openPage(id);return}}}
  function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
@@ -217,9 +218,10 @@ export default function App(){
    <div className="sb-header"><span className="mark">脳</span><strong className="sb-name">Project NOU</strong>
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>
      <button aria-label="New page" title="New page (Ctrl+N)" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="compose" size={16}/></button></div></div>
-   <button className={"sb-item"+(!current&&!showTrash&&!showGraph?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false)}}><Icon name="home" size={17}/><span>Home</span></button>
+   <button className={"sb-item"+(!current&&!showTrash&&!showGraph&&!showFiles?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false);setShowFiles(false)}}><Icon name="home" size={17}/><span>Home</span></button>
    <button className="sb-item" disabled={guard} onClick={()=>{setQuickFindText("");setQuickFind(true)}}><Icon name="search" size={17}/><span>Search</span><kbd>Ctrl+Q</kbd></button>
-   <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
+   <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowFiles(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
+   <button className={"sb-item"+(showFiles?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowFiles(v=>!v)}}><Icon name="folder" size={17}/><span>Files</span></button>
    <button className="sb-item" disabled={recoveryBlocked||busy} onClick={()=>setShowCapture(true)}><Icon name="compose" size={17}/><span>Quick capture</span><kbd>Ctrl+Shift+A</kbd></button>
    <div className="sb-scroll">
     {favorites.length>0&&<section aria-label="Favorites"><div className="sb-section"><button className="sb-section-title" aria-expanded={favoritesOpen} onClick={()=>setFavoritesOpen(v=>!v)}>Favorites</button></div>
@@ -232,7 +234,7 @@ export default function App(){
      <button className="sb-item sb-add-page" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="plus" size={17}/><span>Add a page</span></button></section>
    </div>
    <div className="sb-bottom">
-    <button className={"sb-item"+(showTrash?" active":"")} disabled={guard} onClick={()=>{setShowGraph(false);setShowTrash(v=>!v);onEditorStatus("saved")}}><Icon name="trash" size={17}/><span>Trash</span><em>{trashed.length}</em></button>
+    <button className={"sb-item"+(showTrash?" active":"")} disabled={guard} onClick={()=>{setShowGraph(false);setShowFiles(false);setShowTrash(v=>!v);onEditorStatus("saved")}}><Icon name="trash" size={17}/><span>Trash</span><em>{trashed.length}</em></button>
     <button className="sb-item" disabled={guard||recoveryBlocked} onClick={()=>setShowImport(true)}><Icon name="import" size={17}/><span>Import recovered note…</span></button>
     <button className="sb-item" disabled={guard} onClick={()=>setShowRecovery(true)}><Icon name="archive" size={17}/><span>Backups &amp; restore</span></button>
     <small>Offline · Saved on this device</small></div>
@@ -246,8 +248,9 @@ export default function App(){
    {backupNotice&&<p className="notice" role="status">{backupNotice} Open Workspace tools → Backups & restore.</p>}
    {recoveryBlocked&&<p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
    {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>Dismiss</button></div>}
-   <div className={splitId&&current&&!showTrash&&!showGraph?"workspace-body split":"workspace-body"}>
+   <div className={splitId&&current&&!showTrash&&!showGraph&&!showFiles?"workspace-body split":"workspace-body"}>
    {showTrash?<div className="document trash-screen"><h1>Trash</h1><p>Restoring a page also restores its subpages deleted in the same operation.</p>{!trashed.length&&<p>Trash is empty.</p>}{trashed.map(page=><div className="trash-row" key={page.id}><span><Icon name={page.icon}/>{page.title}</span><button disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("restore_page",{pageId:page.id}))}>Restore</button></div>)}</div>
+   :showFiles?<Suspense fallback={<p role="status">Opening files…</p>}><FileTracker onOpen={openPage} disabled={guard}/></Suspense>
    :showGraph?<Suspense fallback={<p role="status">Opening graph…</p>}><GraphView pages={pages} onOpen={openPage} disabled={guard}/></Suspense>
    :current?<div className="document" key={current.id}><div className="toolbar"><nav className="breadcrumb" aria-label="Breadcrumb"><button disabled={guard} onClick={()=>setSelected(null)}>Workspace</button>{crumbs.map((page,i)=><span key={page.id}><span aria-hidden="true"> / </span>{i<crumbs.length-1?<button disabled={guard} onClick={()=>openPage(page.id)}>{page.title}</button>:<span aria-current="page">{page.title}</span>}</span>)}</nav><div className="actions">
     <button aria-label="Focus mode" title="Focus mode (Ctrl+Shift+F)" onClick={()=>setFocus(true)}>Focus</button>
@@ -260,7 +263,7 @@ export default function App(){
     <input className="title-input" aria-label="Page title" readOnly={guard||recoveryBlocked} defaultValue={current.title} onBlur={e=>{const title=e.target.value.trim()||"Untitled";if(!recoveryBlocked&&title!==current.title)void run(()=>invoke("rename_page",{pageId:current.id,title}))}} onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur()}}/>
    </div><PageTags pageId={current.id} readOnly={recoveryBlocked} onError={e=>setError(String(e))}/><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense><Backlinks pageId={current.id} onOpen={openPage}/></div>
    :<Home pages={pages} open={openPage} searchTag={tag=>{setQuickFindText("#"+tag);setQuickFind(true)}} newPage={()=>void newRootPage()} disabled={guard||recoveryBlocked} refresh={reload} onManageAccess={()=>setShowGateway(true)}/>}
-   {splitId&&current&&!showTrash&&!showGraph&&(()=>{const other=pages.find(p=>p.id===splitId);return other?<aside className="split-pane" aria-label="Split view">
+   {splitId&&current&&!showTrash&&!showGraph&&!showFiles&&(()=>{const other=pages.find(p=>p.id===splitId);return other?<aside className="split-pane" aria-label="Split view">
     <header className="split-header"><strong title={other.title}>{other.title||"Untitled"}</strong>
      <button disabled={guard} onClick={swapSplit} title="Swap the two pages">Swap</button>
      <button disabled={guard} onClick={()=>{const id=other.id;closeSplit();openPage(id)}} title="Open this page on its own">Open alone</button>

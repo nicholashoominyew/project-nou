@@ -13,7 +13,7 @@ describe("GraphView", () => {
     render(<GraphView pages={pages} onOpen={() => {}} />);
     expect(await screen.findByLabelText("Open Alpha")).toBeTruthy();
     for (const t of ["Beta", "Gamma", "Lonely"]) expect(screen.getByLabelText("Open " + t)).toBeTruthy();
-    expect(screen.getByText("4 pages, 1 link")).toBeTruthy();
+    expect(await screen.findByText("4 pages, 1 link")).toBeTruthy(); // the link count appears once the links have loaded
   });
   it("draws main pages bigger than subpages, and gives main pages a bold label", async () => {
     const { container } = render(<GraphView pages={[page("a", "Main"), page("b", "Sub", "a"), page("c", "Subsub", "b")]} onOpen={() => {}} />);
