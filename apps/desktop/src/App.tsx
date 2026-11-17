@@ -190,7 +190,7 @@ export default function App(){
    draggable={!flat&&editable&&!editing} onDragStart={e=>{e.dataTransfer.setData("application/x-nou-page",page.id);e.dataTransfer.effectAllowed="move";setDragged(page.id)}} onDragEnd={()=>{setDragged(null);setDropHint("")}}
    onDragOver={e=>{if(flat||!dragged||guard)return;e.preventDefault();e.stopPropagation();setDropHint(page.id+":"+zone(e))}}
    onDrop={e=>{if(!flat)void move(e,page.id,zone(e) as DropPosition)}}
-   onContextMenu={e=>{e.preventDefault();openMenu(e.clientX,e.clientY)}} style={{paddingLeft:6+depth*14}}>
+   onContextMenu={e=>{e.preventDefault();openMenu(e.clientX,e.clientY)}} style={{paddingLeft:6+depth*16}}>
    <span className="row-lead"><span className="row-icon"><Icon name={page.icon} size={17}/></span>{children&&<button className="tree-toggle" disabled={guard} aria-label={(expanded?"Collapse ":"Expand ")+page.title} aria-expanded={expanded} onClick={()=>setCollapsed(old=>expanded?[...old,page.id]:old.filter(id=>id!==page.id))}>{expanded?"\u25BE":"\u25B8"}</button>}</span>
    {editing?<input className="row-rename" aria-label={"Rename "+page.title} autoFocus defaultValue={page.title} onFocus={e=>e.currentTarget.select()}
      onBlur={e=>{if(cancelRename.current){cancelRename.current=false;return}void renamePage(page,e.target.value)}}
@@ -220,11 +220,10 @@ export default function App(){
    <div className="sb-header"><span className="mark">脳</span><strong className="sb-name">Project NOU</strong>
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>
      <button aria-label="New page" title="New page (Ctrl+N)" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="compose" size={16}/></button></div></div>
-   <button className={"sb-item"+(!current&&!showTrash&&!showGraph&&!showFiles?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false);setShowFiles(false)}}><Icon name="home" size={17}/><span>Home</span></button>
    <SidebarSearchBox query={sbQuery} onQuery={setSbQuery} disabled={guard}/>
+   <button className={"sb-item"+(!current&&!showTrash&&!showGraph&&!showFiles?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false);setShowFiles(false)}}><Icon name="home" size={17}/><span>Home</span></button>
    <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowFiles(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
    <button className={"sb-item"+(showFiles?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowFiles(v=>!v)}}><Icon name="folder" size={17}/><span>Files</span></button>
-   <button className="sb-item" disabled={recoveryBlocked||busy} onClick={()=>setShowCapture(true)}><Icon name="compose" size={17}/><span>Quick capture</span><kbd>Ctrl+Shift+A</kbd></button>
    {sbQuery.trim()&&<div className="sb-scroll"><SidebarResults query={sbQuery} pages={pages} disabled={guard} onOpen={id=>{setSbQuery("");openPage(id)}}/></div>}
    <div className="sb-scroll" style={sbQuery.trim()?{display:"none"}:undefined}>
     {favorites.length>0&&<section aria-label="Favorites"><div className="sb-section"><button className="sb-section-title" aria-expanded={favoritesOpen} onClick={()=>setFavoritesOpen(v=>!v)}>Favorites</button></div>
@@ -245,8 +244,8 @@ export default function App(){
     onKeyDown={e=>{if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();setSidebarWidth(w=>clampSidebar(w+(e.key==="ArrowRight"?16:-16)))}}}/>
   </aside>}
   <section className={"workspace"+(splitId&&current?" split":"")}>
-   <header className="workspace-topbar">{!sidebarOpen&&<button className="sb-open" aria-label="Open sidebar" title="Open sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(true)}><Icon name="menu" size={18}/></button>}<div className="page-tabs" role="tablist" aria-label="Open pages">{tabs.map(id=>{const page=pages.find(p=>p.id===id);return page&&<div className={"page-tab "+(id===selected&&!showTrash?"selected":"")} key={id}><button role="tab" aria-selected={id===selected&&!showTrash} disabled={guard} onClick={()=>openPage(id)}><Icon name={page.icon} size={15}/><span>{page.title}</span></button><button className="close-tab" aria-label={"Close "+page.title+" tab"} disabled={guard} onClick={()=>closeTab(id)}>×</button></div>})}</div>
-    <div className="window-tools"><button aria-label={"Switch to "+(theme==="light"?"dark":"light")+" mode"} title="Light / dark mode" onClick={()=>setTheme(v=>v==="light"?"dark":"light")}>{theme==="light"?"☾":"☀"}</button><button aria-label="Toggle fullscreen" title="Fullscreen (F11)" onClick={()=>void toggleFullscreen()}>⛶</button></div>
+   <header className="workspace-topbar">{!sidebarOpen&&<button className="sb-open" aria-label="Open sidebar" title="Open sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(true)}><Icon name="menu" size={18}/></button>}<div className="tab-strip"><div className="page-tabs" role="tablist" aria-label="Open pages">{tabs.map(id=>{const page=pages.find(p=>p.id===id);return page&&<div className={"page-tab "+(id===selected&&!showTrash?"selected":"")} key={id}><button role="tab" aria-selected={id===selected&&!showTrash} disabled={guard} onClick={()=>openPage(id)}><i className="tab-dot" aria-hidden="true"/><span>{page.title}</span></button><button className="close-tab" aria-label={"Close "+page.title+" tab"} disabled={guard} onClick={()=>closeTab(id)}><Icon name="close" size={12}/></button></div>})}</div><button className="tab-new" aria-label="Open a page in a new tab" title="New tab" disabled={guard} onClick={()=>{setQuickFindText("");setQuickFind(true)}}><Icon name="plus" size={14}/></button></div>
+    <div className="window-tools"><button className="theme-tool" aria-label={"Switch to "+(theme==="light"?"dark":"light")+" mode"} title="Light / dark mode" onClick={()=>setTheme(v=>v==="light"?"dark":"light")}><Icon name={theme==="light"?"moon":"sun"} size={17}/></button><button className="fs-tool" aria-label="Toggle fullscreen" title="Fullscreen (F11)" onClick={()=>void toggleFullscreen()}><Icon name="fullscreen" size={17}/></button></div>
    </header>
    {backupNotice&&<p className="notice" role="status">{backupNotice} Open Workspace tools → Backups & restore.</p>}
    {recoveryBlocked&&<p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
@@ -286,6 +285,7 @@ export default function App(){
   <hr/><button role="menuitem" className="danger" onClick={()=>{setMenu(null);trashPage(menuPage)}}>Move to Trash</button></div>}
  {focus&&<button className="focus-exit" onClick={()=>setFocus(false)} title="Leave focus mode (Esc)">Exit focus mode</button>}
  {showCapture&&<QuickCapture save={captureText} onOpenInbox={openInbox} onClose={()=>setShowCapture(false)} disabled={recoveryBlocked}/>}
+ <button className="fab" aria-label="Quick capture" title="Quick capture" disabled={recoveryBlocked||busy} onClick={()=>setShowCapture(true)}><Icon name="bolt" size={22}/></button>
  {showShortcuts&&<ShortcutsHelp onClose={()=>setShowShortcuts(false)}/>}
  {quickFind&&<QuickFind initialQuery={quickFindText} pages={pages} onOpen={id=>{setQuickFind(false);openPage(id)}} onClose={()=>{setQuickFind(false);setQuickFindText("")}}/>}
  </main></EditorFeatures.Provider>;

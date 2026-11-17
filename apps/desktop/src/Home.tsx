@@ -9,7 +9,7 @@ import { DEFAULT_LAYOUT_KEY, moveWidget, normalizeLayout, setWidgetHidden, type 
 /** What every widget may use. Widgets never reach into the app directly; later features (inbox, approvals, bot queue,
  * resurfacing) plug in by adding an entry to HOME_WIDGETS with a render function over this context. */
 export type HomeContext = { pages: PageInfo[]; open: (id: string) => void; searchTag: (tag: string) => void; disabled: boolean; refresh: () => Promise<void> };
-export type HomeWidget = { id: string; title: string; hint?: string; render: (ctx: HomeContext) => ReactNode };
+export type HomeWidget = { id: string; title: string; hint?: string; live?: boolean; render: (ctx: HomeContext) => ReactNode };
 
 type Recent = { id: string; title: string; updated_at: string };
 type TagCount = { name: string; count: number };
@@ -80,10 +80,10 @@ function ResurfaceWidget({ ctx }: { ctx: HomeContext }) {
 }
 
 export const HOME_WIDGETS: HomeWidget[] = [
-  { id: "approvals", title: "Waiting for your approval", hint: "AI tools can ask; only you can approve", render: ctx => <Approvals disabled={ctx.disabled} refresh={ctx.refresh} /> },
-  { id: "recent", title: "Recently edited", render: ctx => <RecentWidget ctx={ctx} /> },
+  { id: "approvals", title: "Waiting for your approval", live: true, hint: "AI tools can ask; only you can approve", render: ctx => <Approvals disabled={ctx.disabled} refresh={ctx.refresh} /> },
+  { id: "recent", title: "Recently edited", live: true, render: ctx => <RecentWidget ctx={ctx} /> },
   { id: "resurface", title: "Worth revisiting", hint: "Old notes, and what you wrote on this day", render: ctx => <ResurfaceWidget ctx={ctx} /> },
-  { id: "favorites", title: "Favorites", render: ctx => <FavoritesWidget ctx={ctx} /> },
+  { id: "favorites", title: "Favorites", live: true, render: ctx => <FavoritesWidget ctx={ctx} /> },
   { id: "tags", title: "Tags", hint: "Click a tag to find its pages", render: ctx => <TagsWidget ctx={ctx} /> },
 ];
 
@@ -113,7 +113,7 @@ export default function Home({ pages, open, searchTag, newPage, disabled, refres
     </header>
     <div className="home-grid">
       {visible.map((w, i) => <section key={w.id} className="home-card" aria-label={w.title}>
-        <header><h2>{w.title}</h2>
+        <header><h2><i className={"state-dot" + (w.live ? " live" : "")} aria-hidden="true" />{w.title}</h2>
           {editing && <span className="home-card-tools">
             <button aria-label={"Move " + w.title + " up"} disabled={i === 0} onClick={() => update(moveWidget(layout, w.id, -1))}>↑</button>
             <button aria-label={"Move " + w.title + " down"} disabled={i === visible.length - 1} onClick={() => update(moveWidget(layout, w.id, 1))}>↓</button>

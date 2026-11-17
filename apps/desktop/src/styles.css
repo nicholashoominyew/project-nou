@@ -268,7 +268,7 @@ body{background:var(--bg);color:var(--text)}button,input,select,textarea{color:i
 .db-cal-cell:nth-child(7n){border-right:0}.db-cal-cell.blank{background:var(--panel)}
 .db-cal-day{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
 .db-cal-day button{opacity:0;border:0;background:transparent;cursor:pointer;color:inherit;border-radius:4px}.db-cal-cell:hover .db-cal-day button,.db-cal-day button:focus-visible{opacity:1}
-.db-cal-cell.today .db-cal-day span{background:var(--accent);color:#fff;border-radius:50%;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center}
+.db-cal-cell.today .db-cal-day span{background:var(--accent);color:var(--accent-ink);border-radius:50%;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center}
 .db-cal-item{display:block;width:100%;text-align:left;border:0;border-radius:4px;background:var(--hover);color:inherit;font:inherit;font-size:12px;padding:2px 6px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .db-cal-item:hover{outline:1px solid var(--accent)}
 .db-undated{margin:8px 4px;font-size:13px;color:var(--muted)}.db-undated .db-cal-item{margin-top:4px;max-width:320px}
@@ -281,7 +281,7 @@ body{background:var(--bg);color:var(--text)}button,input,select,textarea{color:i
 .db-tl-tick{position:relative;box-sizing:border-box;flex:none;text-align:center;font-size:10px;color:var(--muted);padding-top:14px;border-left:1px solid var(--line)}
 .db-tl-tick em{position:absolute;top:0;left:2px;font-style:normal;font-weight:600;white-space:nowrap}.db-tl-tick.weekend{background:var(--panel)}
 .db-tl-lane{position:relative;height:34px;border-bottom:1px solid var(--line);flex:none}
-.db-tl-bar{position:absolute;top:6px;height:22px;border:0;border-radius:5px;background:var(--accent);color:#fff;font:inherit;font-size:12px;padding:0 8px;text-align:left;overflow:hidden;white-space:nowrap;cursor:pointer}
+.db-tl-bar{position:absolute;top:6px;height:22px;border:0;border-radius:5px;background:var(--accent);color:var(--accent-ink);font:inherit;font-size:12px;padding:0 8px;text-align:left;overflow:hidden;white-space:nowrap;cursor:pointer}
 .db-tl-row:hover .db-tl-name{background:var(--hover)}
 .db-peek{position:fixed;top:0;right:0;bottom:0;width:min(680px,94vw);z-index:70;background:var(--bg);color:var(--text);border-left:1px solid var(--line);box-shadow:-8px 0 28px rgba(0,0,0,.18);display:flex;flex-direction:column}
 .db-peek-bar{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--line)}.db-peek-bar strong{flex:1}
@@ -295,7 +295,7 @@ body{background:var(--bg);color:var(--text)}button,input,select,textarea{color:i
 .db-map-svg{display:block;width:100%;height:auto;background:var(--panel)}
 .db-map-bg{fill:var(--panel)}.db-map-grid{stroke:var(--line);stroke-width:1}.db-map-axis{stroke:var(--muted);stroke-width:1.2;opacity:.6}
 .db-map-label{fill:var(--muted);font-size:10px}
-.db-map-pin{cursor:pointer;outline:none}.db-map-pin circle{fill:var(--accent);stroke:#fff;stroke-width:2}
+.db-map-pin{cursor:pointer;outline:none}.db-map-pin circle{fill:var(--accent);stroke:var(--bg);stroke-width:2}
 .db-map-pin text{fill:var(--text);font-size:13px;font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
 .db-map-pin:hover circle,.db-map-pin:focus-visible circle{stroke:var(--text)}
 

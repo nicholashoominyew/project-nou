@@ -121,4 +121,12 @@ describe("Home", () => {
       expect(within(box).getAllByRole("listitem").length).toBe(6);
     });
   });
+  it("each card header shows a state dot: an accent dot with a ring when the card is live, a muted dot when idle", async () => {
+    const { container } = show();
+    await screen.findByLabelText("Favorites");
+    const dot = (title: string) => within(screen.getByLabelText(title)).getByRole("heading", { level: 2 }).querySelector(".state-dot")!;
+    for (const live of ["Waiting for your approval", "Recently edited", "Favorites"]) expect(dot(live).className).toContain("live");
+    for (const idle of ["Worth revisiting", "Tags"]) expect(dot(idle).className).not.toContain("live");
+    expect(container.querySelectorAll(".state-dot").length).toBe(5);
+  });
 });

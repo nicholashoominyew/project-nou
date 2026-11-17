@@ -317,3 +317,33 @@ it("a locked page shows the lock screen instead of its editor, with a lock mark 
  expect((await screen.findByTestId("main-editor")).getAttribute("data-page")).toBe("page");
  expect(screen.getByLabelText("Lock this note")).toBeTruthy();
 });
+it("sidebar order is search, Home, Graph, Files, and the Quick capture row is gone from it",async()=>{
+ render(<App/>);await screen.findByText("Test note");
+ const side=screen.getByLabelText("Sidebar");
+ const top=[...side.querySelectorAll(".sb-search input, .sb-item")].map(el=>el instanceof HTMLInputElement?"search":(el.textContent||"").trim());
+ expect(top.slice(0,4)).toEqual(["search","Home","Graph","Files"]);
+ expect(within(side).queryByText("Quick capture")).toBeNull();
+ expect(side.querySelector("kbd")).toBeNull();
+});
+it("Quick capture is a floating button without the shortcut shown, still opened by Ctrl+Shift+A, and locked while busy or restoring",async()=>{
+ render(<App/>);await screen.findByText("Test note");
+ const fab=screen.getByRole("button",{name:"Quick capture"}) as HTMLButtonElement;
+ expect(fab.className).toBe("fab");expect(fab.getAttribute("title")).toBe("Quick capture");
+ expect(fab.textContent).toBe("");expect(fab.querySelector("svg")).not.toBeNull();
+ expect(document.body.textContent).not.toContain("Ctrl+Shift+A");
+ fireEvent.click(fab);expect(await screen.findByLabelText("Capture text")).toBeTruthy();
+ fireEvent.keyDown(document,{key:"Escape"});await waitFor(()=>expect(screen.queryByLabelText("Capture text")).toBeNull());
+ fireEvent.keyDown(window,{key:"A",ctrlKey:true,shiftKey:true});expect(await screen.findByLabelText("Capture text")).toBeTruthy();
+});
+it("tabs show a dot instead of the page icon, a + button opens Quick find, and the window tools are icons, not glyphs",async()=>{
+ const {container}=render(<App/>);fireEvent.click(await screen.findByText("Test note"));
+ const tab=await screen.findByRole("tab",{name:/Test note/});
+ expect(tab.querySelector(".tab-dot")).not.toBeNull();expect(tab.querySelector("svg")).toBeNull();
+ expect(container.querySelector(".page-tab.selected .close-tab")).not.toBeNull();
+ fireEvent.click(screen.getByRole("button",{name:"Open a page in a new tab"}));
+ expect(await screen.findByRole("dialog",{name:"Quick find"})).toBeTruthy();
+ fireEvent.keyDown(document,{key:"Escape"});
+ const tools=container.querySelector(".window-tools")!;
+ expect(tools.textContent).toBe("");expect(tools.querySelectorAll("svg").length).toBe(2);
+ for(const glyph of ["☾","☀","⛶"])expect(document.body.textContent).not.toContain(glyph);
+});
