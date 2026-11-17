@@ -12,6 +12,7 @@ import Backlinks from "./Backlinks";
 import PageTags from "./PageTags";
 import Home from "./Home";
 const GatewayPanel=lazy(()=>import("./GatewayPanel"));
+const GraphView=lazy(()=>import("./GraphView"));
 import QuickFind from "./QuickFind";
 import {DismissibleDetails,useDismiss} from "./Dismissible";
 const NoteEditor=lazy(()=>import("./NoteEditor"));
@@ -43,10 +44,12 @@ export default function App(){
  useDismiss(menu!==null,()=>setMenu(null),menuRef);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
+ // The window lets a trackpad pinch through to the page (the graph uses it). Everywhere else Ctrl+wheel and pinch must not zoom the whole window: the app has its own zoom (Ctrl +, - and 0).
+ useEffect(()=>{const block=(e:WheelEvent)=>{if(e.ctrlKey&&!(e.target instanceof Element&&e.target.closest(".graph-svg")))e.preventDefault()};window.addEventListener("wheel",block,{passive:false,capture:true});return()=>window.removeEventListener("wheel",block,{capture:true} as EventListenerOptions)},[]);
  useEffect(()=>{const n=nav.current;if(!selected)return;if(n.skip){n.skip=false;return}if(n.stack[n.index]===selected)return;n.stack=n.stack.slice(0,n.index+1);n.stack.push(selected);n.index=n.stack.length-1;if(n.stack.length>100){n.stack.shift();n.index--}},[selected]);
  function goHistory(step:-1|1){const n=nav.current;if(guard)return;let i=n.index+step;while(i>=0&&i<n.stack.length&&!pagesRef.current.some(p=>p.id===n.stack[i]))i+=step;if(i<0||i>=n.stack.length)return;const id=n.stack[i];n.index=i;if(id!==selected)n.skip=true;openPage(id)}const iconPickerRef=useRef<HTMLDivElement>(null);
  useDismiss(iconPicker,()=>setIconPicker(false),iconPickerRef);
@@ -79,7 +82,7 @@ export default function App(){
   check();const timer=window.setInterval(check,30000);return()=>{cancelled=true;window.clearInterval(timer)};
  },[]);
  async function run(action:()=>Promise<unknown>){markBusy(true);setError("");try{await action();await reload()}catch(e){setError(String(e))}finally{markBusy(false)}}
- function openPage(id:string){if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved")return;setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setIconPicker(false)}
+ function openPage(id:string){if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved")return;setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setShowGraph(false);setIconPicker(false)}
  function closeTab(id:string){if(guard)return;closedTabs.current.push(id);const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
  function reopenTab(){if(guard)return;while(closedTabs.current.length){const id=closedTabs.current.pop()!;if(!tabs.includes(id)&&pagesRef.current.some(p=>p.id===id)){openPage(id);return}}}
  function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
@@ -179,8 +182,9 @@ export default function App(){
    <div className="sb-header"><span className="mark">脳</span><strong className="sb-name">Project NOU</strong>
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>
      <button aria-label="New page" title="New page (Ctrl+N)" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="compose" size={16}/></button></div></div>
-   <button className={"sb-item"+(!current&&!showTrash?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false)}}><Icon name="home" size={17}/><span>Home</span></button>
+   <button className={"sb-item"+(!current&&!showTrash&&!showGraph?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false)}}><Icon name="home" size={17}/><span>Home</span></button>
    <button className="sb-item" disabled={guard} onClick={()=>{setQuickFindText("");setQuickFind(true)}}><Icon name="search" size={17}/><span>Search</span><kbd>Ctrl+Q</kbd></button>
+   <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
    <div className="sb-scroll">
     {favorites.length>0&&<section aria-label="Favorites"><div className="sb-section"><button className="sb-section-title" aria-expanded={favoritesOpen} onClick={()=>setFavoritesOpen(v=>!v)}>Favorites</button></div>
      {favoritesOpen&&<nav aria-label="Favorite pages">{favorites.map(page=><div key={page.id}>{pageRow(page,0,true)}</div>)}</nav>}</section>}
@@ -192,7 +196,7 @@ export default function App(){
      <button className="sb-item sb-add-page" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="plus" size={17}/><span>Add a page</span></button></section>
    </div>
    <div className="sb-bottom">
-    <button className={"sb-item"+(showTrash?" active":"")} disabled={guard} onClick={()=>{setShowTrash(v=>!v);onEditorStatus("saved")}}><Icon name="trash" size={17}/><span>Trash</span><em>{trashed.length}</em></button>
+    <button className={"sb-item"+(showTrash?" active":"")} disabled={guard} onClick={()=>{setShowGraph(false);setShowTrash(v=>!v);onEditorStatus("saved")}}><Icon name="trash" size={17}/><span>Trash</span><em>{trashed.length}</em></button>
     <button className="sb-item" disabled={guard||recoveryBlocked} onClick={()=>setShowImport(true)}><Icon name="import" size={17}/><span>Import recovered note…</span></button>
     <button className="sb-item" disabled={guard} onClick={()=>setShowRecovery(true)}><Icon name="archive" size={17}/><span>Backups &amp; restore</span></button>
     <small>Offline · Saved on this device</small></div>
@@ -207,6 +211,7 @@ export default function App(){
    {recoveryBlocked&&<p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
    {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>Dismiss</button></div>}
    {showTrash?<div className="document trash-screen"><h1>Trash</h1><p>Restoring a page also restores its subpages deleted in the same operation.</p>{!trashed.length&&<p>Trash is empty.</p>}{trashed.map(page=><div className="trash-row" key={page.id}><span><Icon name={page.icon}/>{page.title}</span><button disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("restore_page",{pageId:page.id}))}>Restore</button></div>)}</div>
+   :showGraph?<Suspense fallback={<p role="status">Opening graph…</p>}><GraphView pages={pages} onOpen={openPage} disabled={guard}/></Suspense>
    :current?<div className="document" key={current.id}><div className="toolbar"><nav className="breadcrumb" aria-label="Breadcrumb"><button disabled={guard} onClick={()=>setSelected(null)}>Workspace</button>{crumbs.map((page,i)=><span key={page.id}><span aria-hidden="true"> / </span>{i<crumbs.length-1?<button disabled={guard} onClick={()=>openPage(page.id)}>{page.title}</button>:<span aria-current="page">{page.title}</span>}</span>)}</nav><div className="actions">
     <button aria-label="Focus mode" title="Focus mode (Ctrl+Shift+F)" onClick={()=>setFocus(true)}>Focus</button>
     <button disabled={guard||recoveryBlocked} onClick={()=>void run(async()=>{const page=await createRichPage(current.id,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setCollapsed(old=>old.filter(id=>id!==current.id))})}>+ Subpage</button>

@@ -37,6 +37,28 @@ pub fn backlinks(c: &Connection, page: &str) -> Result<Vec<Linked>, String> {
     it.collect::<rusqlite::Result<Vec<_>>>().map_err(e)
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Edge { source: String, target: String }
+
+/// Every link between two pages that can be opened from the sidebar, for the graph view. Trashed pages, database rows and databases are left out on both ends.
+pub fn link_edges(c: &Connection) -> Result<Vec<Edge>, String> {
+    let mut s = c.prepare(
+        "SELECT l.source_id,l.target_id FROM page_links l
+         JOIN pages a ON a.id=l.source_id JOIN pages b ON b.id=l.target_id
+         WHERE a.deleted_at IS NULL AND b.deleted_at IS NULL AND a.workspace_id='personal' AND b.workspace_id='personal'
+           AND a.id NOT IN (SELECT page_id FROM db_rows) AND a.id NOT IN (SELECT page_id FROM databases)
+           AND b.id NOT IN (SELECT page_id FROM db_rows) AND b.id NOT IN (SELECT page_id FROM databases)
+         ORDER BY l.source_id,l.target_id LIMIT 20000").map_err(e)?;
+    let it = s.query_map([], |r| Ok(Edge { source: r.get(0)?, target: r.get(1)? })).map_err(e)?;
+    it.collect::<rusqlite::Result<Vec<_>>>().map_err(e)
+}
+
+#[tauri::command]
+pub fn list_link_edges(db: State<'_, Db>) -> Result<Vec<Edge>, String> {
+    let c = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    link_edges(&c)
+}
+
 #[tauri::command]
 pub fn set_page_links(db: State<'_, Db>, page_id: String, targets: Vec<String>) -> Result<(), String> {
     let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
@@ -100,6 +122,16 @@ mod tests {
         let n: i64 = c.query_row("SELECT COUNT(*) FROM page_links", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 0);
         assert!(!c.prepare("PRAGMA foreign_key_check").unwrap().exists([]).unwrap());
+    }
+    #[test]
+    fn graph_edges_skip_trashed_pages_and_database_rows() {
+        let mut c = fresh();
+        page(&c, "a", "Alpha", "1"); page(&c, "b", "Beta", "2"); page(&c, "d", "DB", "3"); page(&c, "r", "Row", "4"); page(&c, "t", "Trashed", "5");
+        c.execute("INSERT INTO databases(page_id) VALUES('d')", []).unwrap();
+        c.execute("INSERT INTO db_rows(page_id,database_id) VALUES('r','d')", []).unwrap();
+        set(&mut c, "a", &["b", "d", "r", "t"]); set(&mut c, "b", &["a"]); set(&mut c, "r", &["a"]);
+        c.execute("UPDATE pages SET deleted_at='x' WHERE id='t'", []).unwrap();
+        assert_eq!(link_edges(&c).unwrap(), vec![Edge { source: "a".into(), target: "b".into() }, Edge { source: "b".into(), target: "a".into() }]);
     }
     #[test]
     fn database_rows_are_not_listed_as_backlink_sources() {

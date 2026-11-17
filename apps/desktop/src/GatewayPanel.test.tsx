@@ -45,8 +45,24 @@ describe("GatewayPanel", () => {
     expect(calls.some(c => c.command === "gateway_revoke_token")).toBe(false);
     fireEvent.click(screen.getByLabelText("Revoke Grok"));
     await waitFor(() => expect(calls).toContainEqual({ command: "gateway_revoke_token", args: { id: "t1" } }));
+    expect(await screen.findByText("No active tokens.")).toBeTruthy();
+    expect(screen.queryByText("revoked")).toBeNull();
+    fireEvent.click(screen.getByText("Show 1 revoked token"));
     expect(await screen.findByText("revoked")).toBeTruthy();
+    expect(screen.queryByLabelText("Revoke Grok")).toBeNull();
+    fireEvent.click(screen.getByText("Hide revoked tokens"));
+    expect(screen.queryByText("revoked")).toBeNull();
     confirm.mockRestore();
+  });
+  it("keeps revoked tokens out of the way but lists active ones, with a plural count", async () => {
+    const t = (id: string, name: string, revoked_at: string | null) => ({ id, name, scopes: ["notes:read"], created_at: "2026-11-01T00:00:00.000Z", last_used_at: null, revoked_at });
+    state.tokens = [t("a", "Alpha", null), t("b", "Old one", "x"), t("c", "Old two", "y")];
+    render(<GatewayPanel onClose={() => {}} />);
+    expect(await screen.findByText("Alpha")).toBeTruthy();
+    expect(screen.queryByText("Old one")).toBeNull();
+    fireEvent.click(screen.getByText("Show 2 revoked tokens"));
+    expect(screen.getByText("Old one")).toBeTruthy();
+    expect(screen.getByText("Old two")).toBeTruthy();
   });
   it("lists recent activity", async () => {
     render(<GatewayPanel onClose={() => {}} />);

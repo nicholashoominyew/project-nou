@@ -13,6 +13,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   if (command === "list_tags") return [{ name: "research", count: 2 }];
   if (command === "list_backlinks") return [{ id: "second", title: "Linker page" }];
   if (command === "list_recent_pages") return [];
+  if (command === "list_link_edges") return [{ source: "page", target: "second" }];
   if (command === "backup_status") return { interrupted: [] };
 } }));
 vi.mock("./NoteEditor", () => ({ default: ({ onStatus }: { onStatus: (status: string) => void }) => <>
@@ -181,4 +182,24 @@ it("favorites a page from its menu, renames it inline and collapses the sidebar 
  await waitFor(()=>expect(calls).toContain("rename_page"));
  expect(screen.getByLabelText("Sidebar")).toBeTruthy();fireEvent.keyDown(window,{key:"\\",ctrlKey:true});expect(screen.queryByLabelText("Sidebar")).toBeNull();
  fireEvent.click(screen.getByLabelText("Open sidebar"));expect(screen.getByLabelText("Sidebar")).toBeTruthy();
+});
+it("opens the graph from the sidebar, opens a page from it, and leaves the graph when a page opens",async()=>{
+ render(<App/>);await screen.findByText("Test note");
+ fireEvent.click(screen.getByRole("button",{name:"Graph"}));
+ expect(await screen.findByRole("heading",{name:"Graph"})).toBeTruthy();
+ await waitFor(()=>expect(calls).toContain("list_link_edges"));
+ fireEvent.click(await screen.findByLabelText("Open Second note"));
+ await waitFor(()=>expect(screen.queryByRole("heading",{name:"Graph"})).toBeNull());
+ expect(screen.getByLabelText("Page title")).toHaveProperty("value","Second note");
+});
+it("Ctrl+wheel and trackpad pinch never zoom the whole window, except on the graph where the graph handles them",async()=>{
+ render(<App/>);await screen.findByText("Test note");
+ const send=(el:Element,init:WheelEventInit)=>{const e=new WheelEvent("wheel",{bubbles:true,cancelable:true,...init});el.dispatchEvent(e);return e.defaultPrevented};
+ expect(send(document.body,{ctrlKey:true,deltaY:-4})).toBe(true);
+ expect(send(document.body,{deltaY:40})).toBe(false);
+ fireEvent.click(screen.getByRole("button",{name:"Graph"}));
+ const svg=(await screen.findByLabelText("Page graph")) as unknown as Element;
+ // the graph's own listener prevents it too, so check the app-level rule did not stop the event from reaching the graph
+ let reached=false;svg.addEventListener("wheel",()=>{reached=true});
+ send(svg,{ctrlKey:true,deltaY:-4});expect(reached).toBe(true);
 });

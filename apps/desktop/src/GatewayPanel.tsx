@@ -22,12 +22,16 @@ export default function GatewayPanel({ onClose }: { onClose: () => void }) {
   const [created, setCreated] = useState<Created | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showRevoked, setShowRevoked] = useState(false);
   const [api, setApi] = useState<ApiStatus | null>(null);
   const load = useCallback(async () => {
     const [t, a, status] = await Promise.all([invoke<Token[]>("gateway_list_tokens"), invoke<Audit[]>("gateway_audit", { limit: 50 }), invoke<ApiStatus>("gateway_api_status")]);
     setTokens(Array.isArray(t) ? t : []); setAudit(Array.isArray(a) ? a : []); setApi(status && typeof status === "object" ? status : null);
   }, []);
   useEffect(() => { void load().catch(e => setError(String(e))); }, [load]);
+
+  const active = tokens.filter(t => !t.revoked_at);
+  const revokedCount = tokens.length - active.length;
 
   async function create() {
     setError("");
@@ -73,11 +77,14 @@ export default function GatewayPanel({ onClose }: { onClose: () => void }) {
 
     <section className="recovery-card" aria-label="Tokens"><h2>Tokens</h2>
       {!tokens.length && <p className="hint">No tokens yet.</p>}
-      {tokens.map(t => <div key={t.id} className="token-row">
+      {!!tokens.length && !active.length && <p className="hint">No active tokens.</p>}
+      {(showRevoked ? tokens : active).map(t => <div key={t.id} className="token-row">
         <div><strong>{t.name}</strong>{t.revoked_at && <span className="token-revoked"> revoked</span>}
           <div className="hint">{t.scopes.join(", ")} · created {t.created_at.slice(0, 10)} · {t.last_used_at ? "last used " + t.last_used_at.slice(0, 16).replace("T", " ") : "never used"}</div></div>
         {!t.revoked_at && <button className="danger" aria-label={"Revoke " + t.name} onClick={() => void revoke(t)}>Revoke</button>}
       </div>)}
+      {!!revokedCount && <button className="link-button" aria-expanded={showRevoked} onClick={() => setShowRevoked(v => !v)}>{showRevoked ? "Hide revoked tokens" : `Show ${revokedCount} revoked token${revokedCount === 1 ? "" : "s"}`}</button>}
+      {!!revokedCount && <p className="hint">Revoked tokens stop working at once. They stay listed because the activity log refers to them.</p>}
     </section>
 
     <section className="recovery-card" aria-label="Activity"><h2>Recent activity</h2>
