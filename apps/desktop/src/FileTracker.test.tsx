@@ -1,12 +1,13 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import FileTracker from "./FileTracker";
-import { filterFiles, formatBytes, isUnused, kindOf, totals, type TrackedFile } from "./fileList";
+import { filterFiles, formatBytes, isUnused, kindOf, previewKind, totals, type TrackedFile } from "./fileList";
 
 const { state, calls, dialog } = vi.hoisted(() => ({ state: { files: [] as any[], fail: "", exportFail: "" }, calls: [] as { command: string; args: any }[], dialog: { path: "C:\\out\\copy.pdf" as string | null } }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
   calls.push({ command, args });
   if (command === "list_files") { if (state.fail) throw new Error(state.fail); return state.files; }
+  if (command === "read_attachment") { const f = state.files.find(x => x.id === args.id); return { data: Array.from(new TextEncoder().encode(f?.content ?? "x")), info: { mime: f?.mime ?? "application/octet-stream" } }; }
   if (command === "export_attachment") { if (state.exportFail) throw new Error(state.exportFail); return undefined; }
 } }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: async () => dialog.path }));
@@ -18,7 +19,7 @@ const sample = () => [
   file("orphan.zip", { mime: "application/zip", bytes: 9000 }),
   file("old.pdf", { bytes: 100, trashed_pages: 2 }),
 ];
-beforeEach(() => { calls.length = 0; state.files = sample(); state.fail = ""; state.exportFail = ""; dialog.path = "C:\\out\\copy.pdf"; });
+beforeEach(() => { localStorage.setItem("nou-files-view", "list"); URL.createObjectURL = () => "blob:test"; URL.revokeObjectURL = () => {}; calls.length = 0; state.files = sample(); state.fail = ""; state.exportFail = ""; dialog.path = "C:\\out\\copy.pdf"; });
 
 describe("file tracker helpers", () => {
   it("formats sizes", () => {
@@ -111,5 +112,73 @@ describe("FileTracker", () => {
     await screen.findByRole("list", { name: "Files" });
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toContain("<img src=x");
+  });
+});
+
+describe("previewKind", () => {
+  it("shows images, PDFs and text, never runs html or svg, and has no preview for the rest", () => {
+    expect(previewKind("image/png", "a.png")).toBe("image"); expect(previewKind("image/svg+xml", "a.svg")).toBe("none");
+    expect(previewKind("application/pdf", "a.pdf")).toBe("pdf"); expect(previewKind("text/html", "a.html")).toBe("text");
+    expect(previewKind("application/octet-stream", "notes.md")).toBe("text"); expect(previewKind("application/zip", "a.zip")).toBe("none");
+  });
+});
+
+describe("FileTracker gallery and preview", () => {
+  beforeEach(() => {
+    localStorage.removeItem("nou-files-view");
+    state.files = [
+      file("photo.png", { mime: "image/png", bytes: 300, pages: [{ id: "p1", title: "Plan" }] }),
+      file("report.pdf", { pages: [{ id: "p2", title: "Budget" }] }),
+      file("todo.txt", { mime: "text/plain", bytes: 12, content: "<b>buy milk</b>" } as any),
+      file("orphan.zip", { mime: "application/zip", bytes: 9000 }),
+    ];
+  });
+  it("opens as a gallery with a picture for the image and an icon for the others, and can switch to the list", async () => {
+    const { container } = render(<FileTracker onOpen={() => {}} />);
+    await screen.findByLabelText("Preview photo.png");
+    expect(container.querySelectorAll(".file-tile").length).toBe(4);
+    await waitFor(() => expect(container.querySelector(".file-thumb img")).toBeTruthy());
+    expect(container.querySelectorAll(".file-thumb img").length).toBe(1);
+    fireEvent.click(screen.getByText("List"));
+    expect(container.querySelectorAll(".file-tile").length).toBe(0);
+    expect(localStorage.getItem("nou-files-view")).toBe("list");
+  });
+  it("previews an image, a PDF (in a frame) and a text file as plain text, and says so when it cannot", async () => {
+    render(<FileTracker onOpen={() => {}} />);
+    fireEvent.click(await screen.findByLabelText("Preview photo.png"));
+    const dialog = await screen.findByRole("dialog", { name: "Preview of photo.png" });
+    await waitFor(() => expect(within(dialog).getByAltText("photo.png")).toBeTruthy());
+    fireEvent.click(within(dialog).getByLabelText("Next file"));
+    const pdf = await screen.findByRole("dialog", { name: "Preview of report.pdf" });
+    await waitFor(() => expect(pdf.querySelector("iframe")).toBeTruthy());
+    fireEvent.click(within(pdf).getByLabelText("Next file"));
+    const text = await screen.findByRole("dialog", { name: "Preview of todo.txt" });
+    expect((await within(text).findByLabelText("File text")).textContent).toBe("<b>buy milk</b>");
+    expect(text.querySelector("b")).toBeNull();
+    fireEvent.click(within(text).getByLabelText("Next file"));
+    expect(await screen.findByText(/no preview for this kind of file/)).toBeTruthy();
+    expect((screen.getByLabelText("Next file") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("arrow keys move between files, Esc closes, and the pages that use the file can be opened", async () => {
+    const open = vi.fn();
+    render(<FileTracker onOpen={open} />);
+    fireEvent.click(await screen.findByLabelText("Preview photo.png"));
+    await screen.findByRole("dialog", { name: "Preview of photo.png" });
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(await screen.findByRole("dialog", { name: "Preview of report.pdf" })).toBeTruthy();
+    fireEvent.click(screen.getByText("Budget"));
+    expect(open).toHaveBeenCalledWith("p2");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Preview photo.png"));
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+  it("does not read a file that is too large to preview", async () => {
+    state.files = [file("huge.png", { mime: "image/png", bytes: 80 * 1024 * 1024 })];
+    render(<FileTracker onOpen={() => {}} />);
+    fireEvent.click(await screen.findByLabelText("Preview huge.png"));
+    expect(await screen.findByText(/Too large to preview/)).toBeTruthy();
+    expect(calls.some(c => c.command === "read_attachment")).toBe(false);
   });
 });

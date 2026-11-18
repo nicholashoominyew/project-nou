@@ -1,5 +1,5 @@
 /**
- * Look a place up by name or address. This is the only place the app contacts a third party, and only when the person
+ * Look a place up by name or address. The app contacts this service (and, for the Home weather cards, Open-Meteo, see weather.ts) only when the person
  * presses Enter on a place field or the map's search box: the text they typed is sent to OpenStreetMap's Nominatim
  * service (nominatim.openstreetmap.org, allowed in the CSP for exactly this). Nothing is sent in the background.
  */

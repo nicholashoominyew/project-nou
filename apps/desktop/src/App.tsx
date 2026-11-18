@@ -255,7 +255,7 @@ export default function App(){
    </div>
    <div className="sb-bottom">
     <button className={"sb-item"+(showSettings||showTrash?" active":"")} disabled={guard} onClick={()=>{setShowGraph(false);setShowFiles(false);setShowTrash(false);setShowBot(false);setShowSettings(v=>!v);onEditorStatus("saved")}}><Icon name="settings" size={17}/><span>Settings</span></button>
-    <small>Offline · Saved on this device</small></div>
+    </div>
    <div className="sb-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuenow={sidebarWidth} aria-valuemin={200} aria-valuemax={480} tabIndex={0} onPointerDown={startSidebarResize}
     onKeyDown={e=>{if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();setSidebarWidth(w=>clampSidebar(w+(e.key==="ArrowRight"?16:-16)))}}}/>
   </aside>}
@@ -279,7 +279,7 @@ export default function App(){
    </div></div>
    <div className="document-heading"><div className="page-icon-picker" ref={iconPickerRef}><button className="document-icon" aria-label="Assign page icon" disabled={guard||recoveryBlocked} onClick={()=>setIconPicker(v=>!v)}><Icon name={current.icon} size={32}/></button>{iconPicker&&<div className="icon-picker-popover" role="group" aria-label="Monochrome page icons">{iconNames.map(icon=><button key={icon} aria-label={icon+" icon"} aria-pressed={current.icon===icon} disabled={guard} onClick={()=>void run(async()=>{await invoke("set_page_icon",{pageId:current.id,icon});setIconPicker(false)})}><Icon name={icon} size={22}/></button>)}</div>}</div>
     <input className="title-input" aria-label="Page title" readOnly={guard||recoveryBlocked} defaultValue={current.title} onBlur={e=>{const title=e.target.value.trim()||"Untitled";if(!recoveryBlocked&&title!==current.title)void run(()=>invoke("rename_page",{pageId:current.id,title}))}} onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur()}}/>
-   </div><LockGate pageId={current.id} locked={lockedIds.includes(current.id)} title={current.title}><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense></LockGate></div>
+   </div><p className="doc-status">Offline · Saved on this device</p><LockGate pageId={current.id} locked={lockedIds.includes(current.id)} title={current.title}><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense></LockGate></div>
    :<Home pages={pages} open={openPage} openDaily={()=>void openDaily()} newPage={()=>void newRootPage()} disabled={guard||recoveryBlocked} refresh={reload} onManageAccess={()=>setShowGateway(true)}/>}
    {splitId&&current&&!showTrash&&!showGraph&&!showFiles&&!showSettings&&!showBot&&(()=>{const other=pages.find(p=>p.id===splitId);return other?<aside className="split-pane" aria-label="Split view">
     <header className="split-header"><strong title={other.title}>{other.title||"Untitled"}</strong>

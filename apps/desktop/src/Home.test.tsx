@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import Home, { type HomeWidget } from "./Home";
+import Home, { HOME_WIDGETS, type HomeWidget } from "./Home";
 
 const { calls, resurfaced } = vi.hoisted(() => ({ calls: [] as { command: string; args: any }[], resurfaced: { items: [] as any[] } }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
@@ -47,21 +47,33 @@ describe("Home", () => {
     expect((screen.getByText("New page") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getAllByText("Alpha")[0].closest("button") as HTMLButtonElement).disabled).toBe(true);
   });
-  it("customize: hide, show again and reorder widgets, and remember the layout", async () => {
+  it("customize: hide and show sections, and remember the layout (the arrangement itself is fixed)", async () => {
     const { unmount } = show();
     fireEvent.click(screen.getByLabelText("Customize"));
+    expect(screen.queryByLabelText("Move Favorites up")).toBeNull();
     fireEvent.click(screen.getByLabelText("Hide Favorites"));
     expect(screen.queryByLabelText("Favorites")).toBeNull();
-    fireEvent.click(screen.getByLabelText("Move Worth revisiting up"));
-    const order = () => screen.getAllByRole("heading", { level: 2 }).map(h => h.textContent);
-    expect(order().slice(0, 4)).toEqual(["Daily page", "Waiting for approval", "Worth revisiting", "Recently edited"]);
+    fireEvent.click(screen.getByLabelText("Hide Calendar"));
+    expect(screen.queryByLabelText("Calendar")).toBeNull();
     unmount();
     show(); // a fresh mount reads the saved layout
     expect(screen.queryByLabelText("Favorites")).toBeNull();
-    expect(screen.getAllByRole("heading", { level: 2 })[2].textContent).toBe("Worth revisiting");
+    expect(screen.queryByLabelText("Calendar")).toBeNull();
     fireEvent.click(screen.getByLabelText("Customize"));
     fireEvent.click(screen.getByText("Show Favorites"));
     expect(screen.getByLabelText("Favorites")).toBeTruthy();
+  });
+  it("lays the sections out as the brief says: the daily strip, the calendar column beside the clocks column, then two rows", () => {
+    const { container } = show();
+    expect(container.querySelector(".home-card.strip.w-daily")).toBeTruthy();
+    const cols = container.querySelectorAll(".home-grid > .home-col");
+    expect(cols.length).toBe(2);
+    expect(cols[0].classList.contains("span2")).toBe(true);
+    expect([...cols[0].querySelectorAll(".home-card")].map(c => c.getAttribute("aria-label"))).toEqual(["Calendar", "Teaching of the day"]);
+    expect([...cols[1].querySelectorAll(".home-card")].map(c => c.getAttribute("aria-label"))).toEqual(["Clocks", "Today's tasks", "Weather"]);
+    const rows = container.querySelectorAll(".home-row");
+    expect([...rows[0].querySelectorAll(".home-card")].map(c => c.getAttribute("aria-label"))).toEqual(["Year, quarter, month and day", "Countdowns", "Waiting for approval"]);
+    expect([...rows[1].querySelectorAll(".home-card")].map(c => c.getAttribute("aria-label"))).toEqual(["Recently edited", "Favorites", "Worth revisiting"]);
   });
   it("the gear opens a panel that holds AI access, and Done closes it", () => {
     const access = vi.fn();
@@ -74,7 +86,7 @@ describe("Home", () => {
     expect(screen.queryByText("AI access")).toBeNull();
   });
   it("shows a message when every widget is hidden", () => {
-    localStorage.setItem("nou-home-layout", JSON.stringify({ order: ["daily", "approvals", "recent", "resurface", "favorites"], hidden: ["daily", "approvals", "recent", "resurface", "favorites"] }));
+    localStorage.setItem("nou-home-layout", JSON.stringify({ order: HOME_WIDGETS.map(w => w.id), hidden: HOME_WIDGETS.map(w => w.id) }));
     show();
     expect(screen.getByText(/All widgets are hidden/)).toBeTruthy();
   });
@@ -136,8 +148,8 @@ describe("Home", () => {
     const { container } = show();
     await screen.findByLabelText("Favorites");
     const dot = (title: string) => within(screen.getByLabelText(title)).getByRole("heading", { level: 2 }).querySelector(".state-dot")!;
-    for (const live of ["Waiting for approval", "Recently edited", "Favorites"]) expect(dot(live).className).toContain("live");
-    for (const idle of ["Worth revisiting", "Daily page"]) expect(dot(idle).className).not.toContain("live");
-    expect(container.querySelectorAll(".state-dot").length).toBe(5);
+    for (const live of ["Waiting for approval", "Recently edited", "Favorites", "Clocks", "Today's tasks", "Year, quarter, month and day"]) expect(dot(live).className).toContain("live");
+    for (const idle of ["Worth revisiting", "Daily page", "Weather", "Countdowns", "Calendar", "Teaching of the day"]) expect(dot(idle).className).not.toContain("live");
+    expect(container.querySelectorAll(".state-dot").length).toBe(12);
   });
 });

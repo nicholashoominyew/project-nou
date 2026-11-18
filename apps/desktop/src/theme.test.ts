@@ -92,12 +92,20 @@ describe("chrome rules from the brief", () => {
     expect(theme).not.toMatch(/\.backlinks/);
     expect(styles).not.toMatch(/\.backlinks/);
   });
-  it("Home: approvals span the grid, cards are 8px panels, and state is a 7px dot with a soft ring when live", () => {
-    expect(theme).toMatch(/\.home-card\[aria-label="Waiting for your approval"\]\{grid-column:1\/-1\}/);
-    expect(theme).toMatch(/\.home-card\{background:var\(--panel\);border:1px solid var\(--line\);border-radius:8px;padding:16px 18px\}/);
+  it("Home: one 3-column auto-fit grid with 16px gaps, cards are 10px panels, and state is a 7px dot with a soft ring when live", () => {
+    expect(theme).toMatch(/\.home-grid\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(280px,1fr\)\);gap:16px;align-items:stretch\}/);
+    expect(theme).toMatch(/\.home-row\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(280px,1fr\)\);gap:16px;align-items:stretch\}/);
+    expect(theme).toMatch(/\.home-card\{[^}]*padding:18px 20px;background:var\(--panel\);border:1px solid var\(--line\);border-radius:10px/);
+    expect(theme).toMatch(/\.home\{max-width:1120px;padding:32px 48px 112px/);
     expect(theme).toMatch(/\.state-dot\{[^}]*width:7px;height:7px;border-radius:50%/);
     expect(theme).toMatch(/\.state-dot\.live\{background:var\(--accent\);box-shadow:0 0 0 3px var\(--accent-soft\)\}/);
   });
+  it("Home animations only run when reduced motion is not asked for, and the flip tile has the brief's flip", () => {
+    expect(theme).toMatch(/@media \(prefers-reduced-motion:no-preference\)\{\.flip\.go\{animation:nouFlip \.45s/);
+    expect(theme).toMatch(/@keyframes nouFlip\{0%\{transform:perspective\(160px\) rotateX\(-92deg\)\}/);
+    expect(theme).toMatch(/--tile:#ffffff;--tile-ink:#0e1a2b;--split:#e1e6ef/);
+  });
+
   it("print keeps plain light colours", () => {
     expect(theme).toMatch(/@media print\{\s*:root,:root\[data-theme=dark\]\{--bg:#ffffff;[^}]*--text:#000000/);
   });

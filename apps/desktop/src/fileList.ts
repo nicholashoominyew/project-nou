@@ -25,3 +25,17 @@ export function totals(files: TrackedFile[]) {
   const unused = files.filter(isUnused);
   return { count: files.length, bytes: files.reduce((n, f) => n + f.bytes, 0), unusedCount: unused.length, unusedBytes: unused.reduce((n, f) => n + f.bytes, 0) };
 }
+
+export type Preview = "image" | "pdf" | "text" | "none";
+const TEXT_EXT = ["txt", "md", "markdown", "csv", "tsv", "json", "log", "xml", "html", "htm", "yml", "yaml", "ini", "toml"];
+/** What the preview can show. HTML and the like are shown as plain text, never run. */
+export function previewKind(mime: string, name: string): Preview {
+  if (mime.startsWith("image/") && mime !== "image/svg+xml") return "image";
+  if (mime === "application/pdf") return "pdf";
+  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+  if (mime.startsWith("text/") || mime === "application/json" || mime === "application/xml" || TEXT_EXT.includes(ext)) return "text";
+  return "none";
+}
+/** Largest file read just to draw a thumbnail or a preview. */
+export const MAX_PREVIEW_BYTES = 25 * 1024 * 1024;
+export const MAX_TEXT_CHARS = 200000;

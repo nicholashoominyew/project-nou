@@ -280,7 +280,7 @@ it("remembers the split page across restarts, but not when it is the same as the
  await waitFor(()=>expect(screen.queryByTestId("split-editor")).toBeNull());
 });
 it("opens the file tracker from the sidebar, opens a page that uses a file, and leaves the tracker",async()=>{
- render(<App/>);await screen.findByText("Test note");
+ localStorage.setItem("nou-files-view","list");render(<App/>);await screen.findByText("Test note");
  fireEvent.click(screen.getByRole("button",{name:"Files"}));
  expect(await screen.findByRole("heading",{name:"Files"})).toBeTruthy();
  expect(await screen.findByText("report.pdf")).toBeTruthy();
