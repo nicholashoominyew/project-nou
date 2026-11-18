@@ -47,3 +47,6 @@ A single dependency-free Node file (Node 18+) that speaks MCP over stdio and for
 - Anything read from notes is returned with a note that it is untrusted data.
 - Setup (example for a client's MCP config): `{"mcpServers":{"nou":{"command":"node","args":["C:\path\to\project-nou\tools\nou-mcp\nou-mcp.mjs"],"env":{"NOU_TOKEN":"nou_..."}}}}`. NOU must be open with the local API switched on.
 - Verified: 13 Node tests (`npm run test:mcp`) cover the handshake, tool list, request mapping, error handling, token never leaking, id encoding and a real stdio round trip against a fake API. Not yet verified: a real MCP client (Claude Desktop or Claude Code) driving it end to end.
+
+## Bot queue
+Two more scopes, `chat:read` and `chat:write`, give a token access to the shared chat (`GET` and `POST /v1/chat`, and the MCP tools `nou_chat_read` and `nou_chat_post`). See `BOT-QUEUE.md`. Messages are plain text, signed with the token's name, rate-limited, and never change notes.

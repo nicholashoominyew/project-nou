@@ -8,11 +8,10 @@ import { DEFAULT_LAYOUT_KEY, moveWidget, normalizeLayout, setWidgetHidden, type 
 
 /** What every widget may use. Widgets never reach into the app directly; later features (inbox, approvals, bot queue,
  * resurfacing) plug in by adding an entry to HOME_WIDGETS with a render function over this context. */
-export type HomeContext = { pages: PageInfo[]; open: (id: string) => void; searchTag: (tag: string) => void; disabled: boolean; refresh: () => Promise<void> };
+export type HomeContext = { pages: PageInfo[]; open: (id: string) => void; today: string; openDaily: () => void; disabled: boolean; refresh: () => Promise<void> };
 export type HomeWidget = { id: string; title: string; hint?: string; live?: boolean; render: (ctx: HomeContext) => ReactNode };
 
 type Recent = { id: string; title: string; updated_at: string };
-type TagCount = { name: string; count: number };
 
 function ago(stamp: string): string {
   const then = Date.parse(stamp);
@@ -39,14 +38,6 @@ function FavoritesWidget({ ctx }: { ctx: HomeContext }) {
   const favorites = ctx.pages.filter(p => p.is_favorite);
   if (!favorites.length) return <p className="hint">Star a page from its ⋯ menu to pin it here.</p>;
   return <ul className="home-list">{favorites.map(p => <li key={p.id}><button disabled={ctx.disabled} onClick={() => ctx.open(p.id)}><Icon name={p.icon} size={15} /><span>{p.title}</span></button></li>)}</ul>;
-}
-
-function TagsWidget({ ctx }: { ctx: HomeContext }) {
-  const [tags, setTags] = useState<TagCount[] | null>(null);
-  useEffect(() => { let off = false; void invoke<TagCount[]>("list_tags").then(t => { if (!off) setTags(Array.isArray(t) ? t : []); }).catch(() => { if (!off) setTags([]); }); return () => { off = true; }; }, [ctx.pages]);
-  if (tags === null) return <p className="hint">Loading…</p>;
-  if (!tags.length) return <p className="hint">Add tags under a page title and they show up here.</p>;
-  return <div className="home-tags">{tags.map(t => <button key={t.name} disabled={ctx.disabled} onClick={() => ctx.searchTag(t.name)}>#{t.name}<em>{t.count}</em></button>)}</div>;
 }
 
 /**
@@ -79,18 +70,24 @@ function ResurfaceWidget({ ctx }: { ctx: HomeContext }) {
   </li>)}</ul>;
 }
 
+/** The daily page: one note per day, made the first time you ask for it. */
+function DailyWidget({ ctx }: { ctx: HomeContext }) {
+  const label = new Date(ctx.today + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  return <div className="home-daily"><p>{label}</p><button disabled={ctx.disabled} onClick={ctx.openDaily}><Icon name="calendar" size={15} /> Open today's page</button></div>;
+}
+
 export const HOME_WIDGETS: HomeWidget[] = [
-  { id: "approvals", title: "Waiting for your approval", live: true, hint: "AI tools can ask; only you can approve", render: ctx => <Approvals disabled={ctx.disabled} refresh={ctx.refresh} /> },
+  { id: "daily", title: "Daily page", hint: "One page for each day", render: ctx => <DailyWidget ctx={ctx} /> },
+  { id: "approvals", title: "Waiting for approval", live: true, hint: "AI tools can ask; only you can approve", render: ctx => <Approvals disabled={ctx.disabled} refresh={ctx.refresh} /> },
   { id: "recent", title: "Recently edited", live: true, render: ctx => <RecentWidget ctx={ctx} /> },
-  { id: "resurface", title: "Worth revisiting", hint: "Old notes, and what you wrote on this day", render: ctx => <ResurfaceWidget ctx={ctx} /> },
   { id: "favorites", title: "Favorites", live: true, render: ctx => <FavoritesWidget ctx={ctx} /> },
-  { id: "tags", title: "Tags", hint: "Click a tag to find its pages", render: ctx => <TagsWidget ctx={ctx} /> },
+  { id: "resurface", title: "Worth revisiting", hint: "Old notes, and what you wrote on this day", render: ctx => <ResurfaceWidget ctx={ctx} /> },
 ];
 
 function readLayout(): unknown { try { return JSON.parse(localStorage.getItem(DEFAULT_LAYOUT_KEY) || "null"); } catch { return null; } }
 function writeLayout(layout: HomeLayout) { try { localStorage.setItem(DEFAULT_LAYOUT_KEY, JSON.stringify(layout)); } catch { /* a preference only; the page still works */ } }
 
-export default function Home({ pages, open, searchTag, newPage, disabled, refresh = async () => {}, onManageAccess, widgets = HOME_WIDGETS }: { pages: PageInfo[]; open: (id: string) => void; searchTag: (tag: string) => void; newPage: () => void; disabled: boolean; refresh?: () => Promise<void>; onManageAccess?: () => void; widgets?: HomeWidget[] }) {
+export default function Home({ pages, open, openDaily, newPage, disabled, refresh = async () => {}, onManageAccess, widgets = HOME_WIDGETS }: { pages: PageInfo[]; open: (id: string) => void; openDaily: () => void; newPage: () => void; disabled: boolean; refresh?: () => Promise<void>; onManageAccess?: () => void; widgets?: HomeWidget[] }) {
   const ids = useMemo(() => widgets.map(w => w.id), [widgets]);
   const [layout, setLayout] = useState<HomeLayout>(() => normalizeLayout(readLayout(), ids));
   const [editing, setEditing] = useState(false);
@@ -98,7 +95,8 @@ export default function Home({ pages, open, searchTag, newPage, disabled, refres
   const byId = new Map(widgets.map(w => [w.id, w]));
   const visible = layout.order.filter(id => !layout.hidden.includes(id)).map(id => byId.get(id)!).filter(Boolean);
   const hidden = layout.order.filter(id => layout.hidden.includes(id)).map(id => byId.get(id)!).filter(Boolean);
-  const ctx: HomeContext = { pages, open, searchTag, disabled, refresh };
+  const today = useMemo(() => localDate(), []);
+  const ctx: HomeContext = { pages, open, today, openDaily, disabled, refresh };
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
@@ -107,12 +105,14 @@ export default function Home({ pages, open, searchTag, newPage, disabled, refres
       <div><span className="big-mark" aria-hidden="true">脳</span><h1>{greeting}</h1><p className="hint">{pages.length ? pages.length + " page" + (pages.length === 1 ? "" : "s") + " in your workspace" : "Your knowledge, your device."}</p></div>
       <div className="home-actions">
         <button disabled={disabled} onClick={newPage}>{pages.length ? "New page" : "Create your first page"}</button>
-        {onManageAccess && <button onClick={onManageAccess}>AI access</button>}
-        <button aria-pressed={editing} onClick={() => setEditing(v => !v)}>{editing ? "Done" : "Customize"}</button>
+        <button className="icon-button" aria-label="Customize" title="Customize Home" aria-pressed={editing} onClick={() => setEditing(v => !v)}><Icon name="settings" size={17} /></button>
       </div>
     </header>
+    {editing && <section className="home-customize" aria-label="Customize Home"><p className="hint">Move, hide or show the sections below.</p>
+      {onManageAccess && <button onClick={onManageAccess}><Icon name="hub" size={15} /> AI access</button>}
+      <button onClick={() => setEditing(false)}>Done</button></section>}
     <div className="home-grid">
-      {visible.map((w, i) => <section key={w.id} className="home-card" aria-label={w.title}>
+      {visible.map((w, i) => <section key={w.id} className={"home-card w-" + w.id} aria-label={w.title}>
         <header><h2><i className={"state-dot" + (w.live ? " live" : "")} aria-hidden="true" />{w.title}</h2>
           {editing && <span className="home-card-tools">
             <button aria-label={"Move " + w.title + " up"} disabled={i === 0} onClick={() => update(moveWidget(layout, w.id, -1))}>↑</button>
@@ -123,7 +123,7 @@ export default function Home({ pages, open, searchTag, newPage, disabled, refres
         {w.hint && !editing && <p className="hint home-hint">{w.hint}</p>}
         {w.render(ctx)}
       </section>)}
-      {!visible.length && <p className="hint">All widgets are hidden. Choose Customize to bring some back.</p>}
+      {!visible.length && <p className="hint">All widgets are hidden. Open the gear to bring some back.</p>}
     </div>
     {editing && hidden.length > 0 && <section className="home-hidden" aria-label="Hidden widgets"><h2>Hidden widgets</h2>
       {hidden.map(w => <button key={w.id} onClick={() => update(setWidgetHidden(layout, w.id, false))}>Show {w.title}</button>)}</section>}

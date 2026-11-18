@@ -1,3 +1,4 @@
+import { untangle } from "./graphUntangle";
 export type GNode = { id: string };
 export type GEdge = { source: string; target: string };
 export type Point = { x: number; y: number };
@@ -54,7 +55,10 @@ export function layoutGraph(nodes: GNode[], edges: GEdge[], width = 1000, height
   const w = maxX - minX || 1, h = maxY - minY || 1;
   const scale = Math.min((width - 2 * pad) / w, (height - 2 * pad) / h);
   const ox = (width - w * scale) / 2, oy = (height - h * scale) / 2;
-  list.forEach((node, i) => out.set(node.id, { x: ox + (x[i] - minX) * scale, y: oy + (y[i] - minY) * scale }));
+  const placed = list.map((_, i) => ({ x: ox + (x[i] - minX) * scale, y: oy + (y[i] - minY) * scale }));
+  // No two lines may cross: nudge the pages until they do not (see graphUntangle.ts).
+  const final = untangle(placed, links, { x0: pad, y0: pad, x1: width - pad, y1: height - pad });
+  list.forEach((node, i) => out.set(node.id, final[i]));
   return out;
 }
 

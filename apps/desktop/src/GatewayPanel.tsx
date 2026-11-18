@@ -11,6 +11,8 @@ const SCOPES: { id: string; label: string; help: string }[] = [
   { id: "databases:read", label: "Read databases", help: "Query database rows" },
   { id: "notes:write", label: "Propose note changes", help: "Ask to create pages, rename pages or add text. You approve each one." },
   { id: "databases:write", label: "Propose database changes", help: "Ask to add rows or change cells. You approve each one." },
+  { id: "chat:read", label: "Read the Bot queue", help: "Read the chat where you and your assistants talk." },
+  { id: "chat:write", label: "Post to the Bot queue", help: "Write in that chat under this token's name. Messages are plain text and change nothing in your notes." },
 ];
 
 /** Create and revoke the tokens outside tools use, and see the audit trail. A token can only ask; it can never apply a change. */

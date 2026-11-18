@@ -16,3 +16,7 @@ A map of the workspace, opened from **Graph** in the sidebar (under Search).
 
 ## Not built
 Search or filter inside the graph, colouring by tag, a "local graph" of just the open page's neighbours, and drag-to-rearrange.
+
+## Later changes
+- **No crossing lines.** After the force layout, `graphUntangle.ts` nudges pages until no two lines cross and no page sits on someone else's line. Each move is kept only if it lowers a cost that counts crossings first. Trees and forests always end up crossing-free (a radial tree is the fallback); graphs that can be drawn flat (cycles, a wheel, a grid, a cube) were drawn flat in the tests; a graph that cannot (five pages all linked) keeps the fewest crossings found. Deterministic.
+- **Opens clean.** The page shows only the graph. **Options** (top right) brings back the explanation, the two toggles, the key, the zoom buttons and the count. Pan and zoom by mouse or trackpad always work.

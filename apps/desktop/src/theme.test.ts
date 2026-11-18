@@ -88,10 +88,9 @@ describe("chrome rules from the brief", () => {
     expect(theme).toMatch(/\.sb-item\.active,\.tree-row\.active\{background:var\(--active\);font-weight:600;box-shadow:inset 2px 0 0 var\(--accent\)\}/);
     expect(theme).toMatch(/\.sb-item\.active svg,\.tree-row\.active \.row-icon\{color:var\(--accent\)\}/);
   });
-  it("backlinks are one quiet line, about a third of the old height", () => {
-    expect(theme).toMatch(/\.backlinks\{display:flex;[^}]*opacity:\.75/);
-    expect(theme).toMatch(/\.backlinks h2\{margin:0;font-size:9px\}/);
-    expect(theme).toMatch(/\.backlinks button\{border:0;background:transparent;padding:0;[^}]*font-size:11px[^}]*text-decoration:underline/);
+  it("the Linked from panel is gone entirely", () => {
+    expect(theme).not.toMatch(/\.backlinks/);
+    expect(styles).not.toMatch(/\.backlinks/);
   });
   it("Home: approvals span the grid, cards are 8px panels, and state is a 7px dot with a soft ring when live", () => {
     expect(theme).toMatch(/\.home-card\[aria-label="Waiting for your approval"\]\{grid-column:1\/-1\}/);
@@ -105,5 +104,31 @@ describe("chrome rules from the brief", () => {
   it("passes the tokens to BlockNote", () => {
     expect(theme).toMatch(/\.note-editor \.bn-container\[data-color-scheme\]\{/);
     for (const k of ["--bn-colors-editor-text", "--bn-colors-editor-background", "--bn-colors-menu-background", "--bn-colors-hovered-background", "--bn-colors-selected-background", "--bn-colors-border"]) expect(theme).toContain(k + ":");
+  });
+});
+
+describe("motion", () => {
+  it("defines the four keyframes and uses them for pages, screens, cards, pop-ups, tabs and the floating button", () => {
+    for (const k of ["nou-fade", "nou-rise", "nou-pop", "nou-slide"]) expect(theme).toContain("@keyframes " + k);
+    expect(theme).toMatch(/\.document,\.home,\.settings-screen\{animation:nou-rise \.24s/);
+    expect(theme).toMatch(/\.home-card\{animation:nou-rise/);
+    expect(theme).toMatch(/\.quick-find,\.shortcuts,\.quick-capture\{animation:nou-pop/);
+    expect(theme).toMatch(/\.page-lock-popover,[^{]*\.bn-menu-dropdown\{animation:nou-pop/);
+    expect(theme).toMatch(/\.page-tab\{animation:nou-pop/);
+    expect(theme).toMatch(/\.fab\{animation:nou-pop/);
+    expect(theme).toMatch(/button:not\(:disabled\):active[^{]*\{transform:scale\(\.97\)\}/);
+  });
+  it("keeps every animation short (under half a second) so nothing makes the app feel slow", () => {
+    const block = theme.slice(theme.indexOf("/* ---------- motion"), theme.indexOf("/* print keeps"));
+    for (const m of block.matchAll(/animation:nou-[a-z]+ ([0-9.]+)s/g)) expect(Number(m[1])).toBeLessThanOrEqual(0.5);
+    expect(block).not.toMatch(/infinite/);
+  });
+  it("is switched off for reduced motion", () => {
+    expect(theme).toMatch(/@media \(prefers-reduced-motion:reduce\)\{\s*\*,\*::before,\*::after\{animation-duration:\.01ms!important;[^}]*transition-duration:\.01ms!important/);
+  });
+  it("only animates opacity and transform, which cost nothing in layout", () => {
+    const frames = theme.match(/@keyframes nou-[a-z]+\{[^@]*?\}\}?/g) ?? [];
+    expect(frames.length).toBe(4);
+    for (const f of frames) expect(f).not.toMatch(/(width|height|top|left|margin|padding)\s*:/);
   });
 });

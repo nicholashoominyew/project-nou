@@ -13,18 +13,11 @@ const pages = [{ id: "a", title: "Alpha", parent_id: null, sort_key: "1", icon: 
 beforeEach(() => { calls.length = 0; });
 
 describe("QuickFind", () => {
-  it("#tag lists the pages carrying a matching tag instead of searching titles and bodies", async () => {
-    const open = vi.fn();
-    render(<QuickFind pages={pages} onOpen={open} onClose={() => {}} />);
-    const input = screen.getByLabelText("Find a page");
-    fireEvent.change(input, { target: { value: "#proj" } });
-    await waitFor(() => expect(calls).toContainEqual({ command: "find_pages_by_tag", args: { prefix: "proj" } }));
-    expect(await screen.findByText("Beta")).toBeTruthy();
-    expect(screen.queryByText("Alpha")).toBeNull();
-    await new Promise(r => setTimeout(r, 250));
-    expect(calls.some(c => c.command === "search_notes")).toBe(false);
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(open).toHaveBeenCalledWith("b");
+  it("a #word is just text: it searches titles and bodies and never looks tags up", async () => {
+    render(<QuickFind pages={pages} onOpen={() => {}} onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Find a page"), { target: { value: "#proj" } });
+    await waitFor(() => expect(calls.some(c => c.command === "search_notes")).toBe(true));
+    expect(calls.some(c => c.command === "find_pages_by_tag")).toBe(false);
   });
   it("a lone # does nothing special and normal text still searches bodies", async () => {
     render(<QuickFind pages={pages} onOpen={() => {}} onClose={() => {}} />);

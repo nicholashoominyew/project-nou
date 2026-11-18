@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 use uuid::Uuid;
 
-pub const SCOPES: [&str; 4] = ["notes:read", "databases:read", "notes:write", "databases:write"];
+pub const SCOPES: [&str; 6] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write"];
 pub const OPS: [&str; 6] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item"];
 const MAX_PENDING_PER_TOKEN: i64 = 50;
 const MAX_PAYLOAD: usize = 60_000;
@@ -23,7 +23,7 @@ pub struct TokenInfo { pub id: String, pub name: String, pub scopes: Vec<String>
 #[derive(Serialize, Debug)]
 pub struct CreatedToken { pub info: TokenInfo, pub secret: String }
 #[derive(Debug, Clone)]
-pub struct Verified { pub id: String, pub scopes: Vec<String> }
+pub struct Verified { pub id: String, pub name: String, pub scopes: Vec<String> }
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct Proposal { pub id: String, pub token_id: String, pub token_name: String, pub op: String, pub payload: Value, pub summary: String, pub status: String, pub created_at: String, pub decided_at: Option<String>, pub applied_at: Option<String>, pub result: Option<String> }
 #[derive(Serialize, Debug, PartialEq)]
@@ -79,11 +79,11 @@ pub fn revoke_token(c: &Connection, id: &str) -> Result<(), String> {
 
 /// Check a presented secret. Revoked or unknown tokens are refused with the same message.
 pub fn verify_token(c: &Connection, secret: &str) -> Result<Verified, String> {
-    let row: Option<(String, String, Option<String>)> = c.query_row("SELECT id,scopes,revoked_at FROM api_tokens WHERE token_hash=?1", [sha256_hex(secret.as_bytes())], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional().map_err(e)?;
+    let row: Option<(String, String, String, Option<String>)> = c.query_row("SELECT id,name,scopes,revoked_at FROM api_tokens WHERE token_hash=?1", [sha256_hex(secret.as_bytes())], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional().map_err(e)?;
     match row {
-        Some((id, scopes, None)) => {
+        Some((id, name, scopes, None)) => {
             c.execute("UPDATE api_tokens SET last_used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1", [&id]).map_err(e)?;
-            Ok(Verified { id, scopes: serde_json::from_str(&scopes).unwrap_or_default() })
+            Ok(Verified { id, name, scopes: serde_json::from_str(&scopes).unwrap_or_default() })
         }
         _ => Err("Invalid or revoked token".into()),
     }

@@ -13,9 +13,11 @@ const short = (s: string) => (s.length > 26 ? s.slice(0, 25) + "…" : s);
  * A main page is a solid dot and each subpage is a ring (an outline with no fill), smaller the deeper it sits.
  * Click a page to open it. The picture is built from the same link index as "Linked from", so it is only ever a view of the notes.
  */
-export default function GraphView({ pages, onOpen, disabled }: { pages: PageInfo[]; onOpen: (id: string) => void; disabled?: boolean }) {
+export default function GraphView({ pages, onOpen, disabled, initiallyOpen = false }: { pages: PageInfo[]; onOpen: (id: string) => void; disabled?: boolean; initiallyOpen?: boolean }) {
   const [edges, setEdges] = useState<Edge[] | null>(null);
   const [error, setError] = useState("");
+  // The page opens clean: just the graph. "Options" shows the explanation and the controls.
+  const [options, setOptions] = useState(initiallyOpen);
   const [hierarchy, setHierarchy] = useState(true);
   const [loose, setLoose] = useState(true);
   const [hover, setHover] = useState<string | null>(null);
@@ -75,16 +77,16 @@ export default function GraphView({ pages, onOpen, disabled }: { pages: PageInfo
   };
 
   return <div className="document graph-screen">
-    <h1>Graph</h1>
-    <p className="hint">Each dot is a page. A solid dot is a main page and a ring is a subpage, smaller the deeper it sits. A solid line is a link you wrote in a note; a faint dashed line shows which page it sits under. Click a page to open it. Pinch or use Ctrl and the wheel to zoom, scroll with two fingers or drag the background to move around.</p>
+    <div className="graph-top"><h1>Graph</h1><button className="graph-options" aria-expanded={options} onClick={() => setOptions(v => !v)}>{options ? "Hide options" : "Options"}</button></div>
+    {options && <p className="hint">Each dot is a page. A solid dot is a main page and a ring is a subpage, smaller the deeper it sits. A solid line is a link you wrote in a note; a faint dashed line shows which page it sits under. Click a page to open it. Pinch or use Ctrl and the wheel to zoom, scroll with two fingers or drag the background to move around.</p>}
     {error && <p className="error" role="alert">{error}</p>}
-    <div className="graph-tools">
+    {options && <div className="graph-tools">
       <label><input type="checkbox" checked={hierarchy} onChange={e => setHierarchy(e.target.checked)} /> Show page hierarchy</label>
       <label><input type="checkbox" checked={loose} onChange={e => setLoose(e.target.checked)} /> Show pages with no lines</label>
       <span className="graph-key" aria-label="Key"><i className="solid" aria-hidden="true" /> Main page <i className="ring" aria-hidden="true" /> Subpage</span>
       <span className="graph-zoom"><button aria-label="Zoom in" onClick={() => zoom(1.25)}>+</button><button aria-label="Zoom out" onClick={() => zoom(0.8)}>−</button><button onClick={() => setView({ k: 1, x: 0, y: 0 })}>Reset</button></span>
       <span className="hint" role="status">{edges === null ? "Loading…" : `${shown.length} page${shown.length === 1 ? "" : "s"}, ${links.length} link${links.length === 1 ? "" : "s"}`}</span>
-    </div>
+    </div>}
     {!pages.length ? <p>No pages yet.</p> : tooMany ? <p role="status">This workspace has more than {MAX_GRAPH_NODES} pages, which is too many to draw at once. Turn off “Show pages with no lines” or “Show page hierarchy” to narrow it down.</p> : <>
       {edges !== null && !links.length && <p className="hint">No links between pages yet. Type @ in a note to link to another page and the link will appear here.</p>}
       <svg ref={svgRef} className="graph-svg" viewBox={`0 0 ${W} ${H}`} role="group" aria-label="Page graph"

@@ -5,13 +5,17 @@ import {invoke} from "@tauri-apps/api/core";
 import {open as chooseFile} from "@tauri-apps/plugin-dialog";
 import * as Y from "yjs";
 import {EditorFeatures,type PageInfo,type FileInfo} from "./EditorContext";
-import {Icon,iconNames} from "./Icons";
+import {Icon} from "./Icons";
+import {iconNames} from "./iconPaths";
 import {pageDrop,type DropPosition} from "./workspaceModel";
 import ShortcutsHelp from "./ShortcutsHelp";
-import Backlinks from "./Backlinks";
-import PageTags from "./PageTags";
+import SettingsPage from "./SettingsPage";
+import BotQueue from "./BotQueue";
+import { lastId, readSeen, unreadCount, writeSeen, type ChatMessage } from "./chatModel";
 import Home from "./Home";
 import QuickCapture from "./QuickCapture";
+import { keep } from "./stable";
+import { localDate } from "./resurface";
 import { SidebarResults, SidebarSearchBox } from "./SidebarSearch";
 import { LockButton, LockGate } from "./PageLock";
 import { appendBlocksToNote } from "./noteAppend";
@@ -58,7 +62,7 @@ export default function App(){
  useEffect(()=>{if(splitId&&pages.length&&!pages.some(p=>p.id===splitId)){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}},[pages,splitId]);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [sbQuery,setSbQuery]=useState("");const [lockedIds,setLockedIds]=useState<string[]>([]);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [sbQuery,setSbQuery]=useState("");const [showSettings,setShowSettings]=useState(false);const [showBot,setShowBot]=useState(false);const [chatUnread,setChatUnread]=useState(0);const chatSeen=useRef(readSeen());const [lockedIds,setLockedIds]=useState<string[]>([]);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -75,7 +79,7 @@ export default function App(){
  const current=pages.find(p=>p.id===selected);
  const reload=useCallback(async()=>{
   const [active,deleted,status,locked]=await Promise.all([invoke<Page[]>("list_pages"),invoke<Page[]>("list_trashed_pages"),invoke<boolean>("notes_write_blocked"),invoke<string[]>("list_locked_pages").catch(()=>[] as string[])]);
-  setPages(active);setTrashed(deleted);setRecoveryBlocked(!!status);setLockedIds(Array.isArray(locked)?locked:[]);
+  setPages(old=>keep(old,active));setTrashed(old=>keep(old,deleted));setRecoveryBlocked(!!status);setLockedIds(old=>keep(old,Array.isArray(locked)?locked:[]));
   setTabs(old=>old.filter(id=>active.some(p=>p.id===id)));setSelected(old=>old&&active.some(p=>p.id===old)?old:null);
  },[]);
  useEffect(()=>{void reload().catch(e=>setError(String(e)))},[reload]);
@@ -108,10 +112,17 @@ export default function App(){
   if(!other||!selected||busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved"||splitStatusRef.current!=="saved")return;
   const was=selected;setTabs(old=>old.includes(other)?old:[...old,other]);setSelected(other);setSplitId(was);
  }
- function openPage(id:string){if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved"||(splitIdRef.current!==null&&splitStatusRef.current!=="saved"))return;if(id===splitIdRef.current){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setShowGraph(false);setShowFiles(false);setIconPicker(false)}
+ function openPage(id:string){if(busyRef.current||peekBusyRef.current||saveStatusRef.current!=="saved"||(splitIdRef.current!==null&&splitStatusRef.current!=="saved"))return;if(id===splitIdRef.current){splitStatusRef.current="saved";setSplitStatus("saved");setSplitId(null)}setTabs(old=>old.includes(id)?old:[...old,id]);setSelected(id);setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowSettings(false);setShowBot(false);setIconPicker(false)}
  function closeTab(id:string){if(guard)return;closedTabs.current.push(id);const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
  function reopenTab(){if(guard)return;while(closedTabs.current.length){const id=closedTabs.current.pop()!;if(!tabs.includes(id)&&pagesRef.current.some(p=>p.id===id)){openPage(id);return}}}
  function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
+ // Bot queue: a badge on the sidebar item counts what assistants said since you last looked. The chat itself polls while it is open.
+ const markChatSeen=useCallback((id:number)=>{if(id>chatSeen.current){chatSeen.current=id;writeSeen(id)}setChatUnread(0)},[]);
+ useEffect(()=>{
+  if(showBot)return;let off=false;
+  const check=async()=>{try{const got=await invoke<ChatMessage[]>("chat_list",{after:chatSeen.current,limit:200});if(!off&&Array.isArray(got))setChatUnread(unreadCount(got,chatSeen.current))}catch{/* the badge is a convenience */}};
+  void check();const t=window.setInterval(()=>void check(),8000);return()=>{off=true;window.clearInterval(t)};
+ },[showBot]);
  // Quick capture: what is typed goes to the end of the Inbox page (made on first use), without leaving the current page.
  async function captureText(text:string):Promise<string>{
   const blocks=parseCapture(text);if(!blocks.length)throw new Error("Type something to capture.");
@@ -122,6 +133,11 @@ export default function App(){
   if(out.changed)try{window.dispatchEvent(new CustomEvent("nou:note-changed",{detail:id}))}catch{}
   return out.changed?"Saved to Inbox.":out.message;
  }
+ const inboxId=pickInbox(pages,readSetting<string|null>(INBOX_KEY,null));
+ // Permanent pages: Home, Graph, Inbox, Bots Hub and Files have fixed places in the sidebar and cannot be moved or deleted. The Inbox is the one note among them.
+ function openInboxPage(){if(inboxId){openPage(inboxId);return}void run(async()=>{const page=await createRichPage(null,"Inbox");writeSetting(INBOX_KEY,page.id);setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowSettings(false);setShowBot(false)})}
+ // The daily page: one top-level page named for the date, made the first time it is asked for.
+ function openDaily(){if(guard||recoveryBlocked)return;const day=localDate();const found=pagesRef.current.find(p=>p.parent_id===null&&p.title===day);if(found){openPage(found.id);return}void run(async()=>{const page=await createRichPage(null,day);setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false)})}
  function openInbox(){const id=pickInbox(pagesRef.current,readSetting<string|null>(INBOX_KEY,null));if(!id)return;setShowCapture(false);openPage(id)}
  // Keyboard shortcuts. Ctrl+C/V/X/A and Ctrl+Z/Y are handled natively by the editor and text fields.
  // Ctrl+P prints the open page (print styles hide the app chrome); Ctrl+Q opens Quick find.
@@ -203,7 +219,7 @@ export default function App(){
  }
  function tree(parent:string|null=null,depth=0,visited=new Set<string>()):React.ReactNode{
   if(depth>100)return null;
-  return pages.filter(p=>p.parent_id===parent).sort((a,b)=>a.sort_key.localeCompare(b.sort_key)||a.id.localeCompare(b.id)).map(page=>{
+  return pages.filter(p=>p.parent_id===parent&&p.id!==inboxId).sort((a,b)=>a.sort_key.localeCompare(b.sort_key)||a.id.localeCompare(b.id)).map(page=>{
    if(visited.has(page.id))return null;visited.add(page.id);
    const children=pages.some(p=>p.parent_id===page.id);const expanded=!collapsed.includes(page.id);
    return <div key={page.id}>{pageRow(page,depth)}{children&&expanded&&tree(page.id,depth+1,visited)}</div>;
@@ -221,9 +237,11 @@ export default function App(){
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>
      <button aria-label="New page" title="New page (Ctrl+N)" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="compose" size={16}/></button></div></div>
    <SidebarSearchBox query={sbQuery} onQuery={setSbQuery} disabled={guard}/>
-   <button className={"sb-item"+(!current&&!showTrash&&!showGraph&&!showFiles?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false);setShowFiles(false)}}><Icon name="home" size={17}/><span>Home</span></button>
-   <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowFiles(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
-   <button className={"sb-item"+(showFiles?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowFiles(v=>!v)}}><Icon name="folder" size={17}/><span>Files</span></button>
+   <button className={"sb-item"+(!current&&!showTrash&&!showGraph&&!showFiles&&!showSettings&&!showBot?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowSettings(false);setShowBot(false)}}><Icon name="home" size={17}/><span>Home</span></button>
+   <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowFiles(false);setShowSettings(false);setShowBot(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
+   <button className={"sb-item"+(!!inboxId&&selected===inboxId&&!showTrash&&!showGraph&&!showFiles&&!showSettings&&!showBot?" active":"")} disabled={guard||(!inboxId&&recoveryBlocked)} onClick={openInboxPage}><Icon name="inbox" size={17}/><span>Inbox</span></button>
+   <button className={"sb-item"+(showBot?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowSettings(false);setShowBot(v=>!v)}}><Icon name="hub" size={17}/><span>Bots Hub</span>{chatUnread>0&&!showBot&&<em className="sb-badge" aria-label={chatUnread+" unread"}>{chatUnread}</em>}</button>
+   <button className={"sb-item"+(showFiles?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowSettings(false);setShowBot(false);setShowFiles(v=>!v)}}><Icon name="folder" size={17}/><span>Files</span></button>
    {sbQuery.trim()&&<div className="sb-scroll"><SidebarResults query={sbQuery} pages={pages} disabled={guard} onOpen={id=>{setSbQuery("");openPage(id)}}/></div>}
    <div className="sb-scroll" style={sbQuery.trim()?{display:"none"}:undefined}>
     {favorites.length>0&&<section aria-label="Favorites"><div className="sb-section"><button className="sb-section-title" aria-expanded={favoritesOpen} onClick={()=>setFavoritesOpen(v=>!v)}>Favorites</button></div>
@@ -236,9 +254,7 @@ export default function App(){
      <button className="sb-item sb-add-page" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="plus" size={17}/><span>Add a page</span></button></section>
    </div>
    <div className="sb-bottom">
-    <button className={"sb-item"+(showTrash?" active":"")} disabled={guard} onClick={()=>{setShowGraph(false);setShowFiles(false);setShowTrash(v=>!v);onEditorStatus("saved")}}><Icon name="trash" size={17}/><span>Trash</span><em>{trashed.length}</em></button>
-    <button className="sb-item" disabled={guard||recoveryBlocked} onClick={()=>setShowImport(true)}><Icon name="import" size={17}/><span>Import recovered note…</span></button>
-    <button className="sb-item" disabled={guard} onClick={()=>setShowRecovery(true)}><Icon name="archive" size={17}/><span>Backups &amp; restore</span></button>
+    <button className={"sb-item"+(showSettings||showTrash?" active":"")} disabled={guard} onClick={()=>{setShowGraph(false);setShowFiles(false);setShowTrash(false);setShowBot(false);setShowSettings(v=>!v);onEditorStatus("saved")}}><Icon name="settings" size={17}/><span>Settings</span></button>
     <small>Offline · Saved on this device</small></div>
    <div className="sb-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuenow={sidebarWidth} aria-valuemin={200} aria-valuemax={480} tabIndex={0} onPointerDown={startSidebarResize}
     onKeyDown={e=>{if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();setSidebarWidth(w=>clampSidebar(w+(e.key==="ArrowRight"?16:-16)))}}}/>
@@ -250,23 +266,22 @@ export default function App(){
    {backupNotice&&<p className="notice" role="status">{backupNotice} Open Workspace tools → Backups & restore.</p>}
    {recoveryBlocked&&<p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
    {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>Dismiss</button></div>}
-   <div className={splitId&&current&&!showTrash&&!showGraph&&!showFiles?"workspace-body split":"workspace-body"}>
-   {showTrash?<div className="document trash-screen"><h1>Trash</h1><p>Restoring a page also restores its subpages deleted in the same operation.</p>{!trashed.length&&<p>Trash is empty.</p>}{trashed.map(page=><div className="trash-row" key={page.id}><span><Icon name={page.icon}/>{page.title}</span><button disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("restore_page",{pageId:page.id}))}>Restore</button></div>)}</div>
+   <div className={splitId&&current&&!showTrash&&!showGraph&&!showFiles&&!showSettings&&!showBot?"workspace-body split":"workspace-body"}>
+   {showBot?<BotQueue disabled={recoveryBlocked} onSeen={markChatSeen} refresh={reload}/>
+   :showSettings&&!showTrash?<SettingsPage trashedCount={trashed.length} disabled={guard} readOnly={recoveryBlocked} onBackups={()=>setShowRecovery(true)} onImport={()=>setShowImport(true)} onTrash={()=>{setShowSettings(false);setShowTrash(true);onEditorStatus("saved")}} onAccess={()=>setShowGateway(true)}/>
+   :showTrash?<div className="document trash-screen"><p><button className="link-button" onClick={()=>{setShowTrash(false);setShowSettings(true)}}>← Settings</button></p><h1>Trash</h1><p>Restoring a page also restores its subpages deleted in the same operation.</p>{!trashed.length&&<p>Trash is empty.</p>}{trashed.map(page=><div className="trash-row" key={page.id}><span><Icon name={page.icon}/>{page.title}</span><button disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("restore_page",{pageId:page.id}))}>Restore</button></div>)}</div>
    :showFiles?<Suspense fallback={<p role="status">Opening files…</p>}><FileTracker onOpen={openPage} disabled={guard}/></Suspense>
    :showGraph?<Suspense fallback={<p role="status">Opening graph…</p>}><GraphView pages={pages} onOpen={openPage} disabled={guard}/></Suspense>
    :current?<div className="document" key={current.id}><div className="toolbar"><nav className="breadcrumb" aria-label="Breadcrumb"><button disabled={guard} onClick={()=>setSelected(null)}>Workspace</button>{crumbs.map((page,i)=><span key={page.id}><span aria-hidden="true"> / </span>{i<crumbs.length-1?<button disabled={guard} onClick={()=>openPage(page.id)}>{page.title}</button>:<span aria-current="page">{page.title}</span>}</span>)}</nav><div className="actions">
     <LockButton pageId={current.id} locked={lockedIds.includes(current.id)} disabled={guard||recoveryBlocked} onChanged={()=>void reload().catch(e=>setError(String(e)))}/>
     <button aria-label="Focus mode" title="Focus mode (Ctrl+Shift+F)" onClick={()=>setFocus(true)}>Focus</button>
-    <button disabled={guard||recoveryBlocked} onClick={()=>void run(async()=>{const page=await createRichPage(current.id,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setCollapsed(old=>old.filter(id=>id!==current.id))})}>+ Subpage</button>
-    <button aria-label="Move page up" title="Move page up" disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("move_page",{pageId:current.id,direction:"up"}))}>↑</button>
-    <button aria-label="Move page down" title="Move page down" disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("move_page",{pageId:current.id,direction:"down"}))}>↓</button>
-    <button className="danger" disabled={guard||recoveryBlocked} onClick={()=>{if(window.confirm("Move this page and its subpages to Trash?"))void run(async()=>{await invoke("trash_page",{pageId:current.id});setSelected(null)})}}>Trash</button><div id="note-export-host"/>
+    {current.id!==inboxId&&<button className="danger" disabled={guard||recoveryBlocked} onClick={()=>{if(window.confirm("Move this page and its subpages to Trash?"))void run(async()=>{await invoke("trash_page",{pageId:current.id});setSelected(null)})}}>Trash</button>}<div id="note-export-host"/>
    </div></div>
    <div className="document-heading"><div className="page-icon-picker" ref={iconPickerRef}><button className="document-icon" aria-label="Assign page icon" disabled={guard||recoveryBlocked} onClick={()=>setIconPicker(v=>!v)}><Icon name={current.icon} size={32}/></button>{iconPicker&&<div className="icon-picker-popover" role="group" aria-label="Monochrome page icons">{iconNames.map(icon=><button key={icon} aria-label={icon+" icon"} aria-pressed={current.icon===icon} disabled={guard} onClick={()=>void run(async()=>{await invoke("set_page_icon",{pageId:current.id,icon});setIconPicker(false)})}><Icon name={icon} size={22}/></button>)}</div>}</div>
     <input className="title-input" aria-label="Page title" readOnly={guard||recoveryBlocked} defaultValue={current.title} onBlur={e=>{const title=e.target.value.trim()||"Untitled";if(!recoveryBlocked&&title!==current.title)void run(()=>invoke("rename_page",{pageId:current.id,title}))}} onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur()}}/>
-   </div><PageTags pageId={current.id} readOnly={recoveryBlocked} onError={e=>setError(String(e))}/><LockGate pageId={current.id} locked={lockedIds.includes(current.id)} title={current.title}><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense></LockGate><Backlinks pageId={current.id} onOpen={openPage}/></div>
-   :<Home pages={pages} open={openPage} searchTag={tag=>{setQuickFindText("#"+tag);setQuickFind(true)}} newPage={()=>void newRootPage()} disabled={guard||recoveryBlocked} refresh={reload} onManageAccess={()=>setShowGateway(true)}/>}
-   {splitId&&current&&!showTrash&&!showGraph&&!showFiles&&(()=>{const other=pages.find(p=>p.id===splitId);return other?<aside className="split-pane" aria-label="Split view">
+   </div><LockGate pageId={current.id} locked={lockedIds.includes(current.id)} title={current.title}><Suspense fallback={<p role="status">Opening editor…</p>}><NoteEditor pageId={current.id} title={current.title} onStatus={onEditorStatus} readOnly={recoveryBlocked}/></Suspense></LockGate></div>
+   :<Home pages={pages} open={openPage} openDaily={()=>void openDaily()} newPage={()=>void newRootPage()} disabled={guard||recoveryBlocked} refresh={reload} onManageAccess={()=>setShowGateway(true)}/>}
+   {splitId&&current&&!showTrash&&!showGraph&&!showFiles&&!showSettings&&!showBot&&(()=>{const other=pages.find(p=>p.id===splitId);return other?<aside className="split-pane" aria-label="Split view">
     <header className="split-header"><strong title={other.title}>{other.title||"Untitled"}</strong>
      <button disabled={guard} onClick={swapSplit} title="Swap the two pages">Swap</button>
      <button disabled={guard} onClick={()=>{const id=other.id;closeSplit();openPage(id)}} title="Open this page on its own">Open alone</button>

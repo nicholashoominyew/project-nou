@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { keep } from "./stable";
 import { OP_LABELS, applyProposal, canApply, type Proposal } from "./gatewayApply";
 
 /** Show a value exactly as the client sent it, truncated for display only. Nothing here is rendered as HTML. */
@@ -17,8 +18,8 @@ export default function Approvals({ disabled, refresh }: { disabled: boolean; re
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
   const load = useCallback(async () => {
-    try { const list = await invoke<Proposal[]>("gateway_list_proposals", { status: "pending", limit: 50 }); setItems(Array.isArray(list) ? list : []); }
-    catch { setItems([]); }
+    try { const list = await invoke<Proposal[]>("gateway_list_proposals", { status: "pending", limit: 50 }); setItems(old => keep(old, Array.isArray(list) ? list : [])); }
+    catch { setItems(old => keep(old, [])); }
   }, []);
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15000); return () => window.clearInterval(timer); }, [load]);
 

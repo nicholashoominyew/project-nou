@@ -26,3 +26,17 @@ A visual restyle of the desktop app, following `NOU-ELEMENTEL-REDESIGN.md` and t
 ## Not verified
 - It has not been looked at in a real window yet, in either theme, so spacing and the BlockNote menus need an eye. Offline loading of the fonts in the packaged app has not been checked. The before and after screenshots for the pull request still need taking.
 - The old draft in `_to_delete/` was left alone.
+
+## Later changes
+- **Settings page.** Backups & restore, Import recovered note and Trash left the sidebar. **Settings** (sidebar, bottom) lists them as cards, with AI access. The Trash screen has a link back to Settings.
+- **Removed from the page.** The "Linked from" panel is gone entirely (the component and its styles are deleted; the backend `list_backlinks` command stays but nothing calls it). **+ Subpage** and the up and down arrows are gone from the page toolbar: arrange pages by dragging in the sidebar (or Move up and Move down in a row's menu) and add subpages with `/` then **Page** inside a note.
+- **Motion.** Short, quiet animations in `theme.css`: pages and screens fade in and rise 8px, Home cards arrive one after another, pop-ups and menus scale in, new tabs pop in, buttons give under the finger, the graph fades in. Each is under half a second, only opacity and transform are animated, and all of it is off for reduced motion.
+
+## Permanent pages, Home layout, tags and icons
+- **Permanent pages** have fixed places in the sidebar and cannot be moved or deleted: **Home**, **Graph**, **Inbox**, **Bots Hub** and **Files** (in that order). The Inbox is a normal note (Quick capture writes to it, and it is made the first time it is opened); it is left out of the page tree and has no Trash button. Every other page is editable: rename, move, favourite, subpages, trash.
+- **Bots Hub** replaces "Bot queue": a **Chat** tab (see `BOT-QUEUE.md`) and a **Queue** tab with the requests assistants have asked you to approve. The badge counts unread assistant messages.
+- **Home layout:** the Daily page across the top (one page per day, named for the date, made on first use), then Waiting for approval, Recently edited and Favorites side by side. Worth revisiting sits below, full width (hide it from the gear). The gear (top right) opens the customize panel: move or hide sections, and **AI access** lives there. Saved layouts from before keep their old order for sections they already knew.
+- **Tags are gone** from the page, Home and Quick find. Existing tags stay in the database untouched, nothing reads them.
+- **Buttons** all follow the theme: a zero-specificity base rule in `theme.css` themes any button without its own look.
+- **Icons:** `iconPaths.ts` holds one stroke icon set (about 70). Pages can wear 24 of them (the Rust list in `workspace_commands.rs` matches). The slash menu (Page, Database, columns, Flowchart, Linked to-do, Bookmark, Image, PDF, File, page mentions) and the ⠿ menu rows have icons.
+- **Reloading:** refreshes now keep the old data when nothing changed, so polling no longer redraws Home or the sidebar. Icon data moved out of `Icons.tsx` so the dev server can hot-update instead of reloading the whole page. In dev, the page also reloaded whenever Rust rebuilt; ignoring `src-tauri` in `vite.config.ts` stops that (your uncommitted edit there does this).

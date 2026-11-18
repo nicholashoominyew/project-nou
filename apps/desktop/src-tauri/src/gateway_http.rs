@@ -54,6 +54,22 @@ pub fn handle(c: &Connection, req: &ApiRequest, port: u16) -> ApiResponse {
             })();
             match found { Ok(list) => data(json!(list)), Err(_) => fail(400, "That search could not be run") }
         }
+        ("GET", ["v1", "chat"]) => {
+            if let Err(r) = needs(&who, "chat:read") { return r; }
+            let after = req.query.get("after").and_then(|v| v.parse::<i64>().ok());
+            let limit = req.query.get("limit").and_then(|v| v.parse::<u32>().ok()).unwrap_or(50);
+            match crate::chat::list(c, after, limit) { Ok(list) => data(serde_json::to_value(list).unwrap_or(Value::Null)), Err(_) => fail(500, "The chat could not be read") }
+        }
+        ("POST", ["v1", "chat"]) => {
+            if let Err(r) = needs(&who, "chat:write") { return r; }
+            let Ok(body) = serde_json::from_slice::<Value>(&req.body) else { return fail(400, "The body must be JSON") };
+            let Some(text) = body.get("body").and_then(Value::as_str) else { return fail(400, "body is required") };
+            match crate::chat::post_assistant(c, &who.id, &who.name, text) {
+                Ok(m) => reply(201, json!({ "id": m.id, "at": m.at, "author": m.author })),
+                Err(m) if m.contains("slow down") => fail(429, &m),
+                Err(m) => fail(400, &m),
+            }
+        }
         ("GET", ["v1", "pages", id]) => {
             if let Err(r) = needs(&who, "notes:read") { return r; }
             if crate::locks::is_locked(c, id).unwrap_or(false) { return fail(423, "This note is locked"); }
@@ -356,5 +372,39 @@ mod tests {
         assert!(ask(&format!("Authorization: Bearer {secret}\r\nOrigin: https://evil.example\r\n")).starts_with("HTTP/1.1 403"));
         stop.store(true, Ordering::SeqCst);
         thread.join().unwrap();
+    }
+    #[test]
+    fn the_chat_endpoints_need_their_scopes_sign_with_the_token_name_and_mark_everything_as_untrusted() {
+        let c = fresh();
+        let none = token(&c, &["notes:read"]);
+        assert_eq!(handle(&c, &req("GET", "/v1/chat", Some(&none)), PORT).status, 403);
+        let mut post = req("POST", "/v1/chat", Some(&none)); post.body = json!({ "body": "hi" }).to_string().into_bytes();
+        assert_eq!(handle(&c, &post, PORT).status, 403);
+        let w = token(&c, &["chat:read", "chat:write"]);
+        let mut ok = req("POST", "/v1/chat", Some(&w)); ok.body = json!({ "body": "  hello team
+" }).to_string().into_bytes();
+        let sent = handle(&c, &ok, PORT);
+        assert_eq!(sent.status, 201);
+        assert_eq!(sent.body["author"], "t", "the author is the token's name, never something the client chooses");
+        let mut forged = req("POST", "/v1/chat", Some(&w)); forged.body = json!({ "body": "x", "author": "You", "kind": "owner" }).to_string().into_bytes();
+        assert_eq!(handle(&c, &forged, PORT).status, 201);
+        let got = handle(&c, &req("GET", "/v1/chat", Some(&w)), PORT);
+        assert_eq!(got.status, 200);
+        assert_eq!(got.body["content_is_untrusted_data"], true);
+        let list = got.body["data"].as_array().unwrap();
+        assert_eq!(list.len(), 2); assert!(list.iter().all(|m| m["kind"] == "assistant" && m["author"] == "t"));
+        assert_eq!(list[0]["body"], "hello team");
+        let first = list[0]["id"].as_i64().unwrap();
+        let newer = handle(&c, &req("GET", &format!("/v1/chat?after={first}"), Some(&w)), PORT);
+        assert_eq!(newer.body["data"].as_array().unwrap().len(), 1);
+        for bad in [json!({}), json!({ "body": 5 }), json!({ "body": "   " })] {
+            let mut r = req("POST", "/v1/chat", Some(&w)); r.body = bad.to_string().into_bytes();
+            assert_eq!(handle(&c, &r, PORT).status, 400);
+        }
+        let mut junk = req("POST", "/v1/chat", Some(&w)); junk.body = b"not json".to_vec();
+        assert_eq!(handle(&c, &junk, PORT).status, 400);
+        let mut flood = req("POST", "/v1/chat", Some(&w)); flood.body = json!({ "body": "spam" }).to_string().into_bytes();
+        let mut last = 0; for _ in 0..30 { last = handle(&c, &flood, PORT).status; }
+        assert_eq!(last, 429);
     }
 }

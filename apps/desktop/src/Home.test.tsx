@@ -7,29 +7,30 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: a
   calls.push({ command, args });
   if (command === "list_resurfaced_pages") return resurfaced.items;
   if (command === "list_recent_pages") return [{ id: "a", title: "Alpha", updated_at: new Date(Date.now() - 5 * 60000).toISOString() }, { id: "b", title: "Beta", updated_at: "2020-01-01T00:00:00.000Z" }];
-  if (command === "list_tags") return [{ name: "research", count: 3 }];
 } }));
 const pages = [
   { id: "a", title: "Alpha", parent_id: null, sort_key: "1", icon: "document", is_favorite: true },
   { id: "b", title: "Beta", parent_id: null, sort_key: "2", icon: "document", is_favorite: false },
 ] as any;
-const show = (extra: Partial<React.ComponentProps<typeof Home>> = {}) => render(<Home pages={pages} open={() => {}} searchTag={() => {}} newPage={() => {}} disabled={false} {...extra} />);
+const show = (extra: Partial<React.ComponentProps<typeof Home>> = {}) => render(<Home pages={pages} open={() => {}} openDaily={() => {}} newPage={() => {}} disabled={false} {...extra} />);
 beforeEach(() => { localStorage.clear(); calls.length = 0; resurfaced.items = []; });
 
 describe("Home", () => {
-  it("shows the built-in widgets: recent pages, favorites and tags", async () => {
+  it("shows the built-in widgets: daily page, recent pages and favorites, and no tags", async () => {
     show();
     expect(await screen.findByText("5 min ago")).toBeTruthy();
     expect(within(screen.getByLabelText("Favorites")).getByText("Alpha")).toBeTruthy();
-    expect(within(screen.getByLabelText("Tags")).getByText("#research")).toBeTruthy();
+    expect(screen.getByLabelText("Daily page")).toBeTruthy();
+    expect(screen.queryByLabelText("Tags")).toBeNull();
+    expect(calls.some(c => c.command === "list_tags")).toBe(false);
   });
-  it("opens a page from a widget and starts a tag search", async () => {
-    const open = vi.fn(), tag = vi.fn();
-    show({ open, searchTag: tag });
+  it("opens a page from a widget, and today's page from the daily widget", async () => {
+    const open = vi.fn(), daily = vi.fn();
+    show({ open, openDaily: daily });
     fireEvent.click((await screen.findAllByText("Beta"))[0]);
     expect(open).toHaveBeenCalledWith("b");
-    fireEvent.click(await screen.findByText("#research"));
-    expect(tag).toHaveBeenCalledWith("research");
+    fireEvent.click(screen.getByText("Open today's page"));
+    expect(daily).toHaveBeenCalledTimes(1);
   });
   it("offers New page, or Create your first page when the workspace is empty", () => {
     const newPage = vi.fn();
@@ -48,22 +49,32 @@ describe("Home", () => {
   });
   it("customize: hide, show again and reorder widgets, and remember the layout", async () => {
     const { unmount } = show();
-    fireEvent.click(screen.getByText("Customize"));
+    fireEvent.click(screen.getByLabelText("Customize"));
     fireEvent.click(screen.getByLabelText("Hide Favorites"));
     expect(screen.queryByLabelText("Favorites")).toBeNull();
-    fireEvent.click(screen.getByLabelText("Move Tags up"));
+    fireEvent.click(screen.getByLabelText("Move Worth revisiting up"));
     const order = () => screen.getAllByRole("heading", { level: 2 }).map(h => h.textContent);
-    expect(order().slice(0, 4)).toEqual(["Waiting for your approval", "Recently edited", "Tags", "Worth revisiting"]);
+    expect(order().slice(0, 4)).toEqual(["Daily page", "Waiting for approval", "Worth revisiting", "Recently edited"]);
     unmount();
     show(); // a fresh mount reads the saved layout
     expect(screen.queryByLabelText("Favorites")).toBeNull();
-    expect(screen.getAllByRole("heading", { level: 2 })[2].textContent).toBe("Tags");
-    fireEvent.click(screen.getByText("Customize"));
+    expect(screen.getAllByRole("heading", { level: 2 })[2].textContent).toBe("Worth revisiting");
+    fireEvent.click(screen.getByLabelText("Customize"));
     fireEvent.click(screen.getByText("Show Favorites"));
     expect(screen.getByLabelText("Favorites")).toBeTruthy();
   });
+  it("the gear opens a panel that holds AI access, and Done closes it", () => {
+    const access = vi.fn();
+    show({ onManageAccess: access });
+    expect(screen.queryByText("AI access")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Customize"));
+    fireEvent.click(screen.getByText("AI access"));
+    expect(access).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText("Done"));
+    expect(screen.queryByText("AI access")).toBeNull();
+  });
   it("shows a message when every widget is hidden", () => {
-    localStorage.setItem("nou-home-layout", JSON.stringify({ order: ["approvals", "recent", "resurface", "favorites", "tags"], hidden: ["approvals", "recent", "resurface", "favorites", "tags"] }));
+    localStorage.setItem("nou-home-layout", JSON.stringify({ order: ["daily", "approvals", "recent", "resurface", "favorites"], hidden: ["daily", "approvals", "recent", "resurface", "favorites"] }));
     show();
     expect(screen.getByText(/All widgets are hidden/)).toBeTruthy();
   });
@@ -125,8 +136,8 @@ describe("Home", () => {
     const { container } = show();
     await screen.findByLabelText("Favorites");
     const dot = (title: string) => within(screen.getByLabelText(title)).getByRole("heading", { level: 2 }).querySelector(".state-dot")!;
-    for (const live of ["Waiting for your approval", "Recently edited", "Favorites"]) expect(dot(live).className).toContain("live");
-    for (const idle of ["Worth revisiting", "Tags"]) expect(dot(idle).className).not.toContain("live");
+    for (const live of ["Waiting for approval", "Recently edited", "Favorites"]) expect(dot(live).className).toContain("live");
+    for (const idle of ["Worth revisiting", "Daily page"]) expect(dot(idle).className).not.toContain("live");
     expect(container.querySelectorAll(".state-dot").length).toBe(5);
   });
 });

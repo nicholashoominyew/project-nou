@@ -5,8 +5,10 @@ import { createPortal } from "react-dom";
 import {useEditorFeatures} from "./EditorContext";
 import {DismissibleDetails} from "./Dismissible";
 import {filterSuggestionItems,insertOrUpdateBlockForSlashMenu} from "@blocknote/core/extensions";
+import {Icon} from "./Icons";
 import {getDefaultReactSlashMenuItems,SideMenuController,SuggestionMenuController} from "@blocknote/react";
 import {NouSideMenu,PageIdContext} from "./NouSideMenu";
+import {namedPastes,pastedImages} from "./pasteImages";
 import {blockAttachmentIds,documentAttachmentIds,documentLinkedTodoIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
@@ -38,6 +40,18 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
       const under=document.elementFromPoint?.(x,y)?.closest<HTMLElement>('[data-node-type="blockOuter"]')?.getAttribute("data-id");
       let anchor=under&&editor.getBlock(under)?under:editor.document[editor.document.length-1].id;
       for(const file of files){const info=await context.uploadFile(file);const [block]=editor.insertBlocks([blockFor(info)],anchor,"after");anchor=block.id}
+    }catch(error){context.onError(error)}finally{setPending(false)}
+  }
+  /** A pasted screenshot becomes an image block after the block you are in (an empty line is used up by it). */
+  async function insertPasted(files:File[]){
+    setPending(true);
+    try{
+      let anchor:{id:string;type:string;content?:unknown;children?:unknown[]}|undefined;
+      try{anchor=editor.getTextCursorPosition().block as unknown as typeof anchor}catch{anchor=editor.document[editor.document.length-1] as unknown as typeof anchor}
+      const empty=!!anchor&&anchor.type==="paragraph"&&!(anchor.children?.length)&&(!Array.isArray(anchor.content)||anchor.content.length===0);
+      let after=anchor?.id??editor.document[editor.document.length-1].id;
+      for(const file of namedPastes(files)){const info=await context.uploadFile(file);const [block]=editor.insertBlocks([blockFor(info)],after,"after");after=block.id}
+      if(empty&&anchor)editor.removeBlocks([anchor.id]);
     }catch(error){context.onError(error)}finally{setPending(false)}
   }
   async function create(kind:"page"|"database"|"image"|"pdf"|"file"){
@@ -96,35 +110,36 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
   async function linkedDatabaseItems(){
     try{
       const list=await invoke<{id:string;title:string}[]>("list_databases");
-      return list.map(d=>({title:"Database: "+d.title,aliases:["database","linked","table","board",d.title],group:"Existing databases",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouDatabase",props:{databaseId:d.id}} as never)}));
+      return list.map(d=>({title:"Database: "+d.title,icon:<Icon name="database" size={18}/>,aliases:["database","linked","table","board",d.title],group:"Existing databases",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouDatabase",props:{databaseId:d.id}} as never)}));
     }catch{return []}
   }
   async function linkedTodoItems(){
     try{
       const list=await invoke<{id:string;text:string;checked:boolean;pages:number}[]>("linked_todo_list",{query:""});
-      return list.map(t=>({title:"Linked to-do: "+(t.text||"(empty)"),aliases:["linked","shared","todo",t.text],group:"Existing linked to-dos",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouLinkedTodo",props:{todoId:t.id,text:t.text,checked:t.checked}} as never)}));
+      return list.map(t=>({title:"Linked to-do: "+(t.text||"(empty)"),icon:<Icon name="checklist" size={18}/>,aliases:["linked","shared","todo",t.text],group:"Existing linked to-dos",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouLinkedTodo",props:{todoId:t.id,text:t.text,checked:t.checked}} as never)}));
     }catch{return []}
   }
   async function newLinkedTodo(){
     try{const t=await invoke<{id:string;text:string;checked:boolean}>("linked_todo_create",{text:""});insertOrUpdateBlockForSlashMenu(editor,{type:"nouLinkedTodo",props:{todoId:t.id,text:"",checked:false}} as never)}
     catch(e){context.onError(e)}
   }
-  const pageItems=(query:string)=>filterSuggestionItems(context.pages.map(page=>({title:page.title,aliases:[],group:"Pages",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium",style:"line"}} as never)})),query).slice(0,12);
+  const pageItems=(query:string)=>filterSuggestionItems(context.pages.map(page=>({title:page.title,icon:<Icon name="mention" size={18}/>,aliases:[],group:"Pages",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium",style:"line"}} as never)})),query).slice(0,12);
   const items=()=>[...getDefaultReactSlashMenuItems(editor),
-    {title:"Page",aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
-    {title:"Database",aliases:["database","table","board","calendar","timeline","gallery","list"],group:"NOU",onItemClick:()=>void create("database")},
-    {title:"2 columns",aliases:["columns","column","side by side","split","2 column"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouColumns",children:[{type:"paragraph"},{type:"paragraph"}]} as never)},
-    {title:"3 columns",aliases:["columns","column","side by side","3 column"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouColumns",children:[{type:"paragraph"},{type:"paragraph"},{type:"paragraph"}]} as never)},
-    {title:"Flowchart",aliases:["flowchart","diagram","chart","flow","process"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouFlowchart",props:{data:""}} as never)},
-    {title:"Linked to-do",aliases:["[]","[ ]","linked","shared","todo","to-do","checklist","task"],group:"NOU",onItemClick:()=>void newLinkedTodo()},
-    {title:"Bookmark",aliases:["bookmark","link"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouBookmark"})},
-    {title:"Image",aliases:["image","photo","upload"],group:"NOU",onItemClick:()=>void create("image")},
-    {title:"PDF",aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
-    {title:"File",aliases:["file","attachment","html","upload"],group:"NOU",onItemClick:()=>void create("file")}
+    {title:"Page",icon:<Icon name="subpage" size={18}/>,aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
+    {title:"Database",icon:<Icon name="database" size={18}/>,aliases:["database","table","board","calendar","timeline","gallery","list"],group:"NOU",onItemClick:()=>void create("database")},
+    {title:"2 columns",icon:<Icon name="columns" size={18}/>,aliases:["columns","column","side by side","split","2 column"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouColumns",children:[{type:"paragraph"},{type:"paragraph"}]} as never)},
+    {title:"3 columns",icon:<Icon name="columns" size={18}/>,aliases:["columns","column","side by side","3 column"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouColumns",children:[{type:"paragraph"},{type:"paragraph"},{type:"paragraph"}]} as never)},
+    {title:"Flowchart",icon:<Icon name="flowchart" size={18}/>,aliases:["flowchart","diagram","chart","flow","process"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouFlowchart",props:{data:""}} as never)},
+    {title:"Linked to-do",icon:<Icon name="checklist" size={18}/>,aliases:["[]","[ ]","linked","shared","todo","to-do","checklist","task"],group:"NOU",onItemClick:()=>void newLinkedTodo()},
+    {title:"Bookmark",icon:<Icon name="bookmark" size={18}/>,aliases:["bookmark","link"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouBookmark"})},
+    {title:"Image",icon:<Icon name="image" size={18}/>,aliases:["image","photo","upload"],group:"NOU",onItemClick:()=>void create("image")},
+    {title:"PDF",icon:<Icon name="pdf" size={18}/>,aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
+    {title:"File",icon:<Icon name="attachment" size={18}/>,aliases:["file","attachment","html","upload"],group:"NOU",onItemClick:()=>void create("file")}
   ];
   return <div className={"editor-drop"+(over?" over":"")} onKeyDown={e=>{if(shouldTrapTab(e))e.preventDefault()}} onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateBlock()}else if(isHighlightShortcut(e)){e.preventDefault();applyHighlight()}}}
     onDragOverCapture={e=>{if(hasFiles(e)){e.preventDefault();e.dataTransfer.dropEffect=disabled?"none":"copy";setOver(!disabled)}}}
     onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
+    onPasteCapture={e=>{const images=pastedImages(e.clipboardData);if(!images.length)return;e.preventDefault();e.stopPropagation();if(disabled)return;void insertPasted(images)}}
     onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
   <PageIdContext.Provider value={pageId}><BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} sideMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
     <SuggestionMenuController triggerCharacter="/" getItems={async query=>{const linked=wantsExistingDatabases(query)?await linkedDatabaseItems():[];const todos=wantsExistingTodos(query)?await linkedTodoItems():[];return filterSuggestionItems([...items(),...linked,...todos],query)}}/>

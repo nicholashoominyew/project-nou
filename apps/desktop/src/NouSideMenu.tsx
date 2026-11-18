@@ -3,7 +3,9 @@ import { SideMenuExtension } from "@blocknote/core/extensions";
 import { BlockColorsItem, DragHandleMenu, SideMenu, TableColumnHeaderItem, TableRowHeaderItem, useBlockNoteEditor, useComponentsContext, useExtensionState, usePortalElement, type SideMenuProps } from "@blocknote/react";
 import { appendBlocksToNote } from "./noteAppend";
 import { useEditorFeatures } from "./EditorContext";
+import { Icon } from "./Icons";
 import { BOX_COLORS, BOX_COLOR_HEX, TURN_INTO, boxColor, canTurnInto, copyBlock, matchesAction, type AnyBlock } from "./blockOps";
+import { FROM_LINKED, canLink, fromLinked, toLinked } from "./linkedConvert";
 
 export type PageLinkStyle = "line" | "box";
 export const nextPageStyle = (style: unknown): PageLinkStyle => (style === "line" ? "box" : "line");
@@ -12,18 +14,18 @@ export const nextPageStyle = (style: unknown): PageLinkStyle => (style === "line
 export const PageIdContext = createContext<string>("");
 
 const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-type Item = { id: string; label: string; keys?: string[]; hint?: string; checked?: boolean; swatch?: string; run: () => void };
+type Item = { id: string; icon?: string; label: string; keys?: string[]; hint?: string; checked?: boolean; swatch?: string; run: () => void };
 
 function Row({ i }: { i: Item }) {
   const Components = useComponentsContext()!;
   return <Components.Generic.Menu.Item className="bn-menu-item" checked={i.checked} onClick={i.run}>
-    <span className="nou-menu-row">{i.swatch && <span className="nou-swatch" style={{ background: i.swatch }} />}<span>{i.label}</span>{i.hint && <kbd className="nou-menu-hint">{i.hint}</kbd>}</span></Components.Generic.Menu.Item>;
+    <span className="nou-menu-row">{i.icon&&<span className="nou-menu-icon"><Icon name={i.icon} size={15} /></span>}{i.swatch && <span className="nou-swatch" style={{ background: i.swatch }} />}<span>{i.label}</span>{i.hint && <kbd className="nou-menu-hint">{i.hint}</kbd>}</span></Components.Generic.Menu.Item>;
 }
-function Sub({ label, children }: { label: string; children: ReactNode }) {
+function Sub({ label, icon, children }: { label: string; icon?: string; children: ReactNode }) {
   const Components = useComponentsContext()!;
   const portal = usePortalElement();
   return <Components.Generic.Menu.Root position="right" sub portalElement={portal}>
-    <Components.Generic.Menu.Trigger sub><Components.Generic.Menu.Item className="bn-menu-item" subTrigger>{label}</Components.Generic.Menu.Item></Components.Generic.Menu.Trigger>
+    <Components.Generic.Menu.Trigger sub><Components.Generic.Menu.Item className="bn-menu-item" subTrigger><span className="nou-menu-row">{icon&&<span className="nou-menu-icon"><Icon name={icon} size={15} /></span>}<span>{label}</span></span></Components.Generic.Menu.Item></Components.Generic.Menu.Trigger>
     <Components.Generic.Menu.Dropdown sub className="bn-menu-dropdown nou-submenu">{children}</Components.Generic.Menu.Dropdown>
   </Components.Generic.Menu.Root>;
 }
@@ -51,7 +53,11 @@ function NouMenuItems() {
   const flowEditing = isFlow && block.props?.mode !== "view";
   const box = isPage && block.props?.style !== "line";
   const update = (props: Record<string, unknown>) => editor.updateBlock(block as never, { props } as never);
-  const turn = canTurnInto(block.type) ? TURN_INTO.map(t => ({ id: "turn-" + t.label, label: "Turn into " + t.label, shortLabel: t.label, keys: ["turn", "into", ...t.keys], checked: block.type === t.type && (t.props?.level === undefined || block.props?.level === t.props.level), run: () => editor.updateBlock(block as never, { type: t.type, props: t.props ?? {} } as never) })) : [];
+  const textTurn = canTurnInto(block.type) ? TURN_INTO.map(t => ({ id: "turn-" + t.label, label: "Turn into " + t.label, shortLabel: t.label, keys: ["turn", "into", ...t.keys], checked: block.type === t.type && (t.props?.level === undefined || block.props?.level === t.props.level), run: () => editor.updateBlock(block as never, { type: t.type, props: t.props ?? {} } as never) })) : [];
+  // Plain lists and checkboxes can become a linked to-do, and a linked to-do can become any of them again.
+  const toLinkedItem = canLink(block.type) ? [{ id: "turn-linked", icon: "checklist", label: "Turn into Linked to-do", shortLabel: "Linked to-do", keys: ["turn", "into", "linked", "shared", "todo", "to-do", "checkbox"], checked: false, run: () => void toLinked(editor as never, block).catch(e => features.onError(e)) }] : [];
+  const fromLinkedItems = block.type === "nouLinkedTodo" ? FROM_LINKED.map(t => ({ id: "turn-from-" + t.type, label: "Turn into " + t.label, shortLabel: t.label, keys: ["turn", "into", "unlink", ...t.keys], checked: false, run: () => void fromLinked(editor as never, block, t.type).catch(e => features.onError(e)) })) : [];
+  const turn = [...textTurn, ...toLinkedItem, ...fromLinkedItems];
   const duplicate = () => editor.insertBlocks([copyBlock(block)] as never, block as never, "after");
   const remove = () => { const picked = editor.getSelection()?.blocks; editor.removeBlocks(picked && picked.some(b => b.id === block.id) ? picked : [block as never]); };
   const moveTo = async (target: { id: string; title: string }) => {
@@ -63,16 +69,16 @@ function NouMenuItems() {
   };
 
   const flat: Item[] = [
-    ...(isFlow ? [{ id: "mode", label: flowEditing ? "Switch to view mode" : "Switch to edit mode", keys: ["flowchart", "view", "edit", "mode", "lock", "read"], run: () => update({ mode: flowEditing ? "view" : "edit" }) }] : []),
-    ...(isPage ? [{ id: "style", label: box ? "Show as a line" : "Show as a box", keys: ["page", "link", "line", "box", "style"], run: () => update({ style: box ? "line" : "box" }) }] : []),
+    ...(isFlow ? [{ id: "mode", icon: "eye", label: flowEditing ? "Switch to view mode" : "Switch to edit mode", keys: ["flowchart", "view", "edit", "mode", "lock", "read"], run: () => update({ mode: flowEditing ? "view" : "edit" }) }] : []),
+    ...(isPage ? [{ id: "style", icon: "box", label: box ? "Show as a line" : "Show as a box", keys: ["page", "link", "line", "box", "style"], run: () => update({ style: box ? "line" : "box" }) }] : []),
     ...(isPage && box ? [
       ...BOX_COLORS.map(c => ({ id: "border-" + c, label: "Box border: " + capitalise(c), keys: ["border", "line", "colour", "color", c], checked: boxColor(block.props?.boxBorder) === c, swatch: BOX_COLOR_HEX[c], run: () => update({ boxBorder: c }) })),
       ...BOX_COLORS.map(c => ({ id: "fill-" + c, label: "Box fill: " + capitalise(c), keys: ["fill", "background", "colour", "color", c], checked: boxColor(block.props?.boxFill) === c, swatch: BOX_COLOR_HEX[c], run: () => update({ boxFill: c }) })),
     ] : []),
     ...turn,
-    { id: "dup", label: "Duplicate", keys: ["copy", "clone"], hint: "Ctrl+D", run: duplicate },
-    ...pages.map(p => ({ id: "move-" + p.id, label: "Move to " + (p.title || "Untitled"), keys: ["move", "send"], run: () => void moveTo(p) })),
-    { id: "del", label: "Delete", keys: ["remove", "trash"], hint: "Del", run: remove },
+    { id: "dup", icon: "duplicate", label: "Duplicate", keys: ["copy", "clone"], hint: "Ctrl+D", run: duplicate },
+    ...pages.map(p => ({ id: "move-" + p.id, icon: "move", label: "Move to " + (p.title || "Untitled"), keys: ["move", "send"], run: () => void moveTo(p) })),
+    { id: "del", icon: "trash", label: "Delete", keys: ["remove", "trash"], hint: "Del", run: remove },
   ];
   const searching = query.trim().length > 0;
   const found = searching ? flat.filter(i => matchesAction(query, i.label, i.keys)).slice(0, 14) : [];
@@ -86,14 +92,14 @@ function NouMenuItems() {
       {isFlow && <Row i={flat.find(i => i.id === "mode")!} />}
       {isPage && <Row i={flat.find(i => i.id === "style")!} />}
       {isPage && box && <>
-        <Sub label="Box border colour">{BOX_COLORS.map(c => <Row key={c} i={flat.find(i => i.id === "border-" + c)!} />)}</Sub>
-        <Sub label="Box fill colour">{BOX_COLORS.map(c => <Row key={c} i={flat.find(i => i.id === "fill-" + c)!} />)}</Sub>
+        <Sub icon="palette" label="Box border colour">{BOX_COLORS.map(c => <Row key={c} i={flat.find(i => i.id === "border-" + c)!} />)}</Sub>
+        <Sub icon="palette" label="Box fill colour">{BOX_COLORS.map(c => <Row key={c} i={flat.find(i => i.id === "fill-" + c)!} />)}</Sub>
       </>}
-      {turn.length > 0 && <Sub label="Turn into">{turn.map(t => <Row key={t.id} i={{ ...t, label: t.shortLabel }} />)}</Sub>}
-      <BlockColorsItem>Color</BlockColorsItem>
+      {turn.length > 0 && <Sub icon="turn" label="Turn into">{turn.map(t => <Row key={t.id} i={{ ...t, label: t.shortLabel }} />)}</Sub>}
+      <BlockColorsItem><span className="nou-menu-row"><span className="nou-menu-icon"><Icon name="palette" size={15} /></span><span>Color</span></span></BlockColorsItem>
       <Components.Generic.Menu.Divider />
       <Row i={flat.find(i => i.id === "dup")!} />
-      <Sub label="Move to…">
+      <Sub icon="move" label="Move to…">
         <div className="nou-menu-search"><input aria-label="Find a page to move to" placeholder="Find a page…" value={moveQuery} onChange={e => setMoveQuery(e.target.value)} onKeyDown={e => { if (e.key !== "Escape") e.stopPropagation(); }} /></div>
         {moveShown.length ? moveShown.map(p => <Components.Generic.Menu.Item key={p.id} className="bn-menu-item" onClick={() => void moveTo(p)}>{p.title || "Untitled"}</Components.Generic.Menu.Item>) : <Components.Generic.Menu.Label>No other pages</Components.Generic.Menu.Label>}
       </Sub>

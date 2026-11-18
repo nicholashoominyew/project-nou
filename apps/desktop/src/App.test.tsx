@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
-const {isFullscreen,setFullscreen,calls,lockedPages}=vi.hoisted(()=>({isFullscreen:vi.fn(),setFullscreen:vi.fn(),calls:[] as string[],lockedPages:{value:[] as string[]}}));
-beforeEach(()=>{lockedPages.value=[];localStorage.clear();calls.length=0;isFullscreen.mockReset().mockResolvedValue(false);setFullscreen.mockReset().mockResolvedValue(undefined)});
+const {isFullscreen,setFullscreen,calls,lockedPages,chatList}=vi.hoisted(()=>({isFullscreen:vi.fn(),setFullscreen:vi.fn(),calls:[] as string[],lockedPages:{value:[] as string[]},chatList:{value:[] as any[]}}));
+beforeEach(()=>{chatList.value=[];lockedPages.value=[];localStorage.clear();calls.length=0;isFullscreen.mockReset().mockResolvedValue(false);setFullscreen.mockReset().mockResolvedValue(undefined)});
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ onCloseRequested: async () => () => {},isFullscreen,setFullscreen }) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   calls.push(command);
@@ -10,10 +10,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   if (command === "search_notes") return [{ id: "page", title: "Test note", parent_id: null }];
   if (command === "list_pages") return [{ id: "page", title: "Test note", parent_id: null, sort_key: "1" },{ id:"second",title:"Second note",parent_id:null,sort_key:"2"},{ id:"child",title:"Child note",parent_id:"page",sort_key:"1"}];
   if (command === "list_trashed_pages") return [];
-  if (command === "list_tags") return [{ name: "research", count: 2 }];
   if (command === "list_backlinks") return [{ id: "second", title: "Linker page" }];
   if (command === "list_recent_pages") return [];
   if (command === "list_locked_pages") return lockedPages.value;
+  if (command === "chat_list") return chatList.value;
   if (command === "lock_state") return { locked: true, open: false };
   if (command === "list_link_edges") return [{ source: "page", target: "second" }];
   if (command === "list_files") return [{ id: "f".repeat(64), name: "report.pdf", mime: "application/pdf", bytes: 4096, pages: [{ id: "second", title: "Second note" }], trashed_pages: 0 }];
@@ -122,29 +122,15 @@ it("Ctrl+Shift+F enters focus mode, Esc leaves it, and the Exit button always wo
  fireEvent.click(screen.getByLabelText("Focus mode"));expect(shell().classList.contains("focus")).toBe(true);
  fireEvent.click(screen.getByText("Exit focus mode"));expect(shell().classList.contains("focus")).toBe(false);
 });
-it("shows Home when no page is open, a tag there opens Quick find pre-filled, and the sidebar Home row returns to it",async()=>{
+it("shows Home when no page is open, with no tags, and the sidebar Home row returns to it",async()=>{
  render(<App/>);
  expect(await screen.findByLabelText("Home")).toBeTruthy();
- fireEvent.click(await screen.findByText("#research"));
- const dialog=await screen.findByRole("dialog",{name:"Quick find"});
- expect((within(dialog).getByLabelText("Find a page") as HTMLInputElement).value).toBe("#research");
- fireEvent.keyDown(document,{key:"Escape"});
+ expect(screen.queryByText("#research")).toBeNull();
  fireEvent.click(screen.getByText("Test note",{selector:".tree-page span"}));await screen.findByText("Simulate pending save");
  expect(screen.queryByLabelText("Home")).toBeNull();
+ expect(screen.queryByLabelText("Add a tag")).toBeNull();
  fireEvent.click(screen.getByText("Home",{selector:".sb-item span"}));
  expect(await screen.findByLabelText("Home")).toBeTruthy();
-});
-it("typing does not make the tag row or the Linked-from panel vanish and reappear (layout jitter)",async()=>{
- render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByText("Simulate pending save");
- const panel=await screen.findByLabelText("Linked from");const tags=await screen.findByLabelText("Add a tag");
- const backlinkCalls=()=>calls.filter(c=>c==="list_backlinks").length;
- const before=backlinkCalls();
- // the editor reports "saving" on every pause while typing, then "saved"
- fireEvent.click(screen.getByText("Simulate pending save"));
- expect(screen.getByLabelText("Linked from")).toBe(panel);
- expect(screen.getByLabelText("Add a tag")).toBe(tags);
- expect((screen.getByLabelText("Add a tag") as HTMLInputElement).disabled).toBe(false);
- expect(backlinkCalls()).toBe(before);
 });
 it("a save in progress marks the shell as typing (so disabled sidebar buttons keep their normal look)",async()=>{
  const {container}=render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByText("Simulate pending save");
@@ -317,11 +303,11 @@ it("a locked page shows the lock screen instead of its editor, with a lock mark 
  expect((await screen.findByTestId("main-editor")).getAttribute("data-page")).toBe("page");
  expect(screen.getByLabelText("Lock this note")).toBeTruthy();
 });
-it("sidebar order is search, Home, Graph, Files, and the Quick capture row is gone from it",async()=>{
+it("the permanent pages are Home, Graph, Inbox, Bots Hub and Files, in that order, and the Quick capture row is gone from the sidebar",async()=>{
  render(<App/>);await screen.findByText("Test note");
  const side=screen.getByLabelText("Sidebar");
  const top=[...side.querySelectorAll(".sb-search input, .sb-item")].map(el=>el instanceof HTMLInputElement?"search":(el.textContent||"").trim());
- expect(top.slice(0,4)).toEqual(["search","Home","Graph","Files"]);
+ expect(top.slice(0,6)).toEqual(["search","Home","Graph","Inbox","Bots Hub","Files"]);
  expect(within(side).queryByText("Quick capture")).toBeNull();
  expect(side.querySelector("kbd")).toBeNull();
 });
@@ -346,4 +332,39 @@ it("tabs show a dot instead of the page icon, a + button opens Quick find, and t
  const tools=container.querySelector(".window-tools")!;
  expect(tools.textContent).toBe("");expect(tools.querySelectorAll("svg").length).toBe(2);
  for(const glyph of ["☾","☀","⛶"])expect(document.body.textContent).not.toContain(glyph);
+});
+it("the Linked from panel is gone, and so are + Subpage and the up and down arrows on the page toolbar",async()=>{
+ render(<App/>);fireEvent.click(await screen.findByText("Test note"));await screen.findByText("Simulate pending save");
+ expect(screen.queryByLabelText("Linked from")).toBeNull();
+ expect(calls).not.toContain("list_backlinks");
+ expect(screen.queryByText("+ Subpage")).toBeNull();
+ expect(screen.queryByLabelText("Move page up")).toBeNull();expect(screen.queryByLabelText("Move page down")).toBeNull();
+ expect(screen.getByText("Focus")).toBeTruthy();expect(screen.getByRole("button",{name:"Lock this note"})).toBeTruthy();
+});
+it("Backups & restore, Import recovered note and Trash moved from the sidebar into Settings",async()=>{
+ render(<App/>);await screen.findByText("Test note");
+ const side=screen.getByLabelText("Sidebar");
+ for(const label of ["Trash","Import recovered note…","Backups & restore"])expect(within(side).queryByText(label)).toBeNull();
+ fireEvent.click(within(side).getByRole("button",{name:/Settings/}));
+ const list=await screen.findByRole("list",{name:"Settings"});
+ for(const title of ["Backups & restore","Import a recovered note","Trash","AI access"])expect(within(list).getByText(title)).toBeTruthy();
+ fireEvent.click(within(list).getByText("Open trash"));
+ expect(await screen.findByRole("heading",{name:"Trash"})).toBeTruthy();
+ fireEvent.click(screen.getByText("← Settings"));
+ expect(await screen.findByRole("list",{name:"Settings"})).toBeTruthy();
+ fireEvent.click(screen.getByText("Test note"));
+ await waitFor(()=>expect(screen.queryByRole("list",{name:"Settings"})).toBeNull());
+});
+it("the Bots Hub opens from the sidebar, and a badge counts what assistants said since you last looked",async()=>{
+ chatList.value=[{id:1,at:"2026-11-18T10:00:00Z",kind:"assistant",author:"Claude",body:"ready for review"},{id:2,at:"2026-11-18T10:01:00Z",kind:"owner",author:"You",body:"ok"},{id:3,at:"2026-11-18T10:02:00Z",kind:"assistant",author:"Grok",body:"on it"}];
+ render(<App/>);await screen.findByText("Test note");
+ const item=screen.getByRole("button",{name:/Bots Hub/});
+ await waitFor(()=>expect(within(item).getByLabelText("2 unread")).toBeTruthy());
+ fireEvent.click(item);
+ expect(await screen.findByRole("heading",{name:"Bots Hub"})).toBeTruthy();
+ expect(await screen.findByText("ready for review")).toBeTruthy();
+ await waitFor(()=>expect(within(screen.getByRole("button",{name:/Bots Hub/})).queryByLabelText(/unread/)).toBeNull());
+ expect(JSON.parse(localStorage.getItem("nou-chat-seen")||"0")).toBe(3);
+ fireEvent.click(screen.getByText("Test note"));
+ await waitFor(()=>expect(screen.queryByRole("heading",{name:"Bots Hub"})).toBeNull());
 });

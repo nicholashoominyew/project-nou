@@ -2,7 +2,7 @@ use crate::{attachments,Db,rebalance};
 use rusqlite::{params,Connection,OptionalExtension};
 use std::{path::Path,io::Write,fs};
 use tauri::{Manager,State};
-pub const ICONS:&[&str]=&["document","book","folder","bulb","star","code","briefcase","calendar","flag","home","link","image"];
+pub const ICONS:&[&str]=&["document","book","folder","bulb","star","code","briefcase","calendar","flag","home","link","image","heart","rocket","target","globe","mail","music","camera","key","map","bell","users","chart"];
 /// Favorites are a flag on the page; they never move, hide or delete anything.
 #[tauri::command]
 pub fn set_page_favorite(db:State<'_,Db>,page_id:String,favorite:bool)->Result<(),String>{
