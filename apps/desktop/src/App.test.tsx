@@ -368,3 +368,16 @@ it("the Bots Hub opens from the sidebar, and a badge counts what assistants said
  fireEvent.click(screen.getByText("Test note"));
  await waitFor(()=>expect(screen.queryByRole("heading",{name:"Bots Hub"})).toBeNull());
 });
+it("folds the sidebar when the window becomes narrow and brings it back when it is wide again",async()=>{
+ const listeners=new Set<(e:{matches:boolean})=>void>();
+ (window as unknown as {matchMedia:unknown}).matchMedia=(q:string)=>({matches:false,media:q,addEventListener:(_:string,f:(e:{matches:boolean})=>void)=>listeners.add(f),removeEventListener:(_:string,f:(e:{matches:boolean})=>void)=>listeners.delete(f)});
+ try{
+  render(<App/>);await screen.findByText("Test note");
+  expect(screen.getByLabelText("Sidebar")).toBeTruthy();
+  const { act }=await import("@testing-library/react");
+  act(()=>{listeners.forEach(f=>f({matches:true}))});
+  expect(screen.queryByLabelText("Sidebar")).toBeNull();
+  act(()=>{listeners.forEach(f=>f({matches:false}))});
+  expect(screen.getByLabelText("Sidebar")).toBeTruthy();
+ }finally{delete (window as unknown as {matchMedia?:unknown}).matchMedia}
+});

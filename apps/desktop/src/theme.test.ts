@@ -100,6 +100,12 @@ describe("chrome rules from the brief", () => {
     expect(theme).toMatch(/\.state-dot\{[^}]*width:7px;height:7px;border-radius:50%/);
     expect(theme).toMatch(/\.state-dot\.live\{background:var\(--accent\);box-shadow:0 0 0 3px var\(--accent-soft\)\}/);
   });
+  it("Home follows the width of its own area: three columns when wide, the calendar column full width with the clocks column in two when medium, one column when narrow", () => {
+    expect(theme).toMatch(/\.home\{container:home\/inline-size;/);
+    expect(theme).toMatch(/@container home \(max-width: 880px\)\{[^@]*\.home-grid\{grid-template-columns:1fr\}[^@]*\.home-col\.span2\{grid-column:auto\}/);
+    expect(theme).toMatch(/@container home \(max-width: 600px\)\{[^@]*\.home-grid>\.home-col:last-child\{grid-template-columns:1fr\}/);
+    expect(theme).toMatch(/\.home-row\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(280px,1fr\)\)/);
+  });
   it("Home animations only run when reduced motion is not asked for, and the flip tile has the brief's flip", () => {
     expect(theme).toMatch(/@media \(prefers-reduced-motion:no-preference\)\{\.flip\.go\{animation:nouFlip \.45s/);
     expect(theme).toMatch(/@keyframes nouFlip\{0%\{transform:perspective\(160px\) rotateX\(-92deg\)\}/);

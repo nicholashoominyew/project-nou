@@ -219,7 +219,6 @@ button:not(:disabled):active,.sb-item:active,.tree-row:active{transform:scale(.9
 .home-col{display:flex;flex-direction:column;gap:16px;min-width:0}.home-col.span2{grid-column:span 2}
 .home-col>.w-tasks{flex:1 1 auto}
 .home-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:stretch}
-@media (max-width:760px){.home{padding:24px 18px 96px}.home-col.span2{grid-column:auto}}
 .home-card{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0;padding:18px 20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;transition:transform .25s ease,box-shadow .25s ease}
 .home-card:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(0,0,0,.08)}
 .home-card.strip{flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px 20px;padding:10px 16px}
@@ -391,3 +390,25 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .home-list .resurface-later{border:1px solid var(--line);border-radius:999px;width:auto;min-height:26px;padding:0 10px;color:var(--text)}
 .wx-name{flex:1 1 0;min-width:0}.wx-name strong,.wx-name .hint{overflow:hidden;text-overflow:ellipsis}
 .wx-main{gap:8px}.wx-icon{width:20px}.wx-bar{width:44px}
+
+/* ---------- Adaptive layout: Home follows the width of its own area (the sidebar and split view change it), not just the window ---------- */
+.home{container:home/inline-size;margin-left:auto;margin-right:auto;width:100%;box-sizing:border-box}
+@container home (max-width: 880px){
+  .home-grid{grid-template-columns:1fr}
+  .home-col.span2{grid-column:auto}
+  .home-grid>.home-col:last-child{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:stretch;gap:16px}
+  .home-grid>.home-col:last-child>.w-weather{grid-column:1/-1}
+}
+@container home (max-width: 600px){
+  .home-grid>.home-col:last-child{grid-template-columns:1fr}
+  .home-card.strip{flex-direction:column;align-items:flex-start}
+  .mcal-day{height:42px;padding:4px 6px}
+  .mcal-dow{padding:2px 4px 4px}
+  .home-head h1{font-size:30px}
+  .home-actions .sun-arc{display:none}
+}
+@media (max-width:760px){
+  .home{padding:24px 16px 96px}
+  .document,.settings-screen,.files-screen,.bot-screen{padding-left:16px;padding-right:16px}
+  .tab-strip{min-width:0}
+}
