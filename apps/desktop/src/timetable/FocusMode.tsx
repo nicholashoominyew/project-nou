@@ -8,7 +8,7 @@ import { useTick, useTimetable } from "./useTimetable";
 /** Full-window focus mode: only the event name and the big timer ring. The 5-minute reminder toast stays above it. Esc or the corner button exits. */
 export default function FocusMode({ onClose }: { onClose: () => void }) {
   const { timeline, activities, data } = useTimetable();
-  const t = useTick(250, now);
+  const t = useTick(1000, now);
   const exit = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     exit.current?.focus();

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { onSecond } from "../secondTick";
 import { buildGrids, variantFor, type Activity, type Timeline, type SlotRow, type Variant } from "./schedule";
 
 export interface Cell { weekday: number; slot_index: number; activity_ids: string[] }
@@ -44,11 +45,12 @@ export function useTick(ms: number, read: () => Date): Date {
   const [t, setT] = useState(read);
   useEffect(() => {
     const go = () => setT(read());
-    const id = setInterval(go, ms);
+    // A per-second tick joins the shared second clock (so the timer, the flip clocks and the reminder countdown change together).
+    const stop = ms <= 1000 ? onSecond(go) : (() => { const id = setInterval(go, ms); return () => clearInterval(id); })();
     const resume = () => { if (!document.hidden) go(); };
     document.addEventListener("visibilitychange", resume); window.addEventListener("focus", go); window.addEventListener("nou-sim-changed", go);
     go();
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", resume); window.removeEventListener("focus", go); window.removeEventListener("nou-sim-changed", go); };
+    return () => { stop(); document.removeEventListener("visibilitychange", resume); window.removeEventListener("focus", go); window.removeEventListener("nou-sim-changed", go); };
   }, [ms, read]);
   return t;
 }

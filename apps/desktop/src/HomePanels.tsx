@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icons";
+import { onSecond } from "./secondTick";
 import { PlaceSearchBox } from "./PlaceSearch";
 import type { HomeContext } from "./Home";
 import { Arc, CardHead, Flip, SkyIcon, StateDot } from "./HomeBits";
@@ -13,7 +14,11 @@ function read(key: string): unknown { try { return JSON.parse(localStorage.getIt
 function write(key: string, value: unknown) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* a preference only */ } }
 function useNow(ms = 20000): Date {
   const [now, setNow] = useState(() => new Date());
-  useEffect(() => { const t = window.setInterval(() => setNow(new Date()), ms); return () => window.clearInterval(t); }, [ms]);
+  // Anything that shows seconds rides the shared second clock so every counter changes at the same instant; slower ones just poll.
+  useEffect(() => {
+    if (ms <= 1000) return onSecond(() => setNow(new Date()));
+    const t = window.setInterval(() => setNow(new Date()), ms); return () => window.clearInterval(t);
+  }, [ms]);
   return now;
 }
 const two = (n: number) => String(n).padStart(2, "0");
@@ -115,13 +120,16 @@ export function SunArc({ store, fetchImpl }: { store: WeatherStore; fetchImpl?: 
     <path d="M10 58 A120 50 0 0 1 250 58" className="sun-dash" fill="none" />
     <path d="M10 58 A120 50 0 0 1 250 58" pathLength="100" className="sun-done" fill="none" strokeDasharray={`${(pos.fraction * 100).toFixed(1)} 100`} />
     <circle cx={x.toFixed(1)} cy={y.toFixed(1)} r="12" className="sun-glow" />
-    <circle cx={x.toFixed(1)} cy={y.toFixed(1)} r="6" className={"sun-dot" + (pos.up ? " up" : "")} />
     <text x="10" y="74" className="sun-text">↑ {at(t.rise)}</text>
     <text x="250" y="74" textAnchor="end" className="sun-text">{at(t.set)} ↓</text>
     <text x="130" y="74" textAnchor="middle" className="sun-text ink">{note}</text>
   </svg>
-    <button type="button" className="sun-pick" aria-label="Choose where the daylight arc is for" aria-haspopup="true" aria-expanded={open} title={"Daylight for " + place.name} onClick={() => setOpen(v => !v)}><Icon name="globe" size={13} /></button>
-    {open && <fieldset className="sun-menu" aria-label="Daylight arc place">
+    {/* The sun itself is the control: hover or focus enlarges it slightly, rings it and names the time zone beside it; a click opens the place menu. The label opens toward the middle of the arc so it never leaves the bar. */}
+    <span className={"sun-anchor " + (pos.fraction > 0.5 ? "to-left" : "to-right")} style={{ left: x, top: y }}>
+      <button type="button" className={"sun-dot-btn" + (pos.up ? " up" : "")} aria-label="Choose where the daylight arc is for" aria-haspopup="true" aria-expanded={open} title={"Daylight for " + place.name + (tz ? " · " + tz : "")} onClick={() => setOpen(v => !v)} />
+      <span className="sun-zone" aria-hidden="true">{tz ?? place.name}</span>
+    </span>
+    {open && <fieldset className={"sun-menu " + (pos.fraction > 0.5 ? "to-left" : "to-right")} style={{ top: y + 16 }} aria-label="Daylight arc place">
       <legend>Daylight for</legend>
       <label><input type="radio" name="sun-place" checked={choice === "auto"} onChange={() => pick("auto")} /> Where I am <small>{device || "this device"}</small></label>
       {places.map((p, i) => p && <label key={i}><input type="radio" name="sun-place" checked={choice === i} onChange={() => pick(i)} /> {p.name}{zones[i] && <small>{zones[i]}</small>}</label>)}
@@ -148,7 +156,12 @@ export function ClocksWidget() {
     <CardHead title="Clocks" live>
       <span className="sec" role="img" aria-label={"Seconds " + secs}><Flip small value={secs[0]} /><Flip small value={secs[1]} /><em>SEC</em></span>
     </CardHead>
-    <div className="sec-line" aria-hidden="true"><i style={{ width: (now.getSeconds() / 60) * 100 + "%" }} /></div>
+    <div className="sec-line" aria-hidden="true">{
+      // At second 0 the bar is full and flashes out once; from second 1 a fresh bar starts again (a new element, so it never slides backwards).
+      now.getSeconds() === 0
+        ? <i key={"flash" + now.getMinutes()} className="flash" style={{ width: "100%" }} />
+        : <i key={"run" + now.getMinutes()} style={{ width: (now.getSeconds() / 60) * 100 + "%" }} />
+    }</div>
     <datalist id="nou-zones">{all.map(z => <option key={z} value={z} />)}</datalist>
     <div className="clocks">
       {zones.map((zone, i) => {
@@ -222,18 +235,39 @@ export function PeriodsWidget() {
   const now = useNow();
   const list = periods(now);
   const radii = [44, 35, 26, 17];
-  const day = list[3];
   return <div className="periods">
     <svg className="rings" viewBox="0 0 100 100" aria-hidden="false" role="group" aria-label="Progress rings">
       {list.map((p, i) => <g key={p.id} role="progressbar" aria-label={p.label + " progress"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.fraction * 100)} className={"ring ring-" + p.id}><Arc radius={radii[i]} stroke={6} fraction={p.fraction} /></g>)}
     </svg>
     <ul className="legend">{list.map(p => <li key={p.id}><i className={"key key-" + p.id} aria-hidden="true" /><strong>{p.label}</strong><span className="hint">{Math.round(p.fraction * 100)}% · {p.left}</span></li>)}</ul>
-    <p className="mono-note periods-foot">{day.left.toUpperCase()}</p>
   </div>;
 }
 
 // ---- countdowns: one ring each --------------------------------------------------------------------------------------
 export const COUNTDOWNS_CHANGED = "nou:countdowns-changed";
+/** One countdown: the ring and the title only. The time left and the end date are kept for screen readers and the tooltip; the unit and Remove sit behind one settings button. */
+function CountdownRow({ c, s, setUnit, remove }: { c: Countdown; s: ReturnType<typeof countdownState>; setUnit: (u: Unit) => void; remove: () => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  return <li ref={box} title={`${s.text} · Ends ${c.end}`}>
+    <svg className="cd-ring" viewBox="0 0 100 100" role="progressbar" aria-label={c.label + " countdown"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(s.fraction * 100)}>
+      <Arc radius={40} stroke={9} fraction={s.fraction} /><text x="50" y="56" textAnchor="middle" className="cd-days">{s.done ? "✓" : s.daysLeft}</text></svg>
+    <div className="cd-text"><strong>{c.label}</strong><span className="sr-only">{s.text}</span><span className="sr-only">Ends {c.end}</span></div>
+    <button type="button" className="icon-tool cd-gear" aria-label={"Settings for " + c.label} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(v => !v)}><Icon name="settings" size={14} /></button>
+    {open && <div className="cd-menu" role="group" aria-label={"Settings for " + c.label}>
+      <label>Show in <select aria-label={"Show " + c.label + " in"} value={c.unit} onChange={e => setUnit(e.target.value as Unit)}><option value="day">Days</option><option value="week">Weeks</option><option value="month">Months</option></select></label>
+      <button type="button" className="cd-remove" aria-label={"Remove " + c.label} onClick={() => { setOpen(false); remove(); }}><Icon name="close" size={12} /> Remove</button>
+    </div>}
+  </li>;
+}
+
 export function CountdownWidget() {
   const now = useNow(60000);
   const [items, setItems] = useState<Countdown[]>(() => normalizeCountdowns(read(COUNTDOWNS_KEY)));
@@ -252,13 +286,8 @@ export function CountdownWidget() {
   }
   return <div className="countdowns">
     {!items.length && !adding && <p className="hint">Nothing counting down. Add a deadline and a ring fills up as it gets closer.</p>}
-    <ul className="countdown-list">{items.map(c => { const s = countdownState(c, now); return <li key={c.id}>
-      <svg className="cd-ring" viewBox="0 0 100 100" role="progressbar" aria-label={c.label + " countdown"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(s.fraction * 100)}>
-        <Arc radius={40} stroke={9} fraction={s.fraction} /><text x="50" y="56" textAnchor="middle" className="cd-days">{s.done ? "✓" : s.daysLeft}</text></svg>
-      <div className="cd-text"><strong>{c.label}</strong><span className="hint">{s.text}</span><span className="hint">Ends {c.end}</span></div>
-      <select aria-label={"Show " + c.label + " in"} value={c.unit} onChange={e => save(items.map(x => (x.id === c.id ? { ...x, unit: e.target.value as Unit } : x)))}><option value="day">Days</option><option value="week">Weeks</option><option value="month">Months</option></select>
-      <button className="icon-tool" aria-label={"Remove " + c.label} onClick={() => save(items.filter(x => x.id !== c.id))}><Icon name="close" size={12} /></button>
-    </li>; })}</ul>
+    <ul className="countdown-list">{items.map(c => { const s = countdownState(c, now); return <CountdownRow key={c.id} c={c} s={s}
+      setUnit={u => save(items.map(x => (x.id === c.id ? { ...x, unit: u } : x)))} remove={() => save(items.filter(x => x.id !== c.id))} />; })}</ul>
     {adding
       ? <form className="countdown-add" onSubmit={e => { e.preventDefault(); add(); }}>
           <input aria-label="Countdown name" placeholder="What are you counting down to?" maxLength={80} value={label} onChange={e => setLabel(e.target.value)} autoFocus />

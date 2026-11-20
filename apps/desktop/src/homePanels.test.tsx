@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, SunArc, TasksWidget, TeachingWidget, WeatherWidget, type WeatherStore } from "./HomePanels";
 import { Flip } from "./HomeBits";
@@ -107,10 +107,11 @@ describe("countdowns", () => {
     fireEvent.click(screen.getByText("Add"));
     expect(screen.getByText("2 weeks 3 days left")).toBeTruthy();
     expect(screen.getByRole("progressbar", { name: "Exam countdown" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Settings for Exam" })); // the unit and Remove sit behind one settings button
     fireEvent.change(screen.getByLabelText("Show Exam in"), { target: { value: "day" } });
     expect(screen.getByText("17 days left")).toBeTruthy();
     expect(JSON.parse(localStorage.getItem("nou-countdowns")!)[0]).toMatchObject({ label: "Exam", unit: "day" });
-    fireEvent.click(screen.getByLabelText("Remove Exam"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Exam" }));
     expect(screen.getByText(/Nothing counting down/)).toBeTruthy();
     expect(JSON.parse(localStorage.getItem("nou-countdowns")!)).toEqual([]);
   });
@@ -297,5 +298,55 @@ describe("the daylight arc", () => {
     expect(screen.getAllByRole("radio").length).toBe(2); // no entry for the empty place
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("group", { name: "Daylight arc place" })).toBeNull();
+  });
+});
+
+describe("compact widgets", () => {
+  it("a countdown shows only its title; the time left stays for screen readers, and the settings button holds the unit and Remove", () => {
+    const inDays = (n: number) => dayKey(new Date(Date.now() + n * 86400000));
+    localStorage.setItem("nou-countdowns", JSON.stringify([{ id: "a", label: "Christmas", start: inDays(-10), end: inDays(10), unit: "day" }]));
+    render(<CountdownWidget />);
+    const row = screen.getByText("Christmas").closest("li")!;
+    expect(row.querySelector(".cd-text strong")!.textContent).toBe("Christmas");
+    expect(row.querySelectorAll(".cd-text .sr-only").length).toBe(2); // "10 days left" and "Ends ..." are hidden visually
+    expect(row.querySelector("select")).toBeNull(); expect(screen.queryByRole("button", { name: "Remove Christmas" })).toBeNull();
+    const gear = screen.getByRole("button", { name: "Settings for Christmas" });
+    fireEvent.click(gear); expect(gear.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByLabelText("Show Christmas in")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByLabelText("Show Christmas in")).toBeNull();
+  });
+  it("the seconds bar fills, then flashes out once at the top of the minute instead of sliding back", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 10, 21, 7, 2, 58));
+      const { container } = render(<ClocksWidget />);
+      const bar = () => container.querySelector(".sec-line i") as HTMLElement;
+      expect(bar().style.width).toMatch(/^96\.6/); expect(bar().className).toBe("");
+      act(() => { vi.advanceTimersByTime(1000); }); // 07:02:59
+      expect(parseFloat(bar().style.width)).toBeGreaterThan(98);
+      act(() => { vi.advanceTimersByTime(1000); }); // 07:03:00 - the counter wraps
+      expect(bar().className).toBe("flash"); expect(bar().style.width).toBe("100%");
+      act(() => { vi.advanceTimersByTime(1000); }); // 07:03:01 - a new bar starts from the beginning
+      expect(bar().className).toBe(""); expect(parseFloat(bar().style.width)).toBeLessThan(2);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("the sun is the settings button", () => {
+  const wx = (timezone: string) => ({ timezone, temp: 20, high: 24, low: 15, wind: 5, label: "Clear", code: 0 });
+  const st = (): WeatherStore => ({ places: [{ name: "London", lat: 51.5074, lng: -0.1278 }, null], slots: [{ weather: wx("Europe/London") }, {}], setPlace() {}, refresh() {} });
+  it("is a plain dot that names the time zone beside itself on hover and opens the menu on click", () => {
+    const { container } = render(<SunArc store={st()} />);
+    expect(container.querySelectorAll(".sun-pick").length).toBe(0); expect(container.querySelector("circle.sun-dot")).toBeNull();
+    const dot = screen.getByRole("button", { name: "Choose where the daylight arc is for" });
+    expect(dot.className).toContain("sun-dot-btn"); expect(dot.textContent).toBe(""); // a plain dot
+    expect(dot.parentElement!.querySelector(".sun-zone")!.textContent).toBe("Europe/London"); // the label beside it appears on hover or focus
+    expect(dot.getAttribute("title")).toBe("Daylight for London · Europe/London");
+    const anchor = dot.parentElement as HTMLElement;
+    expect(anchor.style.left).not.toBe(""); expect(anchor.style.top).not.toBe(""); // it sits on the sun's position on the arc
+    expect(anchor.className).toMatch(/to-(left|right)/);
+    fireEvent.click(dot);
+    expect(screen.getByRole("group", { name: "Daylight arc place" }).className).toMatch(/sun-menu to-(left|right)/);
   });
 });

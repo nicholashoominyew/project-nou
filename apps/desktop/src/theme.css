@@ -243,7 +243,7 @@ button:not(:disabled):active,.sb-item:active,.tree-row:active{transform:scale(.9
 .home-hidden{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.home-hidden h2{margin:0 12px 0 0}
 
 /* daily strip */
-.daily-id{display:flex;align-items:center;gap:12px}.daily-id h2{margin:0}.daily-id>div:last-child{display:flex;flex-direction:column;gap:1px}
+.daily-id{display:flex;align-items:center;gap:16px}.daily-id h2{margin:0;display:flex;align-items:center;gap:8px}.daily-id>div:last-child{display:flex;flex-direction:column;gap:5px}
 .date-tile{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;width:38px;height:42px;border-radius:8px;background:var(--accent);color:var(--accent-ink)}
 .date-tile em{font:normal 8px var(--font-mono);letter-spacing:.14em;line-height:1}.date-tile b{font-size:18px;line-height:1.05}
 .daily-date{font-weight:600;font-size:15px;letter-spacing:-.01em}
@@ -278,7 +278,7 @@ button:not(:disabled):active,.sb-item:active,.tree-row:active{transform:scale(.9
 
 /* clocks */
 .sec{display:flex;align-items:center;gap:3px}.sec em{margin-left:4px;font:normal 9px var(--font-mono);letter-spacing:.14em;color:var(--muted)}
-.sec-line{position:relative;height:2px;margin-top:-4px;border-radius:2px;background:var(--line);overflow:hidden}.sec-line i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);transition:width 1s linear}
+.sec-line{position:relative;height:2px;margin-top:-4px;border-radius:2px;background:var(--line);overflow:hidden}.sec-line i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);transition:width 1s linear}.sec-line i.flash{transition:none}
 .clocks{display:flex;flex-wrap:wrap;gap:10px 24px}
 .clock{flex:1 1 130px;display:flex;flex-direction:column;gap:5px;min-width:0}
 .clock-time{display:flex;align-items:center;gap:3px}
@@ -327,7 +327,6 @@ button:not(:disabled):active,.sb-item:active,.tree-row:active{transform:scale(.9
 .rings{width:104px;height:104px}.ring-year .arc-fill{opacity:.4}.ring-quarter .arc-fill{opacity:.62}.ring-month .arc-fill{opacity:.82}
 .legend{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}.legend li{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap}.legend .hint{margin-left:auto;font-size:11px}
 .key{flex:none;width:8px;height:8px;border-radius:50%;background:var(--accent)}.key-year{opacity:.4}.key-quarter{opacity:.62}.key-month{opacity:.82}
-.periods-foot{grid-column:1/-1;margin:0}
 .countdowns{display:flex;flex-direction:column;gap:12px}
 .countdown-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}.countdown-list li{display:flex;align-items:center;gap:12px}
 .cd-ring{flex:none;width:46px;height:46px}.cd-days{font:600 28px var(--font-body);fill:var(--text)}
@@ -386,7 +385,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .periods{grid-template-columns:84px 1fr;gap:6px 14px}.rings{width:84px;height:84px}
 .legend li{flex-wrap:nowrap}.legend strong{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
 .legend .hint{margin-left:auto;white-space:nowrap}
-.periods-foot{grid-column:1/-1;margin:0;padding:0}
 .home-list .resurface-later{border:1px solid var(--line);border-radius:999px;width:auto;min-height:26px;padding:0 10px;color:var(--text)}
 .wx-name{flex:1 1 0;min-width:0}.wx-name strong,.wx-name .hint{overflow:hidden;text-overflow:ellipsis}
 .wx-main{gap:8px}.wx-icon{width:20px}.wx-bar{width:44px}
@@ -579,9 +577,36 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 @media (max-width:760px){.document.tt-screen{padding:24px 16px 48px}.tt-title{font-size:32px}.tt-card{padding:16px}}
 @media (prefers-reduced-motion:reduce){.tt-seg{transition:none}}
 .sun-wrap{position:relative;display:inline-block;margin-right:12px}.sun-wrap .sun-arc{margin-right:0}
-.sun-pick{position:absolute;top:-4px;right:-4px;width:26px;height:26px;min-height:0;padding:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;background:var(--bg);color:var(--muted);cursor:pointer}
-.sun-pick:hover,.sun-pick[aria-expanded=true]{color:var(--text);border-color:var(--accent)}
-.sun-menu{position:absolute;top:26px;right:-4px;z-index:30;min-width:230px;margin:0;padding:10px 12px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;background:var(--raised,var(--bg));box-shadow:0 12px 32px rgba(0,0,0,.2);font-size:13px}
+.sun-menu{position:absolute;z-index:30;min-width:230px;margin:0;padding:10px 12px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;background:var(--raised,var(--bg));box-shadow:0 12px 32px rgba(0,0,0,.2);font-size:13px}
 .sun-menu legend{padding:0 4px;font:600 10px var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .sun-menu label{display:flex;align-items:center;gap:8px;min-height:28px;cursor:pointer}.sun-menu small{margin-left:auto;font:10px var(--font-mono);color:var(--muted)}
 .sun-menu .hint{margin:4px 0 0;padding:0;font-size:12px}
+/* seconds bar: flashes out once at the top of the minute */
+@keyframes secFlash{0%{opacity:1;box-shadow:0 0 0 0 var(--accent)}35%{opacity:1;box-shadow:0 0 10px 2px var(--accent)}100%{opacity:0;box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:no-preference){.sec-line i.flash{animation:secFlash .95s ease-out forwards}}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+/* countdowns: title only, one settings button */
+.countdown-list li{position:relative}
+.cd-gear{flex:none;display:grid;place-items:center;width:28px;height:28px;min-height:0;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
+.cd-gear:hover,.cd-gear[aria-expanded=true]{color:var(--text);border-color:var(--line)}
+.cd-menu{position:absolute;top:calc(100% - 4px);right:0;z-index:30;display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--raised,var(--bg));box-shadow:0 12px 32px rgba(0,0,0,.2);font-size:13px}
+.cd-menu label{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.cd-remove{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--danger);font-size:13px;cursor:pointer}
+/* daylight arc: the sun is the settings button */
+.sun-anchor{position:absolute;width:0;height:0;z-index:3}
+.sun-menu.to-right{left:0}.sun-menu.to-left{right:0}
+/* the sun is a dot; hover or focus enlarges it a little, rings it and shows the time zone beside it */
+.sun-dot-btn{position:absolute;left:-7px;top:-7px;box-sizing:border-box;width:14px;height:14px;min-width:0;min-height:0;padding:0;border:2px solid var(--bg);border-radius:50%;background:var(--muted);line-height:0;cursor:pointer}
+.sun-dot-btn.up{background:var(--accent)}
+.sun-dot-btn::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:1.5px solid var(--accent);opacity:0;pointer-events:none}
+.sun-zone{position:absolute;top:-8px;white-space:nowrap;font:600 10px/16px var(--font-mono);letter-spacing:.06em;color:var(--text);opacity:0;pointer-events:none}
+.sun-anchor.to-right .sun-zone{left:16px}.sun-anchor.to-left .sun-zone{right:16px}
+.sun-anchor:hover .sun-dot-btn,.sun-dot-btn:focus-visible,.sun-dot-btn[aria-expanded=true]{transform:scale(1.3)}
+.sun-anchor:hover .sun-dot-btn::after,.sun-dot-btn:focus-visible::after,.sun-dot-btn[aria-expanded=true]::after{opacity:.7}
+.sun-anchor:hover .sun-zone,.sun-anchor:focus-within .sun-zone,.sun-dot-btn[aria-expanded=true]+.sun-zone{opacity:1;transform:none}
+@keyframes sunRing{0%{transform:scale(.7);opacity:.85}100%{transform:scale(1.9);opacity:0}}
+@media (prefers-reduced-motion:no-preference){
+  .sun-dot-btn{transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+  .sun-zone{transition:opacity .2s .05s,transform .22s .05s}.sun-anchor.to-right .sun-zone{transform:translateX(-6px)}.sun-anchor.to-left .sun-zone{transform:translateX(6px)}
+  .sun-anchor:hover .sun-dot-btn::after,.sun-dot-btn:focus-visible::after,.sun-dot-btn[aria-expanded=true]::after{animation:sunRing 1.4s ease-out infinite}
+}
