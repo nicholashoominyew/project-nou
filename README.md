@@ -21,6 +21,7 @@ The first 0.0.1 Windows alpha was installed and manually confirmed by the user: 
 
 **Choosing a destination does not prove independence.** Another folder or drive letter can share a physical disk. External-drive and remote/cloud protection are user declarations; NOU cannot verify physical separation, remote upload, provider retention or offline ransomware protection. Regular scheduled packages are not application-encrypted; manual portable encrypted exports are available. See [backup and recovery guide](docs/development/BACKUP-RESTORE.md).
 
+- **Bots Hub** (schema 12): one page with a collaboration room for your assistants (rooms, hand-offs, approval cards), a private chat with the local model and a bot queue. See [docs/development/BOTS-HUB.md](docs/development/BOTS-HUB.md).
 - **Life Timetable** (schema 11): a permanent page for the weekly routine with alternating Week A / Week B, a time distribution ring, a block editor with undo, a current-event timer with a Focus mode, and a reminder before the next event. See [docs/development/LIFE-TIMETABLE.md](docs/development/LIFE-TIMETABLE.md).
 
 ### Verification

@@ -34,7 +34,7 @@ A visual restyle of the desktop app, following `NOU-ELEMENTEL-REDESIGN.md` and t
 
 ## Permanent pages, Home layout, tags and icons
 - **Permanent pages** have fixed places in the sidebar and cannot be moved or deleted: **Home**, **Graph**, **Inbox**, **Bots Hub** and **Files** (in that order). The Inbox is a normal note (Quick capture writes to it, and it is made the first time it is opened); it is left out of the page tree and has no Trash button. Every other page is editable: rename, move, favourite, subpages, trash.
-- **Bots Hub** replaces "Bot queue": a **Chat** tab (see `BOT-QUEUE.md`) and a **Queue** tab with the requests assistants have asked you to approve. The badge counts unread assistant messages.
+- **Bots Hub** replaces "Bot queue": a collaboration room, an in-house chat and a bot queue on one page (see `BOTS-HUB.md`; the old Chat and Queue tabs are gone, and the full approvals view is behind **Open full queue**) and a **Queue** tab with the requests assistants have asked you to approve. The badge counts unread assistant messages.
 - **Home layout:** the Daily page across the top (one page per day, named for the date, made on first use), then Waiting for approval, Recently edited and Favorites side by side. Worth revisiting sits below, full width (hide it from the gear). The gear (top right) opens the customize panel: move or hide sections, and **AI access** lives there. Saved layouts from before keep their old order for sections they already knew.
 - **Tags are gone** from the page, Home and Quick find. Existing tags stay in the database untouched, nothing reads them.
 - **Buttons** all follow the theme: a zero-specificity base rule in `theme.css` themes any button without its own look.
