@@ -13,7 +13,7 @@ fn e(error: rusqlite::Error) -> String { error.to_string() }
 pub fn recent_pages(c: &Connection, limit: u32) -> Result<Vec<Recent>, String> {
     let mut s = c.prepare(
         "SELECT id,title,updated_at FROM pages
-         WHERE workspace_id='personal' AND deleted_at IS NULL
+         WHERE workspace_id='personal' AND deleted_at IS NULL AND system_key IS NULL
            AND id NOT IN (SELECT page_id FROM db_rows) AND id NOT IN (SELECT page_id FROM databases)
          ORDER BY updated_at DESC,id LIMIT ?1").map_err(e)?;
     let it = s.query_map([limit.clamp(1, 50)], |r| Ok(Recent { id: r.get(0)?, title: r.get(1)?, updated_at: r.get(2)? })).map_err(e)?;
@@ -36,7 +36,7 @@ pub fn resurface(c: &Connection, today: &str, stale_limit: u32, anniversary_limi
     use sha2::{Digest, Sha256};
     let valid = today.len() == 10 && today.as_bytes()[4] == b'-' && today.as_bytes()[7] == b'-' && today.bytes().enumerate().all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit());
     if !valid { return Err("today must be a date like 2026-11-17".into()); }
-    let eligible = "p.workspace_id='personal' AND p.deleted_at IS NULL AND p.id NOT IN (SELECT page_id FROM db_rows) AND p.id NOT IN (SELECT page_id FROM databases)
+    let eligible = "p.workspace_id='personal' AND p.deleted_at IS NULL AND p.system_key IS NULL AND p.id NOT IN (SELECT page_id FROM db_rows) AND p.id NOT IN (SELECT page_id FROM databases)
                     AND NOT EXISTS (SELECT 1 FROM page_locks l WHERE l.page_id=p.id)
                     AND length(COALESCE((SELECT body FROM page_search WHERE page_id=p.id),''))>=?2";
     let year: i64 = today[..4].parse().map_err(|_| "bad year")?;

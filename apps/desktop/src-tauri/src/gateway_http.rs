@@ -299,7 +299,7 @@ mod tests {
         let made = handle(&c, &r, PORT);
         assert_eq!(made.status, 201);
         assert_eq!(made.body["status"], "pending");
-        let pages_before: i64 = c.query_row("SELECT COUNT(*) FROM pages", [], |r| r.get(0)).unwrap();
+        let pages_before: i64 = c.query_row("SELECT COUNT(*) FROM pages WHERE system_key IS NULL", [], |r| r.get(0)).unwrap();
         assert_eq!(pages_before, 2, "a proposal must not create the page");
         assert_eq!(handle(&c, &r, PORT).status, 200, "the same request again returns the existing proposal");
         let mut denied = r.clone();

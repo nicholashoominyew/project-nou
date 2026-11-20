@@ -18,6 +18,8 @@ pub fn set_page_icon(db:State<'_,Db>,page_id:String,icon:String)->Result<(),Stri
 /// Move a whole subtree; destination is root/parent plus an optional next sibling.
 pub fn relocate(c:&mut Connection,page:&str,parent:Option<&str>,before:Option<&str>)->Result<(),String>{
  let tx=c.transaction().map_err(|e|e.to_string())?;
+ crate::timetable::refuse_system(&tx,page)?;
+ if let Some(p)=parent{crate::timetable::refuse_system(&tx,p).map_err(|_|"Nothing can be placed inside the Life Timetable".to_string())?;}
  let old:Option<String>=tx.query_row("SELECT parent_id FROM pages WHERE id=?1 AND workspace_id='personal' AND deleted_at IS NULL",[page],|r|r.get(0)).optional().map_err(|e|e.to_string())?.ok_or("Page not found")?;
  if parent==Some(page)||before==Some(page){return Err("A page cannot be dropped onto itself".into());}
  if let Some(parent)=parent{

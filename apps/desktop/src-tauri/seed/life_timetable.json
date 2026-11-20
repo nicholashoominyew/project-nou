@@ -1,0 +1,866 @@
+{
+ "_note": "Seed for the Life Timetable, from the Notion page Life Timetable (Areas), updated 20 Nov 2026. Times are local. A run is [start, end, activities sharing the slot]. Used once, when the timetable tables are first created and are empty.",
+ "activities": [
+  {
+   "name": "Bed time",
+   "category": "Rest",
+   "remind": true
+  },
+  {
+   "name": "Wake-Up",
+   "category": "Chores",
+   "remind": true
+  },
+  {
+   "name": "Shower + Breakfast",
+   "category": "Chores",
+   "remind": true
+  },
+  {
+   "name": "Walk",
+   "category": "Health",
+   "remind": true
+  },
+  {
+   "name": "Exercise",
+   "category": "Health",
+   "remind": true
+  },
+  {
+   "name": "Japanese Study",
+   "category": "Training",
+   "remind": true
+  },
+  {
+   "name": "JP Anki",
+   "category": "Training",
+   "remind": true
+  },
+  {
+   "name": "Side projects",
+   "category": "Training",
+   "remind": true
+  },
+  {
+   "name": "Deep learning (library)",
+   "category": "Training",
+   "remind": true
+  },
+  {
+   "name": "Admin",
+   "category": "Chores",
+   "remind": true
+  },
+  {
+   "name": "Travel",
+   "category": "Travel",
+   "remind": true
+  },
+  {
+   "name": "Work",
+   "category": "Work",
+   "remind": true
+  },
+  {
+   "name": "Meal",
+   "category": "Chores",
+   "remind": true
+  },
+  {
+   "name": "Unwind",
+   "category": "Rest",
+   "remind": true
+  },
+  {
+   "name": "Free time",
+   "category": "Leisure",
+   "remind": true
+  },
+  {
+   "name": "Gaming",
+   "category": "Leisure",
+   "remind": true
+  },
+  {
+   "name": "Vanguard",
+   "category": "Leisure",
+   "remind": true
+  },
+  {
+   "name": "Riftbound",
+   "category": "Leisure",
+   "remind": true
+  },
+  {
+   "name": "Dark Sphere / Library deep learning (alternating)",
+   "category": "Leisure",
+   "remind": true
+  },
+  {
+   "name": "Family time",
+   "category": "Leisure",
+   "remind": true
+  },
+  {
+   "name": "Read",
+   "category": "Training",
+   "remind": true
+  },
+  {
+   "name": "Chores",
+   "category": "Chores",
+   "remind": true
+  },
+  {
+   "name": "Beth time",
+   "category": "Leisure",
+   "remind": true
+  },
+  {
+   "name": "Grocery run",
+   "category": "Chores",
+   "remind": true
+  },
+  {
+   "name": "Weekly meal prep",
+   "category": "Chores",
+   "remind": true
+  },
+  {
+   "name": "Studio Elementel (Research)",
+   "category": "Training",
+   "remind": true
+  },
+  {
+   "name": "Studio Elementel (Execution)",
+   "category": "Training",
+   "remind": true
+  },
+  {
+   "name": "Nap",
+   "category": "Rest",
+   "remind": true
+  },
+  {
+   "name": "Food prep",
+   "category": "Chores",
+   "remind": true
+  },
+  {
+   "name": "Python",
+   "category": "Training",
+   "remind": true
+  }
+ ],
+ "days": {
+  "mon": [
+   [
+    "00:00",
+    "05:00",
+    [
+     "Bed time"
+    ]
+   ],
+   [
+    "05:00",
+    "05:30",
+    [
+     "Shower + Breakfast",
+     "Walk",
+     "Japanese Study",
+     "JP Anki"
+    ]
+   ],
+   [
+    "05:30",
+    "07:30",
+    [
+     "Side projects"
+    ]
+   ],
+   [
+    "07:30",
+    "08:00",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "08:00",
+    "09:00",
+    [
+     "Admin"
+    ]
+   ],
+   [
+    "09:00",
+    "13:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "13:00",
+    "13:30",
+    [
+     "Meal"
+    ]
+   ],
+   [
+    "13:30",
+    "17:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "17:00",
+    "17:30",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "17:30",
+    "18:30",
+    [
+     "Unwind",
+     "Meal"
+    ]
+   ],
+   [
+    "18:30",
+    "21:30",
+    [
+     "Side projects"
+    ]
+   ],
+   [
+    "21:30",
+    "22:00",
+    [
+     "Read"
+    ]
+   ],
+   [
+    "22:00",
+    "24:00",
+    [
+     "Bed time"
+    ]
+   ]
+  ],
+  "tue": [
+   [
+    "00:00",
+    "05:00",
+    [
+     "Bed time"
+    ]
+   ],
+   [
+    "05:00",
+    "05:30",
+    [
+     "Shower + Breakfast",
+     "Exercise",
+     "Japanese Study",
+     "JP Anki"
+    ]
+   ],
+   [
+    "05:30",
+    "07:30",
+    [
+     "Side projects"
+    ]
+   ],
+   [
+    "07:30",
+    "08:00",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "08:00",
+    "09:00",
+    [
+     "Admin"
+    ]
+   ],
+   [
+    "09:00",
+    "13:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "13:00",
+    "13:30",
+    [
+     "Meal"
+    ]
+   ],
+   [
+    "13:30",
+    "17:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "17:00",
+    "17:30",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "17:30",
+    "18:30",
+    [
+     "Unwind",
+     "Meal"
+    ]
+   ],
+   [
+    "18:30",
+    "21:30",
+    [
+     "Gaming"
+    ]
+   ],
+   [
+    "21:30",
+    "22:00",
+    [
+     "Read"
+    ]
+   ],
+   [
+    "22:00",
+    "24:00",
+    [
+     "Bed time"
+    ]
+   ]
+  ],
+  "wed": [
+   [
+    "00:00",
+    "05:00",
+    [
+     "Bed time"
+    ]
+   ],
+   [
+    "05:00",
+    "05:30",
+    [
+     "Shower + Breakfast",
+     "Exercise",
+     "Japanese Study",
+     "JP Anki"
+    ]
+   ],
+   [
+    "05:30",
+    "07:30",
+    [
+     "Side projects"
+    ]
+   ],
+   [
+    "07:30",
+    "08:00",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "08:00",
+    "09:00",
+    [
+     "Admin"
+    ]
+   ],
+   [
+    "09:00",
+    "13:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "13:00",
+    "13:30",
+    [
+     "Meal"
+    ]
+   ],
+   [
+    "13:30",
+    "17:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "17:00",
+    "17:30",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "17:30",
+    "18:30",
+    [
+     "Unwind",
+     "Meal"
+    ]
+   ],
+   [
+    "18:30",
+    "21:30",
+    [
+     "Japanese Study",
+     "Deep learning (library)"
+    ]
+   ],
+   [
+    "21:30",
+    "22:00",
+    [
+     "Read"
+    ]
+   ],
+   [
+    "22:00",
+    "24:00",
+    [
+     "Bed time"
+    ]
+   ]
+  ],
+  "thu": [
+   [
+    "00:00",
+    "05:00",
+    [
+     "Bed time"
+    ]
+   ],
+   [
+    "05:00",
+    "05:30",
+    [
+     "Shower + Breakfast",
+     "Exercise",
+     "Japanese Study",
+     "JP Anki"
+    ]
+   ],
+   [
+    "05:30",
+    "07:30",
+    [
+     "Side projects"
+    ]
+   ],
+   [
+    "07:30",
+    "08:00",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "08:00",
+    "09:00",
+    [
+     "Admin"
+    ]
+   ],
+   [
+    "09:00",
+    "13:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "13:00",
+    "13:30",
+    [
+     "Meal"
+    ]
+   ],
+   [
+    "13:30",
+    "17:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "17:00",
+    "17:30",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "17:30",
+    "18:30",
+    [
+     "Unwind",
+     "Meal"
+    ]
+   ],
+   [
+    "18:30",
+    "21:30",
+    [
+     "Vanguard",
+     "Riftbound"
+    ]
+   ],
+   [
+    "21:30",
+    "22:00",
+    [
+     "Read"
+    ]
+   ],
+   [
+    "22:00",
+    "24:00",
+    [
+     "Bed time"
+    ]
+   ]
+  ],
+  "fri": [
+   [
+    "00:00",
+    "05:00",
+    [
+     "Bed time"
+    ]
+   ],
+   [
+    "05:00",
+    "05:30",
+    [
+     "Shower + Breakfast",
+     "Exercise",
+     "Japanese Study",
+     "JP Anki"
+    ]
+   ],
+   [
+    "05:30",
+    "07:30",
+    [
+     "Side projects"
+    ]
+   ],
+   [
+    "07:30",
+    "08:00",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "08:00",
+    "09:00",
+    [
+     "Admin"
+    ]
+   ],
+   [
+    "09:00",
+    "13:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "13:00",
+    "13:30",
+    [
+     "Meal"
+    ]
+   ],
+   [
+    "13:30",
+    "17:00",
+    [
+     "Work"
+    ]
+   ],
+   [
+    "17:00",
+    "17:30",
+    [
+     "Travel"
+    ]
+   ],
+   [
+    "17:30",
+    "18:30",
+    [
+     "Unwind",
+     "Meal"
+    ]
+   ],
+   [
+    "18:30",
+    "21:30",
+    [
+     "Gaming"
+    ]
+   ],
+   [
+    "21:30",
+    "22:00",
+    [
+     "Read"
+    ]
+   ],
+   [
+    "22:00",
+    "24:00",
+    [
+     "Bed time"
+    ]
+   ]
+  ],
+  "sat": [
+   [
+    "00:00",
+    "09:00",
+    [
+     "Bed time"
+    ]
+   ],
+   [
+    "09:00",
+    "09:30",
+    [
+     "Wake-Up"
+    ]
+   ],
+   [
+    "09:30",
+    "10:00",
+    [
+     "Shower + Breakfast",
+     "Exercise",
+     "Japanese Study",
+     "JP Anki"
+    ]
+   ],
+   [
+    "10:00",
+    "10:30",
+    [
+     "Free time"
+    ]
+   ],
+   [
+    "10:30",
+    "11:30",
+    [
+     "Travel",
+     "Read"
+    ]
+   ],
+   [
+    "11:30",
+    "19:00",
+    [
+     "Dark Sphere / Library deep learning (alternating)"
+    ]
+   ],
+   [
+    "19:00",
+    "20:00",
+    [
+     "Travel",
+     "Read"
+    ]
+   ],
+   [
+    "20:00",
+    "20:30",
+    [
+     "Meal"
+    ]
+   ],
+   [
+    "20:30",
+    "21:00",
+    [
+     "Free time"
+    ]
+   ],
+   [
+    "21:00",
+    "21:30",
+    [
+     "Read"
+    ]
+   ],
+   [
+    "21:30",
+    "22:00",
+    [
+     "Chores"
+    ]
+   ],
+   [
+    "22:00",
+    "23:00",
+    [
+     "Beth time"
+    ]
+   ],
+   [
+    "23:00",
+    "23:30",
+    [
+     "Unwind"
+    ]
+   ],
+   [
+    "23:30",
+    "24:00",
+    [
+     "Bed time"
+    ]
+   ]
+  ],
+  "sun": [
+   [
+    "00:00",
+    "09:00",
+    [
+     "Bed time"
+    ]
+   ],
+   [
+    "09:00",
+    "09:30",
+    [
+     "Wake-Up"
+    ]
+   ],
+   [
+    "09:30",
+    "10:00",
+    [
+     "Shower + Breakfast",
+     "Exercise",
+     "Japanese Study",
+     "JP Anki"
+    ]
+   ],
+   [
+    "10:00",
+    "10:30",
+    [
+     "Family time"
+    ]
+   ],
+   [
+    "10:30",
+    "11:00",
+    [
+     "Admin"
+    ]
+   ],
+   [
+    "11:00",
+    "12:00",
+    [
+     "Chores"
+    ]
+   ],
+   [
+    "12:00",
+    "12:30",
+    [
+     "Grocery run"
+    ]
+   ],
+   [
+    "12:30",
+    "13:00",
+    [
+     "Meal"
+    ]
+   ],
+   [
+    "13:00",
+    "18:00",
+    [
+     "Family time"
+    ]
+   ],
+   [
+    "18:00",
+    "19:30",
+    [
+     "Weekly meal prep"
+    ]
+   ],
+   [
+    "19:30",
+    "20:00",
+    [
+     "Meal"
+    ]
+   ],
+   [
+    "20:00",
+    "20:30",
+    [
+     "Admin"
+    ]
+   ],
+   [
+    "20:30",
+    "21:00",
+    [
+     "Family time"
+    ]
+   ],
+   [
+    "21:00",
+    "21:30",
+    [
+     "Chores"
+    ]
+   ],
+   [
+    "21:30",
+    "22:00",
+    [
+     "Read"
+    ]
+   ],
+   [
+    "22:00",
+    "24:00",
+    [
+     "Bed time"
+    ]
+   ]
+  ]
+ }
+}

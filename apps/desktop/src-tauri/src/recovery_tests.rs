@@ -168,7 +168,7 @@ fn schema_and_editor_migration_keep_original_updates_and_reject_stale_conversion
     assert!(editor::append(&mut f.db,"p", &[4], "stale text", "text-v1", None).is_err());
     assert!(editor::append(&mut f.db,"p", &[4], "again", "blocknote-v1", Some((2,"original"))).is_err());
     let b = create(&f.db, &f.dir.join("backups")).unwrap();
-    assert_eq!(b.manifest.schema, 9);
+    assert_eq!(b.manifest.schema, 10);
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn recovery_import_is_additive_searchable_and_transactional() {
     let note = editor::load(&f.db,&page.id,0).unwrap(); assert_eq!(note.format,"blocknote-v1"); assert_eq!(note.legacy_text.as_deref(),Some("old original"));
     let count: i64 = f.db.query_row("SELECT COUNT(*) FROM page_search WHERE page_search MATCH 'searchable'", [], |r|r.get(0)).unwrap(); assert_eq!(count,1);
     assert!(crate::portability::import(&mut f.db,"Broken",&[],"invalid","blocknote-v1",None).is_err());
-    let pages: i64 = f.db.query_row("SELECT COUNT(*) FROM pages", [], |r|r.get(0)).unwrap(); assert_eq!(pages,2);
+    let pages: i64 = f.db.query_row("SELECT COUNT(*) FROM pages WHERE system_key IS NULL", [], |r|r.get(0)).unwrap(); assert_eq!(pages,2);
     assert!(create(&f.db,&f.dir.join("backups")).is_ok());
 }
 #[test]
@@ -302,11 +302,33 @@ fn databases_survive_backup_and_restore_and_upgrade_from_v3(){
  f.db.execute_batch(include_str!("../../../../db/notes/002_editor_formats.sql")).unwrap();
  f.db.execute_batch(include_str!("../../../../db/notes/003_page_icons.sql")).unwrap();
  editor::upgrade(&f.db).unwrap();
- let v:i64=f.db.query_row("SELECT MAX(version) FROM schema_migrations",[],|r|r.get(0)).unwrap();assert_eq!(v,9);
+ let v:i64=f.db.query_row("SELECT MAX(version) FROM schema_migrations",[],|r|r.get(0)).unwrap();assert_eq!(v,10);
  f.db.execute_batch("INSERT INTO pages(id,workspace_id,title,sort_key) VALUES('d','personal','Projects','b'),('r','personal','Row','c'); INSERT INTO databases(page_id) VALUES('d'); INSERT INTO db_properties(id,database_id,name,type,position) VALUES('q','d','Hours','number',1); INSERT INTO db_rows(page_id,database_id) VALUES('r','d'); INSERT INTO db_values(row_id,property_id,value) VALUES('r','q','4');").unwrap();
  let backup=create(&f.db,&f.dir.join("db-backup")).unwrap();
  let staged=stage(Path::new(&backup.path),&f.dir).unwrap();
  f.db.execute_batch("UPDATE db_values SET value='9'; DELETE FROM pages WHERE id='r';").unwrap();
  restore(&mut f.db,&staged,&f.dir).unwrap();
  let value:String=f.db.query_row("SELECT value FROM db_values WHERE row_id='r' AND property_id='q'",[],|r|r.get(0)).unwrap();assert_eq!(value,"4");
+}
+
+#[test]
+fn the_life_timetable_survives_backup_and_restore_and_an_old_backup_is_upgraded_with_the_seed() {
+    let mut f = Fixture::new();
+    editor::upgrade(&f.db).unwrap();
+    let n = |db: &Connection, sql: &str| -> i64 { db.query_row(sql, [], |r| r.get(0)).unwrap() };
+    let slots = n(&f.db, "SELECT COUNT(*) FROM timetable_slots");
+    let acts = n(&f.db, "SELECT COUNT(*) FROM timetable_activities");
+    let edit = crate::timetable::add_activity(&f.db, "Piano", "Training").unwrap();
+    crate::timetable::set_slots(&mut f.db, 2, &[0], &[edit.id.clone()]).unwrap();
+    let backup = create(&f.db, &f.dir.join("tt-backup")).unwrap();
+    assert_eq!(backup.manifest.schema, 10);
+    let staged = stage(Path::new(&backup.path), &f.dir).unwrap();
+    crate::timetable::set_slots(&mut f.db, 2, &[0], &[]).unwrap();
+    f.db.execute("DELETE FROM timetable_activities WHERE id=?1", [&edit.id]).unwrap();
+    assert_eq!(n(&f.db, "SELECT COUNT(*) FROM timetable_activities"), acts);
+    restore(&mut f.db, &staged, &f.dir).unwrap();
+    assert_eq!(n(&f.db, "SELECT COUNT(*) FROM timetable_activities"), acts + 1, "the added activity is back");
+    assert_eq!(n(&f.db, &format!("SELECT COUNT(*) FROM timetable_slots WHERE activity_id='{}'", edit.id)), 1, "and so is its slot");
+    assert_eq!(n(&f.db, "SELECT COUNT(*) FROM timetable_slots"), slots, "the slot it replaced was a swap, not an addition");
+    assert_eq!(n(&f.db, "SELECT COUNT(*) FROM pages WHERE system_key='life_timetable'"), 1);
 }
