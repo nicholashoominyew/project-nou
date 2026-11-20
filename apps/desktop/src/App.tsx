@@ -10,8 +10,7 @@ import {iconNames} from "./iconPaths";
 import {pageDrop,type DropPosition} from "./workspaceModel";
 import ShortcutsHelp from "./ShortcutsHelp";
 import SettingsPage from "./SettingsPage";
-import BotQueue from "./BotQueue";
-import { lastId, readSeen, unreadCount, writeSeen, type ChatMessage } from "./chatModel";
+import BotsHub from "./BotsHub";
 import Home from "./Home";
 import QuickCapture from "./QuickCapture";
 import { keep } from "./stable";
@@ -66,7 +65,7 @@ export default function App(){
  useEffect(()=>{if(typeof window.matchMedia!=="function")return;const q=window.matchMedia("(max-width: 720px)");let folded=false;const apply=(narrow:boolean)=>{if(narrow){setSidebarOpen(open=>{folded=open;return false})}else if(folded){folded=false;setSidebarOpen(true)}};if(q.matches)apply(true);const on=(e:MediaQueryListEvent)=>apply(e.matches);q.addEventListener?.("change",on);return()=>q.removeEventListener?.("change",on)},[]);
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
- const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [showTimetable,setShowTimetable]=useState(false);const [sbQuery,setSbQuery]=useState("");const [showSettings,setShowSettings]=useState(false);const [showBot,setShowBot]=useState(false);const [chatUnread,setChatUnread]=useState(0);const chatSeen=useRef(readSeen());const [lockedIds,setLockedIds]=useState<string[]>([]);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [showTimetable,setShowTimetable]=useState(false);const [sbQuery,setSbQuery]=useState("");const [showSettings,setShowSettings]=useState(false);const [showBot,setShowBot]=useState(false);const [waiting,setWaiting]=useState(0);const [lockedIds,setLockedIds]=useState<string[]>([]);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -120,12 +119,11 @@ export default function App(){
  function closeTab(id:string){if(guard)return;closedTabs.current.push(id);const next=tabs.filter(t=>t!==id);setTabs(next);if(selected===id)setSelected(next[Math.max(0,tabs.indexOf(id)-1)]??null)}
  function reopenTab(){if(guard)return;while(closedTabs.current.length){const id=closedTabs.current.pop()!;if(!tabs.includes(id)&&pagesRef.current.some(p=>p.id===id)){openPage(id);return}}}
  function newRootPage(){return run(async()=>{const page=await createRichPage(null,"Untitled");setTabs(old=>[...old,page.id]);setSelected(page.id);setShowTrash(false);setPagesOpen(true)})}
- // Bot queue: a badge on the sidebar item counts what assistants said since you last looked. The chat itself polls while it is open.
- const markChatSeen=useCallback((id:number)=>{if(id>chatSeen.current){chatSeen.current=id;writeSeen(id)}setChatUnread(0)},[]);
+ // Bots Hub: the sidebar item shows how many queue items wait for you (N WAITING). The page keeps it current while it is open and reports changes at once.
  useEffect(()=>{
   if(showBot)return;let off=false;
-  const check=async()=>{try{const got=await invoke<ChatMessage[]>("chat_list",{after:chatSeen.current,limit:200});if(!off&&Array.isArray(got))setChatUnread(unreadCount(got,chatSeen.current))}catch{/* the badge is a convenience */}};
-  void check();const t=window.setInterval(()=>void check(),8000);return()=>{off=true;window.clearInterval(t)};
+  const check=async()=>{try{const s=await invoke<{waiting:number}>("hub_summary");if(!off&&s&&typeof s.waiting==="number")setWaiting(s.waiting)}catch{/* the count is a convenience */}};
+  void check();const t=window.setInterval(()=>void check(),5000);return()=>{off=true;window.clearInterval(t)};
  },[showBot]);
  // Quick capture: what is typed goes to the end of the Inbox page (made on first use), without leaving the current page.
  async function captureText(text:string):Promise<string>{
@@ -246,7 +244,7 @@ export default function App(){
    <button className={"sb-item"+(!current&&!showTrash&&!showGraph&&!showFiles&&!showTimetable&&!showSettings&&!showBot?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowTimetable(false);setShowSettings(false);setShowBot(false)}}><Icon name="home" size={17}/><span>Home</span></button>
    <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowFiles(false);setShowTimetable(false);setShowSettings(false);setShowBot(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
    <button className={"sb-item"+(!!inboxId&&selected===inboxId&&!showTrash&&!showGraph&&!showFiles&&!showTimetable&&!showSettings&&!showBot?" active":"")} disabled={guard||(!inboxId&&recoveryBlocked)} onClick={openInboxPage}><Icon name="inbox" size={17}/><span>Inbox</span></button>
-   <button className={"sb-item"+(showBot?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowTimetable(false);setShowSettings(false);setShowBot(v=>!v)}}><Icon name="hub" size={17}/><span>Bots Hub</span>{chatUnread>0&&!showBot&&<em className="sb-badge" aria-label={chatUnread+" unread"}>{chatUnread}</em>}</button>
+   <button className={"sb-item"+(showBot?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowTimetable(false);setShowSettings(false);setShowBot(v=>!v)}}><Icon name="hub" size={17}/><span>Bots Hub</span>{waiting>0&&<em className="sb-badge" aria-label={waiting+" waiting for you"}>{waiting} WAITING</em>}</button>
    <button className={"sb-item"+(showFiles?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowSettings(false);setShowBot(false);setShowTimetable(false);setShowFiles(v=>!v)}}><Icon name="folder" size={17}/><span>Files</span></button>
    <button className={"sb-item"+(showTimetable?" active":"")} disabled={guard} onClick={openTimetable}><Icon name="calendar" size={17}/><span>Life Timetable</span></button>
    {sbQuery.trim()&&<div className="sb-scroll"><SidebarResults query={sbQuery} pages={pages} disabled={guard} onOpen={id=>{setSbQuery("");openPage(id)}}/></div>}
@@ -275,7 +273,7 @@ export default function App(){
    {recoveryBlocked&&<p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
    {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>Dismiss</button></div>}
    <div className={splitId&&current&&!showTrash&&!showGraph&&!showFiles&&!showTimetable&&!showSettings&&!showBot?"workspace-body split":"workspace-body"}>
-   {showBot?<BotQueue disabled={recoveryBlocked} onSeen={markChatSeen} refresh={reload}/>
+   {showBot?<BotsHub disabled={recoveryBlocked} pages={pages} openPage={openPage} onTokens={()=>setShowGateway(true)} onWaiting={setWaiting} refresh={reload}/>
    :showSettings&&!showTrash?<SettingsPage trashedCount={trashed.length} disabled={guard} readOnly={recoveryBlocked} onBackups={()=>setShowRecovery(true)} onImport={()=>setShowImport(true)} onTrash={()=>{setShowSettings(false);setShowTrash(true);onEditorStatus("saved")}} onAccess={()=>setShowGateway(true)}/>
    :showTrash?<div className="document trash-screen"><p><button className="link-button" onClick={()=>{setShowTrash(false);setShowSettings(true)}}>← Settings</button></p><h1>Trash</h1><p>Restoring a page also restores its subpages deleted in the same operation.</p>{!trashed.length&&<p>Trash is empty.</p>}{trashed.map(page=><div className="trash-row" key={page.id}><span><Icon name={page.icon}/>{page.title}</span><button disabled={guard||recoveryBlocked} onClick={()=>void run(()=>invoke("restore_page",{pageId:page.id}))}>Restore</button></div>)}</div>
    :showTimetable?<Suspense fallback={<p role="status">Opening the timetable…</p>}><LifeTimetableLazy disabled={recoveryBlocked}/></Suspense>

@@ -146,3 +146,30 @@ describe("motion", () => {
     for (const f of frames) expect(f).not.toMatch(/(width|height|top|left|margin|padding)\s*:/);
   });
 });
+
+describe("Bots Hub styles", () => {
+  const hub = theme.slice(theme.indexOf("Bots Hub: three panels"));
+  const rules = [...hub.matchAll(/([^{}]+)\{([^}]*)\}/g)].map(m => ({ selector: m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim(), body: m[2] }));
+  it("has exactly one accent-filled button: Send. Every other button is outlined, ghost or on a track", () => {
+    const filled = rules.filter(r => /background:var\(--accent\)(;|$)/.test(r.body) && /hub-(send|ghost|approve|iconbtn|footlink|back|newroom|tabs)|button|mentions/.test(r.selector)).map(r => r.selector);
+    expect(filled).toEqual([".hub-page .hub-send"]);
+    expect(rules.find(r => r.selector === ".hub-page .hub-approve")!.body).toMatch(/border:1px solid var\(--accent\);background:transparent;color:var\(--accent\)/);
+  });
+  it("uses borders, not shadows, for panels; the panel fill, a 1px line and the large radius", () => {
+    const panel = rules.find(r => r.selector === ".hub-panel")!.body;
+    expect(panel).toMatch(/background:var\(--panel\);border:1px solid var\(--line\);border-radius:var\(--radius-lg\)/); expect(panel).not.toMatch(/shadow/);
+    expect(rules.filter(r => /^\.hub-(panel|ask|bubble|msg|queue|code|handoff)/.test(r.selector)).some(r => /box-shadow/.test(r.body))).toBe(false);
+  });
+  it("gives every control a 2px accent focus ring, and lays the page out as a wrapping row with the room largest", () => {
+    expect(hub).toMatch(/\.hub-page :focus-visible\{outline:2px solid var\(--accent\)/);
+    expect(rules.find(r => r.selector === ".hub-room")!.body).toMatch(/flex:999 1 560px;height:760px/);
+    expect(rules.find(r => r.selector === ".hub-side")!.body).toMatch(/flex:1 1 340px/);
+    expect(rules.find(r => r.selector === ".hub-body")!.body).toMatch(/display:flex;flex-wrap:wrap;gap:16px/);
+    expect(rules.find(r => r.selector === ".hub-inhouse,.hub-queue")!.body).toMatch(/height:372px/);
+  });
+  it("shows status as a dot plus a word: running is an accent dot, needs-nick has a soft ring, done is hollow, queued is muted", () => {
+    const dot = (cls: string) => rules.find(r => r.selector === ".hub-dot" + cls || r.selector.split(",").includes(".hub-dot" + cls))!.body;
+    expect(dot(".live")).toMatch(/background:var\(--accent\)/); expect(dot(".ask")).toMatch(/box-shadow:0 0 0 3px var\(--accent-soft\)/); expect(dot(".hollow")).toMatch(/background:transparent;border:1px solid var\(--muted\)/);
+    expect(rules.find(r => r.selector === ".hub-dot")!.body).toMatch(/background:var\(--muted\)/);
+  });
+});

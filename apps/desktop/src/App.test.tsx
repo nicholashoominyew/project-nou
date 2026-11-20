@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
-const {isFullscreen,setFullscreen,calls,lockedPages,chatList}=vi.hoisted(()=>({isFullscreen:vi.fn(),setFullscreen:vi.fn(),calls:[] as string[],lockedPages:{value:[] as string[]},chatList:{value:[] as any[]}}));
-beforeEach(()=>{chatList.value=[];lockedPages.value=[];localStorage.clear();calls.length=0;isFullscreen.mockReset().mockResolvedValue(false);setFullscreen.mockReset().mockResolvedValue(undefined)});
+const {isFullscreen,setFullscreen,calls,lockedPages,chatList,hub}=vi.hoisted(()=>({isFullscreen:vi.fn(),setFullscreen:vi.fn(),calls:[] as string[],lockedPages:{value:[] as string[]},chatList:{value:[] as any[]},hub:{waiting:0}}));
+beforeEach(()=>{hub.waiting=0;chatList.value=[];lockedPages.value=[];localStorage.clear();calls.length=0;isFullscreen.mockReset().mockResolvedValue(false);setFullscreen.mockReset().mockResolvedValue(undefined)});
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ onCloseRequested: async () => () => {},isFullscreen,setFullscreen }) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   calls.push(command);
@@ -14,6 +14,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string) => {
   if (command === "list_recent_pages") return [];
   if (command === "list_locked_pages") return lockedPages.value;
   if (command === "chat_list") return chatList.value;
+  if (command === "hub_summary") return { rooms: [{ id: 1, name: "General", slug: "general" }], participants: [{ name: "You", code: "YO", online: true, you: true }], bots_online: 0, inhouse_state: "offline", waiting: hub.waiting, open: hub.waiting };
+  if (command === "queue_items" || command === "inhouse_messages") return [];
   if (command === "lock_state") return { locked: true, open: false };
   if (command === "list_link_edges") return [{ source: "page", target: "second" }];
   if (command === "list_files") return [{ id: "f".repeat(64), name: "report.pdf", mime: "application/pdf", bytes: 4096, pages: [{ id: "second", title: "Second note" }], trashed_pages: 0 }];
@@ -355,16 +357,17 @@ it("Backups & restore, Import recovered note and Trash moved from the sidebar in
  fireEvent.click(screen.getByText("Test note"));
  await waitFor(()=>expect(screen.queryByRole("list",{name:"Settings"})).toBeNull());
 });
-it("the Bots Hub opens from the sidebar, and a badge counts what assistants said since you last looked",async()=>{
- chatList.value=[{id:1,at:"2026-11-18T10:00:00Z",kind:"assistant",author:"Claude",body:"ready for review"},{id:2,at:"2026-11-18T10:01:00Z",kind:"owner",author:"You",body:"ok"},{id:3,at:"2026-11-18T10:02:00Z",kind:"assistant",author:"Grok",body:"on it"}];
+it("the Bots Hub opens from the sidebar with its three panels, and the sidebar shows how many items are waiting for you",async()=>{
+ hub.waiting=2;
+ chatList.value=[{id:1,at:"2026-11-18T10:00:00Z",kind:"assistant",author:"Claude",body:"ready for review",room:"general",type:"message",role:"ROUTER",from:null,to:null,task_ref:null,approval:null,queue_item_id:null,decided_at:null}];
  render(<App/>);await screen.findByText("Test note");
  const item=screen.getByRole("button",{name:/Bots Hub/});
- await waitFor(()=>expect(within(item).getByLabelText("2 unread")).toBeTruthy());
+ await waitFor(()=>expect(within(item).getByLabelText("2 waiting for you").textContent).toBe("2 WAITING"));
  fireEvent.click(item);
  expect(await screen.findByRole("heading",{name:"Bots Hub"})).toBeTruthy();
  expect(await screen.findByText("ready for review")).toBeTruthy();
- await waitFor(()=>expect(within(screen.getByRole("button",{name:/Bots Hub/})).queryByLabelText(/unread/)).toBeNull());
- expect(JSON.parse(localStorage.getItem("nou-chat-seen")||"0")).toBe(3);
+ for(const name of ["Bot collaboration room","In-house bot chat","Bot queue"])expect(screen.getByRole("region",{name})).toBeTruthy();
+ expect(within(screen.getByRole("button",{name:/Bots Hub/})).getByLabelText("2 waiting for you")).toBeTruthy();
  fireEvent.click(screen.getByText("Test note"));
  await waitFor(()=>expect(screen.queryByRole("heading",{name:"Bots Hub"})).toBeNull());
 });

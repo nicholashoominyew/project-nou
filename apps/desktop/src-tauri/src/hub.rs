@@ -132,6 +132,42 @@ pub fn summary(c: &Connection) -> Result<Summary, String> {
     Ok(Summary { rooms: crate::chat::rooms(c)?, participants, bots_online, inhouse_state: inhouse_state(c)?.to_string(), waiting, open })
 }
 
+/// Development builds only: the mockup's sample conversation, so the page can be looked at with something in it. It makes sample bot tokens (their secrets are
+/// thrown away, so nothing can use them), the DraftBot and NOU build rooms, messages, a hand-off, an open approval card, queue items and a private chat.
+pub fn seed_demo(c: &Connection) -> Result<(), String> {
+    use crate::{chat, gateway};
+    if chat::rooms(c)?.iter().any(|r| r.slug == "draftbot") { return Err("The sample data is already loaded".into()); }
+    chat::create_room(c, "DraftBot")?; chat::create_room(c, "NOU build")?;
+    let scopes = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let chat_scopes = ["chat:read", "chat:write", "queue:read", "queue:write"];
+    let claude = gateway::create_token(c, "Claude", &scopes(&chat_scopes))?.info.id;
+    let gpt = gateway::create_token(c, "ChatGPT", &scopes(&chat_scopes))?.info.id;
+    let kura = gateway::create_token(c, "Kura", &scopes(&["chat:read", "chat:write", "queue:read", "queue:write", "inhouse:read", "inhouse:write"]))?.info.id;
+    let xgrok = gateway::create_token(c, "XGrok", &scopes(&chat_scopes))?.info.id;
+    let fresh = |id: &str, secs: i64| c.execute("UPDATE api_tokens SET last_used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now',?1) WHERE id=?2", params![format!("-{secs} seconds"), id]).map(|_| ()).map_err(e);
+    fresh(&claude, 20)?; fresh(&gpt, 40)?; fresh(&kura, 5)?; fresh(&xgrok, 7200)?;
+    let room = Some("draftbot");
+    chat::post_owner(c, "@Claude plan the DraftBot dimension tool for this week. @ChatGPT takes the Grasshopper side.", room)?;
+    chat::post_to_room(c, &claude, "Claude", room, "message", Some("router"), None, None, "Splitting it in three: dimension rules spec, the C# component, then a test on the tied arch deck. I will write the spec and hand the component to ChatGPT.")?;
+    chat::post_to_room(c, &claude, "Claude", room, "handoff", None, Some("ChatGPT"), Some("C# dimension component"), "Handed over")?;
+    chat::post_to_room(c, &gpt, "ChatGPT", room, "message", Some("executor"), None, None, "Picked it up. The draft reads curves from the selected layer and places aligned dimensions. I need the default text height before going further.")?;
+    chat::post_to_room(c, &kura, "Kura", room, "message", Some("local"), None, None, "From your notes in NOU: drawing text height is 2.5 mm at paper scale.")?;
+    chat::post_approval_ref(c, &claude, "Claude", room, "Spec is ready. Approve it so ChatGPT can build against it?", Some("Approve dimension spec"), Some("router"), Some("DraftBot dimension spec"))?;
+    queue_create(c, &claude, "Claude", "Spec DraftBot dimension rules", Some("running"), room)?;
+    queue_create(c, &gpt, "ChatGPT", "C# dimension component", Some("running"), room)?;
+    queue_create(c, &xgrok, "XGrok", "Harvest Vanguard tier posts", Some("queued"), room)?;
+    queue_create(c, &kura, "Kura", "Pick today's five teachings", Some("done"), room)?;
+    inhouse_post_owner(c, "What is left on today's list?")?;
+    inhouse_post_bot(c, &kura, "Three things: N3 kanji set, the NOU sidebar fix, and the morning workout. The workout is first.")?;
+    inhouse_post_owner(c, "Move the sidebar fix to tonight.")?;
+    inhouse_post_bot(c, &kura, "Done. It now sits in the 20:00 block.")?;
+    Ok(())
+}
+#[tauri::command]
+pub fn hub_seed_demo(db: State<'_, Db>) -> Result<(), String> {
+    if !cfg!(debug_assertions) { return Err("Sample data is for development builds only".into()); }
+    let c = db.0.lock().map_err(|_| "Database lock poisoned")?; db.writable()?; seed_demo(&c)
+}
 #[tauri::command]
 pub fn hub_summary(db: State<'_, Db>) -> Result<Summary, String> { let c = db.0.lock().map_err(|_| "Database lock poisoned")?; summary(&c) }
 #[tauri::command]
@@ -224,6 +260,16 @@ mod tests {
         let only_read = token(&c, "Spy", &["inhouse:read"]); c.execute("UPDATE api_tokens SET last_used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1", [&only_read]).unwrap();
         assert_eq!(inhouse_state(&c).unwrap(), "offline", "a token that cannot also reply does not count as the runner");
         set(2); crate::gateway::revoke_token(&c, &t).unwrap(); assert_eq!(inhouse_state(&c).unwrap(), "offline", "a revoked runner is offline");
+    }
+    #[test]
+    fn the_development_sample_data_loads_once_and_looks_like_the_mockup() {
+        let c = fresh();
+        seed_demo(&c).unwrap();
+        assert!(seed_demo(&c).unwrap_err().contains("already"));
+        let s = summary(&c).unwrap();
+        assert_eq!((s.rooms.len(), s.bots_online, s.waiting, s.open, s.inhouse_state.as_str()), (3, 3, 1, 4, "running"));
+        assert_eq!(crate::chat::list(&c, None, 50, Some("draftbot")).unwrap().iter().map(|m| m.ty.as_str()).collect::<Vec<_>>(), vec!["message", "message", "handoff", "message", "message", "approval"]);
+        assert_eq!(inhouse_list(&c, None, 50).unwrap().len(), 4);
     }
     #[test]
     fn participants_come_from_tokens_that_can_use_the_hub_and_online_means_seen_in_five_minutes() {
