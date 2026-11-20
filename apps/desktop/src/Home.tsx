@@ -5,17 +5,18 @@ import type { PageInfo } from "./EditorContext";
 import Approvals from "./Approvals";
 import { CardHead, StateDot } from "./HomeBits";
 import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, SunArc, TasksWidget, TeachingWidget, WeatherWidget, useWeatherStore, type WeatherStore } from "./HomePanels";
+import NowCard from "./timetable/NowCard";
 import { editsPerDay, staleFraction } from "./homeLogic";
 import { localDate, readSnoozed, reasonText, snooze, visible, SNOOZE_KEY, SNOOZE_DAYS, type Resurfaced } from "./resurface";
 import { DEFAULT_LAYOUT_KEY, normalizeLayout, setWidgetHidden, type HomeLayout } from "./homeLayout";
 
 /** What every widget may use. Widgets never reach into the app directly; later features plug in by adding an entry to HOME_WIDGETS with a render function over this context. */
-export type HomeContext = { pages: PageInfo[]; open: (id: string) => void; today: string; openDaily: () => void; disabled: boolean; refresh: () => Promise<void>; weather?: WeatherStore };
+export type HomeContext = { pages: PageInfo[]; open: (id: string) => void; today: string; openDaily: () => void; disabled: boolean; refresh: () => Promise<void>; weather?: WeatherStore; openTimetable?: () => void };
 /**
  * Where a widget sits: `daily` is the slim strip, `left` and `right` are the two columns under it (left is twice as wide), `row1` and `row2` are the rows of cards below.
  * A `bare` widget draws its own heading (the calendar has its month buttons there, the clocks have their seconds); every other widget gets the standard one.
  */
-export type HomeSlot = "daily" | "left" | "right" | "row1" | "row2";
+export type HomeSlot = "top" | "daily" | "left" | "right" | "row1" | "row2";
 export type HomeWidget = { id: string; title: string; hint?: string; live?: boolean; slot?: HomeSlot; bare?: boolean; render: (ctx: HomeContext) => ReactNode };
 
 type Recent = { id: string; title: string; updated_at: string };
@@ -86,6 +87,7 @@ function ResurfaceWidget({ ctx }: { ctx: HomeContext }) {
 
 /** The standard order is the order on the screen: the daily strip, then the calendar column, the clocks column, then two rows of cards. */
 export const HOME_WIDGETS: HomeWidget[] = [
+  { id: "now", title: "Now", slot: "top", bare: true, render: ctx => <NowCard open={ctx.openTimetable} /> },
   { id: "daily", title: "Daily page", slot: "daily", bare: true, render: ctx => <DailyWidget ctx={ctx} /> },
   { id: "calendar", title: "Calendar", slot: "left", bare: true, render: ctx => <CalendarWidget ctx={ctx} /> },
   { id: "teaching", title: "Teaching of the day", slot: "left", bare: true, render: ctx => <TeachingWidget today={ctx.today} /> },
@@ -103,7 +105,7 @@ export const HOME_WIDGETS: HomeWidget[] = [
 function readLayout(): unknown { try { return JSON.parse(localStorage.getItem(DEFAULT_LAYOUT_KEY) || "null"); } catch { return null; } }
 function writeLayout(layout: HomeLayout) { try { localStorage.setItem(DEFAULT_LAYOUT_KEY, JSON.stringify(layout)); } catch { /* a preference only; the page still works */ } }
 
-export default function Home({ pages, open, openDaily, newPage, disabled, refresh = async () => {}, onManageAccess, widgets = HOME_WIDGETS }: { pages: PageInfo[]; open: (id: string) => void; openDaily: () => void; newPage: () => void; disabled: boolean; refresh?: () => Promise<void>; onManageAccess?: () => void; widgets?: HomeWidget[] }) {
+export default function Home({ pages, open, openDaily, newPage, disabled, refresh = async () => {}, onManageAccess, openTimetable, widgets = HOME_WIDGETS }: { pages: PageInfo[]; open: (id: string) => void; openDaily: () => void; newPage: () => void; disabled: boolean; refresh?: () => Promise<void>; onManageAccess?: () => void; openTimetable?: () => void; widgets?: HomeWidget[] }) {
   const ids = useMemo(() => widgets.map(w => w.id), [widgets]);
   const [layout, setLayout] = useState<HomeLayout>(() => normalizeLayout(readLayout(), ids));
   const [editing, setEditing] = useState(false);
@@ -114,7 +116,7 @@ export default function Home({ pages, open, openDaily, newPage, disabled, refres
   const shown = widgets.filter(w => !layout.hidden.includes(w.id));
   const hidden = layout.order.filter(id => layout.hidden.includes(id)).map(id => byId.get(id)!).filter(Boolean);
   const today = useMemo(() => localDate(), []);
-  const ctx: HomeContext = { pages, open, today, openDaily, disabled, refresh, weather };
+  const ctx: HomeContext = { pages, open, today, openDaily, disabled, refresh, weather, openTimetable };
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const long = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
@@ -140,6 +142,7 @@ export default function Home({ pages, open, openDaily, newPage, disabled, refres
     {editing && <section className="home-customize" aria-label="Customize Home"><p className="hint">Hide or show the sections below. The layout itself is fixed.</p>
       {onManageAccess && <button onClick={onManageAccess}><Icon name="hub" size={15} /> AI access</button>}
       <button onClick={() => setEditing(false)}>Done</button></section>}
+    {inSlot("top").map(w => <section key={w.id} className={"home-card top bare w-" + w.id + (editing ? " editing" : "")} aria-label={w.title}>{w.render(ctx)}{hideButton(w)}</section>)}
     {inSlot("daily").map(w => <section key={w.id} className={"home-card strip bare w-" + w.id + (editing ? " editing" : "")} aria-label={w.title}>{w.render(ctx)}{hideButton(w)}</section>)}
     {(left.length > 0 || right.length > 0) && <div className="home-grid">
       {left.length > 0 && <div className="home-col span2">{left.map(card)}</div>}

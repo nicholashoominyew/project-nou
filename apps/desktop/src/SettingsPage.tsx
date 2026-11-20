@@ -1,4 +1,5 @@
 import { Icon } from "./Icons";
+import ReminderSettings from "./timetable/ReminderSettings";
 
 type Props = { trashedCount: number; disabled: boolean; readOnly: boolean; onBackups: () => void; onImport: () => void; onTrash: () => void; onAccess: () => void };
 
@@ -20,5 +21,6 @@ export default function SettingsPage({ trashedCount, disabled, readOnly, onBacku
         <button disabled={c.off} onClick={c.run}>{c.action}</button>
       </li>)}
     </ul>
+    <ReminderSettings />
   </div>;
 }

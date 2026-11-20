@@ -414,6 +414,7 @@ pub fn run() {
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             use fs2::FileExt;
             let folder = crate::data_dir(app.path())?;
@@ -433,6 +434,10 @@ pub fn run() {
             app.manage(locks::Locks::default());
             app.manage(gateway_http::ApiServer::default());
             gateway_http::start_if_enabled(app.handle());
+            // Heartbeat for the Life Timetable reminders. A hidden or minimised webview slows its own JavaScript timers, so this
+            // native thread wakes the page every 10 seconds; the page then decides from the wall-clock time (see src/timetable/reminders.ts).
+            let beat = app.handle().clone();
+            std::thread::spawn(move || { use tauri::Emitter; loop { std::thread::sleep(std::time::Duration::from_secs(10)); let _ = beat.emit("timetable-tick", ()); } });
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {
                 if let Some(db) = handle.try_state::<Db>() {
