@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { colours } from "./palette";
 import { CATEGORIES, hm, type Activity, type Variant } from "./schedule";
 
@@ -33,7 +34,7 @@ export default function BlockEditor({ initial, variant, activities, serverError,
   };
   const note = s.acts.length > 1 ? `${s.acts.length} SELECTED · TIME SPLIT EQUALLY` : s.acts.length === 1 ? "1 SELECTED" : "PICK ONE OR MORE";
   const groups = CATEGORIES.map(c => ({ c, list: activities.filter(a => a.category === c) })).filter(g => g.list.length);
-  return <div className="tt-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onCancel(); }}>
+  return createPortal(<div className="tt-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onCancel(); }}>
     <div ref={box} className="tt-dialog" role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
       <div className="tt-dialog-head">
         <h2>{title}</h2>
@@ -63,5 +64,5 @@ export default function BlockEditor({ initial, variant, activities, serverError,
         <button type="button" className="tt-btn primary" disabled={!!error} aria-disabled={!!error} onClick={() => { if (!error) onSave(s); }}>Save</button>
       </div>
     </div>
-  </div>;
+  </div>, document.body);
 }

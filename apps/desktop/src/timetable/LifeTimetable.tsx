@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import ActivitiesPanel from "./ActivitiesPanel";
 import BlockEditor, { type EditorState } from "./BlockEditor";
 import { now } from "./clock";
@@ -170,7 +171,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
       </div>}
     </section>
 
-    {undo && <div className="tt-undo" role="status"><span>Block saved</span><button type="button" onClick={undoLast}>Undo</button></div>}
+    {undo && createPortal(<div className="tt-undo" role="status"><span>Block saved</span><button type="button" onClick={undoLast}>Undo</button></div>, document.body)}
     {editor && <BlockEditor initial={editor} variant={variant} activities={activities} serverError={editorError} onSave={s => void commit(s, s.acts)} onClear={s => void clearToFree(s)} onCancel={closeEditor} />}
   </div>;
 }
