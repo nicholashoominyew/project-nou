@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { now } from "./clock";
-import { reminderFor } from "./schedule";
-import { useTimetable } from "./useTimetable";
+import { reminderFor, type Reminder } from "./schedule";
+import { useTick, useTimetable } from "./useTimetable";
 
 // Reminders for the next timetable event.
 // WHERE THIS RUNS: the decision is made here, in the page, from the wall-clock time (one tested copy of the rules: schedule.ts).
@@ -17,7 +17,7 @@ export function readReminderSettings(): ReminderSettings {
   try {
     const v = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null") as Partial<ReminderSettings> | null;
     const lead = Number(v?.lead);
-    return { on: v?.on !== false, lead: Number.isFinite(lead) ? Math.min(60, Math.max(1, Math.round(lead))) : DEFAULT_SETTINGS.lead };
+    return { on: v?.on !== false, lead: Number.isFinite(lead) ? Math.min(30, Math.max(1, Math.round(lead))) : DEFAULT_SETTINGS.lead };
   } catch { return DEFAULT_SETTINGS; }
 }
 export function writeReminderSettings(s: ReminderSettings) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* the default is used */ } window.dispatchEvent(new Event("nou-reminders-changed")); }
@@ -39,16 +39,16 @@ export async function notifyNative(body: string): Promise<boolean> {
 
 /** Mounted once for the whole app. Returns the in-app toast text and a way to dismiss it. */
 export function useReminders(notify: (body: string) => Promise<boolean> = notifyNative) {
-  const { grid, activities } = useTimetable();
-  const [toast, setToast] = useState<string | null>(null);
-  const latest = useRef({ grid, activities, notify });
-  latest.current = { grid, activities, notify };
+  const { timeline, activities } = useTimetable();
+  const [toast, setToast] = useState<Reminder | null>(null);
+  const latest = useRef({ timeline, activities, notify });
+  latest.current = { timeline, activities, notify };
   const check = useCallback(() => {
     const s = readReminderSettings(); if (!s.on) return;
-    const r = reminderFor(latest.current.grid, latest.current.activities, now(), s.lead, readLast());
+    const r = reminderFor(latest.current.timeline, latest.current.activities, now(), s.lead, readLast());
     if (!r) return;
     writeLast(r.key); // remembered before anything is shown, so a second tick, a reload or a tab switch can never repeat it
-    setToast(r.text);
+    setToast(r);
     void latest.current.notify(r.text);
   }, []);
   useEffect(() => {
@@ -59,12 +59,24 @@ export function useReminders(notify: (body: string) => Promise<boolean> = notify
     let off: (() => void) | undefined; let gone = false;
     import("@tauri-apps/api/event").then(m => m.listen("timetable-tick", check)).then(u => { if (gone) u(); else off = u; }).catch(() => { /* not running inside Tauri */ });
     return () => { gone = true; clearInterval(id); off?.(); document.removeEventListener("visibilitychange", resume); window.removeEventListener("focus", check); window.removeEventListener("nou-sim-changed", check); };
-  }, [check, grid, activities]);
+  }, [check, timeline, activities]);
   return { toast, dismiss: () => setToast(null) };
 }
 
-export function ReminderToast({ text, dismiss }: { text: string | null; dismiss: () => void }) {
-  useEffect(() => { if (!text) return; const id = setTimeout(dismiss, 30000); return () => clearTimeout(id); }, [text, dismiss]);
-  if (!text) return null;
-  return <div className="tt-toast" role="status" aria-live="polite"><span>{text}</span><button aria-label="Dismiss reminder" onClick={dismiss}>×</button></div>;
+/** UP NEXT IN m:ss, the next event and its time range. Stays above focus mode. It counts down to the start and goes away by itself then. */
+export function ReminderToast({ reminder, dismiss }: { reminder: Reminder | null; dismiss: () => void }) {
+  const t = useTick(1000, now);
+  const left = reminder ? reminder.start.getTime() - t.getTime() : 0;
+  useEffect(() => { if (reminder && left <= 0) dismiss(); }, [reminder, left, dismiss]);
+  if (!reminder || left <= 0) return null;
+  const secs = Math.ceil(left / 1000);
+  return <div className="tt-toast" role="status" aria-live="polite">
+    <span className="tt-toast-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg></span>
+    <span className="tt-toast-text">
+      <span className="tt-toast-kicker">UP NEXT IN {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</span>
+      <span className="tt-toast-name">{reminder.names}</span>
+      <span className="tt-toast-range">{reminder.range}</span>
+    </span>
+    <button type="button" aria-label="Dismiss reminder" onClick={dismiss}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+  </div>;
 }

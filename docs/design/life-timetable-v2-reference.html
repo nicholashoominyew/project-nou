@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Life Timetable</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+JP:wght@400;500;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1F4FD8}a:hover{color:#163BA6}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 100%; background: {{t.page}}; color: {{t.ink}}; font-family: 'IBM Plex Sans', 'IBM Plex Sans JP', system-ui, sans-serif; transition: background 0.3s, color 0.3s">
+<div style="max-width: 1240px; margin: 0 auto; padding: 32px 24px 64px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.12em; color: {{t.muted}}">PROJECT NOU · 脳 · {{todayLabel}}</span>
+<h1 style="margin: 0; font-size: 40px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em">Life Timetable</h1>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button onClick="{{jumpNow}}" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 0; background: {{t.accent}}; color: {{t.accentInk}}; font-size: 14px; font-weight: 600; cursor: pointer">Jump to now</button>
+<button style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid {{t.line}}; background: {{t.surface}}; color: {{t.ink}}; font-size: 14px; font-weight: 500; cursor: pointer">Activities</button>
+<button onClick="{{toggleDark}}" aria-label="{{themeLabel}}" style="width: 44px; height: 44px; border-radius: 10px; border: 1px solid {{t.line}}; background: {{t.surface}}; color: {{t.ink}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<sc-if value="{{dark}}" hint-placeholder-val="{{ false }}">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+</sc-if>
+<sc-if value="{{light}}" hint-placeholder-val="{{ true }}">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>
+</sc-if>
+</button>
+</div>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch">
+
+<section aria-label="Current event" style="flex: 1 1 380px; min-width: 0; background: {{t.surface}}; border: 1px solid {{t.line}}; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<span style="display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; color: {{t.accent}}"><span style="width: 8px; height: 8px; border-radius: 4px; background: {{t.accent}}"></span>{{nowKicker}}</span>
+<span style="display: flex; align-items: center; gap: 10px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{t.muted}}">{{curRange}}</span>
+<button onClick="{{enterFocus}}" aria-label="Enter focus mode" style="min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 8px; border: 1px solid {{t.line}}; background: transparent; color: {{t.ink}}; font-size: 13px; font-weight: 600; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>Focus</button>
+</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{curCats}}" as="cc" hint-placeholder-count="1">
+<span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; background: {{cc.bg}}; color: {{cc.fg}}; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase">{{cc.name}}</span>
+</sc-for>
+</div>
+<span style="font-size: 26px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em">{{curNames}}</span>
+</div>
+<div style="position: relative; width: 100%; max-width: 280px; margin: 0 auto; aspect-ratio: 1 / 1">
+<svg viewBox="0 0 300 300" width="100%" height="100%" role="img" aria-label="{{ringAria}}" style="display: block">
+<circle cx="150" cy="150" r="132" style="fill: none; stroke: {{t.line}}; stroke-width: 10"></circle>
+<path d="{{progressD}}" style="fill: none; stroke: {{t.accent}}; stroke-width: 10; stroke-linecap: round"></path>
+</svg>
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; pointer-events: none">
+<span aria-label="{{countdownAria}}" style="display: flex; align-items: baseline; font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; line-height: 1"><sc-if value="{{cdShowH}}" hint-placeholder-val="{{ true }}"><span style="font-size: 48px; font-weight: 700; letter-spacing: -0.04em">{{cdH}}</span><span style="font-size: 13px; color: {{t.muted}}; margin-right: 6px">h</span></sc-if><span style="font-size: 48px; font-weight: 400; letter-spacing: -0.04em">{{cdM}}</span><span style="font-size: 13px; color: {{t.muted}}; margin-right: 6px">m</span><span style="font-size: 22px; font-weight: 400; color: {{t.muted}}">{{cdS}}</span><span style="font-size: 13px; color: {{t.muted}}">s</span></span>
+</div>
+</div>
+</section>
+
+<section aria-label="Time distribution" style="flex: 999 1 560px; min-width: 0; background: {{t.surface}}; border: 1px solid {{t.line}}; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Time distribution</h2>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: {{t.muted}}">{{distTitle}}</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: center">
+<div style="flex: 1 1 200px; display: flex; justify-content: center; gap: 16px; flex-wrap: wrap">
+<div style="position: relative; width: 220px; height: 220px">
+<svg viewBox="0 0 300 300" width="220" height="220" role="img" aria-label="{{ring.aria}}" style="display: block; overflow: visible">
+<sc-for list="{{ring.segs}}" as="cs" hint-placeholder-count="7">
+<path d="{{cs.d}}" onMouseEnter="{{cs.enter}}" onMouseLeave="{{leaveCat}}" style="fill: {{cs.color}}; opacity: {{cs.op}}; stroke: {{t.surface}}; stroke-width: 2.5; cursor: pointer; transition: opacity 0.2s"><title>{{cs.title}}</title></path>
+</sc-for>
+</svg>
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 2px; pointer-events: none">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.14em; color: {{ring.kickerColor}}">{{ring.kicker}}</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums">{{ring.big}}</span>
+<span style="font-size: 11px; color: {{t.muted}}">{{ring.sub}}</span>
+</div>
+</div>
+
+</div>
+<div style="flex: 1 1 300px; min-width: 0">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 64px 64px; gap: 10px; padding: 0 10px 8px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.1em; color: {{t.muted}}">
+<span>CATEGORY · {{distScopeLabel}}</span><span style="text-align: right">HOURS</span><span style="text-align: right">SHARE</span>
+</div>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px">
+<sc-for list="{{legend}}" as="lg" hint-placeholder-count="7">
+<li>
+<button onMouseEnter="{{lg.enter}}" onMouseLeave="{{leaveCat}}" onFocus="{{lg.enter}}" onBlur="{{leaveCat}}" style="width: 100%; min-height: 44px; display: grid; grid-template-columns: minmax(0, 1fr) 64px 64px; align-items: center; gap: 10px; padding: 6px 10px; border: 0; border-radius: 10px; background: {{lg.bg}}; color: {{t.ink}}; text-align: left; cursor: pointer">
+<span style="display: flex; align-items: center; gap: 10px; min-width: 0">
+<span style="width: 12px; height: 12px; border-radius: 4px; background: {{lg.color}}; flex: none"></span>
+<span style="font-size: 14px; font-weight: 500">{{lg.name}}</span>
+</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums">{{lg.hours}}</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{t.muted}}; text-align: right; font-variant-numeric: tabular-nums">{{lg.pct}}</span>
+</button>
+</li>
+</sc-for>
+</ul>
+</div>
+</div>
+</section>
+</div>
+
+<section aria-label="Timetable" style="background: {{t.surface}}; border: 1px solid {{t.line}}; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600">Timetable</h2>
+<div style="display: flex; align-items: center; gap: 8px">
+<button onClick="{{flipVar}}" aria-label="{{flipAria}}" title="Switch between Week A and Week B" style="min-height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 10px; border: 1px solid {{t.line}}; background: {{t.surface}}; color: {{t.ink}}; font-size: 13px; font-weight: 600; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4L3 8l4 4"></path><path d="M3 8h14"></path><path d="M17 20l4-4-4-4"></path><path d="M21 16H7"></path></svg>Week {{viewVar}}<span style="width: 6px; height: 6px; border-radius: 3px; background: {{viewDot}}"></span></button>
+<button onClick="{{swapAB}}" title="Swap which week is current" style="min-height: 36px; padding: 0 6px; border: 0; background: transparent; color: {{t.muted}}; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-decoration: underline; cursor: pointer">{{thisWeekLabel}} · swap</button>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<sc-if value="{{isDayView}}" hint-placeholder-val="{{ false }}">
+<div role="tablist" aria-label="Day" style="display: flex; flex-wrap: wrap; gap: 2px">
+<sc-for list="{{dayPills}}" as="dp" hint-placeholder-count="7">
+<button role="tab" aria-selected="{{dp.selected}}" onClick="{{dp.pick}}" style="min-width: 44px; min-height: 36px; padding: 0 8px; border-radius: 8px; border: 0; background: {{dp.bg}}; color: {{dp.fg}}; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; cursor: pointer">{{dp.label}}</button>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{edited}}" hint-placeholder-val="{{ false }}">
+<button onClick="{{resetWeek}}" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 0; background: transparent; color: {{t.muted}}; font-size: 13px; font-weight: 500; text-decoration: underline; cursor: pointer">Reset to plan</button>
+</sc-if>
+<button onClick="{{addBlock}}" style="min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; border: 1px solid {{t.line}}; background: {{t.surface}}; color: {{t.ink}}; font-size: 13px; font-weight: 600; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Add block</button>
+<div role="group" aria-label="View" style="display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: {{t.page}}">
+<button onClick="{{viewWeek}}" aria-pressed="{{weekPressed}}" style="min-height: 34px; padding: 0 16px; border-radius: 8px; border: 0; background: {{weekTabBg}}; color: {{t.ink}}; box-shadow: {{weekTabShadow}}; font-size: 13px; font-weight: 600; cursor: pointer">Week</button>
+<button onClick="{{viewDay}}" aria-pressed="{{dayPressed}}" style="min-height: 34px; padding: 0 16px; border-radius: 8px; border: 0; background: {{dayTabBg}}; color: {{t.ink}}; box-shadow: {{dayTabShadow}}; font-size: 13px; font-weight: 600; cursor: pointer">Day</button>
+</div>
+</div>
+</div>
+
+<sc-if value="{{isWeekView}}" hint-placeholder-val="{{ true }}">
+<div style="overflow-x: auto">
+<div style="display: grid; grid-template-columns: 60px repeat(7, minmax(112px, 1fr)); min-width: 920px">
+<div style="border-bottom: 1px solid {{t.line}}"></div>
+<sc-for list="{{cols}}" as="c" hint-placeholder-count="7">
+<button onClick="{{c.pick}}" aria-pressed="{{c.selected}}" style="min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 0; border-bottom: 1px solid {{t.line}}; border-radius: 14px 14px 0 0; background: {{c.band}}; color: {{c.fg}}; cursor: pointer">
+<span style="font-size: 14px; font-weight: 700; letter-spacing: 0.06em">{{c.label}}</span>
+<span style="width: 18px; height: 3px; border-radius: 2px; background: {{c.mark}}"></span>
+</button>
+</sc-for>
+<div style="position: relative; height: {{weekH}}px; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent {{hourLess}}px, {{t.line}} {{hourLess}}px, {{t.line}} {{hourPx}}px)">
+<sc-for list="{{weekHours}}" as="hr" hint-placeholder-count="24">
+<span style="position: absolute; left: 4px; top: {{hr.top}}px; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1; color: {{t.muted}}">{{hr.label}}</span>
+</sc-for>
+</div>
+<sc-for list="{{cols}}" as="c" hint-placeholder-count="7">
+<div style="position: relative; height: {{weekH}}px; border-radius: 0 0 14px 14px; background-color: {{c.band}}; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent {{hourLess}}px, {{t.line}} {{hourLess}}px, {{t.line}} {{hourPx}}px)">
+<sc-for list="{{c.blocks}}" as="b" hint-placeholder-count="12">
+<button type="button" onClick="{{b.edit}}" title="{{b.title}}" aria-label="{{b.title}}" style="margin: 0; font: inherit; cursor: pointer; position: absolute; left: 8px; right: 8px; top: {{b.top}}px; height: {{b.h}}px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0 10px; border: {{b.border}}; border-radius: {{b.radius}}px; background: {{b.bg}}; color: {{b.fg}}; box-shadow: {{b.ring}}; text-align: center; overflow: hidden">
+<span style="display: flex; align-items: center; justify-content: center; gap: 6px; max-width: 100%">
+<span style="font-size: 11px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.3; white-space: {{b.wrap}}; overflow: hidden; text-overflow: ellipsis">{{b.label}}</span>
+</span>
+<sc-if value="{{b.showRange}}" hint-placeholder-val="{{ false }}">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; opacity: 0.75">{{b.range}}</span>
+</sc-if>
+<sc-if value="{{b.showStripe}}" hint-placeholder-val="{{ false }}">
+<span style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: {{b.stripe}}"></span>
+</sc-if>
+</button>
+</sc-for>
+<sc-if value="{{c.showNow}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; top: {{weekNowTop}}px; height: 2px; background: {{t.accent}}; box-shadow: 0 0 0 1.5px {{t.surface}}; z-index: 2"><span style="position: absolute; left: -4px; top: -4px; width: 10px; height: 10px; border-radius: 5px; background: {{t.accent}}"></span></div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isDayView}}" hint-placeholder-val="{{ false }}">
+<div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); max-width: 760px; width: 100%; margin: 0 auto">
+<div style="border-bottom: 1px solid {{t.line}}"></div>
+<div style="min-height: 60px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid {{t.line}}; border-radius: 14px 14px 0 0; background: {{t.page}}; font-size: 14px; font-weight: 700; letter-spacing: 0.06em">{{dayLongUpper}}</div>
+<div style="position: relative; height: {{dayH}}px; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent {{dayLess}}px, {{t.line}} {{dayLess}}px, {{t.line}} {{dayPx}}px)">
+<sc-for list="{{dayHours}}" as="hr" hint-placeholder-count="24">
+<span style="position: absolute; left: 4px; top: {{hr.top}}px; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1; color: {{t.muted}}">{{hr.label}}</span>
+</sc-for>
+</div>
+<div style="position: relative; height: {{dayH}}px; border-radius: 0 0 14px 14px; background-color: {{t.page}}; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent {{dayLess}}px, {{t.line}} {{dayLess}}px, {{t.line}} {{dayPx}}px)">
+<sc-for list="{{dayBlocks}}" as="b" hint-placeholder-count="12">
+<button type="button" onClick="{{b.edit}}" title="{{b.title}}" aria-label="{{b.title}}" style="margin: 0; font: inherit; cursor: pointer; position: absolute; left: 16px; right: 16px; top: {{b.top}}px; height: {{b.h}}px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0 16px; border: {{b.border}}; border-radius: {{b.radius}}px; background: {{b.bg}}; color: {{b.fg}}; box-shadow: {{b.ring}}; text-align: center; overflow: hidden">
+<span style="display: flex; align-items: center; justify-content: center; gap: 8px; max-width: 100%">
+<span style="font-size: 13px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{b.label}}</span>
+</span>
+<sc-if value="{{b.showRange}}" hint-placeholder-val="{{ false }}">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; opacity: 0.75">{{b.range}} · {{b.dur}}</span>
+</sc-if>
+<sc-if value="{{b.showShare}}" hint-placeholder-val="{{ false }}">
+<span style="font-size: 12px; opacity: 0.75">{{b.share}}</span>
+</sc-if>
+<sc-if value="{{b.showStripe}}" hint-placeholder-val="{{ false }}">
+<span style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: {{b.stripe}}"></span>
+</sc-if>
+</button>
+</sc-for>
+<sc-if value="{{dayShowNow}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; top: {{dayNowTop}}px; height: 2px; background: {{t.accent}}; box-shadow: 0 0 0 1.5px {{t.surface}}; z-index: 2"><span style="position: absolute; left: -4px; top: -4px; width: 10px; height: 10px; border-radius: 5px; background: {{t.accent}}"></span></div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+</section>
+
+</div>
+
+<sc-if value="{{editing}}" hint-placeholder-val="{{ false }}">
+<div style="position: fixed; inset: 0; z-index: 25; background: rgba(0, 0, 0, 0.4); display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box">
+<div role="dialog" aria-label="{{editTitle}}" style="width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-sizing: border-box; background: {{t.surface}}; color: {{t.ink}}; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3)">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">{{editTitle}}</h2>
+<button onClick="{{cancelEdit}}" aria-label="Close editor" style="width: 40px; height: 40px; border-radius: 20px; border: 0; background: transparent; color: {{t.muted}}; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: {{t.muted}}">START
+<select value="{{editStart}}" onChange="{{setStart}}" style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid {{t.line}}; background: {{t.page}}; color: {{t.ink}}; font-family: 'JetBrains Mono', monospace; font-size: 14px">
+<sc-for list="{{startOpts}}" as="o" hint-placeholder-count="4"><option value="{{o.v}}">{{o.label}}</option></sc-for>
+</select>
+</label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: {{t.muted}}">END
+<select value="{{editEnd}}" onChange="{{setEnd}}" style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid {{t.line}}; background: {{t.page}}; color: {{t.ink}}; font-family: 'JetBrains Mono', monospace; font-size: 14px">
+<sc-for list="{{endOpts}}" as="o" hint-placeholder-count="4"><option value="{{o.v}}">{{o.label}}</option></sc-for>
+</select>
+</label>
+</div>
+
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="padding: 0; margin-bottom: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: {{t.muted}}">DAYS</legend>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{editDays}}" as="ed" hint-placeholder-count="7">
+<button onClick="{{ed.toggle}}" aria-pressed="{{ed.on}}" style="min-width: 48px; min-height: 40px; padding: 0 10px; border-radius: 10px; border: 1px solid {{ed.border}}; background: {{ed.bg}}; color: {{ed.fg}}; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; cursor: pointer">{{ed.label}}</button>
+</sc-for>
+</div>
+</fieldset>
+
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 12px">
+<legend style="padding: 0; margin-bottom: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: {{t.muted}}">ACTIVITIES · {{editActNote}}</legend>
+<sc-for list="{{actGroups}}" as="ag" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 600; color: {{t.muted}}">{{ag.cat}}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{ag.acts}}" as="ac" hint-placeholder-count="3">
+<button onClick="{{ac.toggle}}" aria-pressed="{{ac.on}}" style="min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid {{ac.border}}; background: {{ac.bg}}; color: {{ac.fg}}; font-size: 13px; font-weight: 500; cursor: pointer">{{ac.name}}</button>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</fieldset>
+
+<sc-if value="{{editError}}" hint-placeholder-val="{{ false }}">
+<span role="alert" style="font-size: 13px; color: {{t.muted}}">{{editErrorText}}</span>
+</sc-if>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; border-top: 1px solid {{t.line}}">
+<sc-if value="{{canClear}}" hint-placeholder-val="{{ true }}">
+<button onClick="{{clearBlock}}" style="min-height: 44px; padding: 0 4px; border: 0; background: transparent; color: {{t.muted}}; font-size: 14px; font-weight: 500; text-decoration: underline; cursor: pointer">Clear to free time</button>
+</sc-if>
+<span style="flex: 1"></span>
+<button onClick="{{cancelEdit}}" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid {{t.line}}; background: transparent; color: {{t.ink}}; font-size: 14px; font-weight: 600; cursor: pointer">Cancel</button>
+<button onClick="{{saveEdit}}" disabled="{{saveDisabled}}" style="min-height: 44px; padding: 0 20px; border-radius: 10px; border: 0; background: {{t.accent}}; color: {{t.accentInk}}; font-size: 14px; font-weight: 600; opacity: {{saveOpacity}}; cursor: pointer">Save</button>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{focusMode}}" hint-placeholder-val="{{ false }}">
+<div role="dialog" aria-label="Focus mode" style="position: fixed; inset: 0; z-index: 20; background: {{t.page}}; color: {{t.ink}}; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 32px; padding: 32px; box-sizing: border-box">
+<button onClick="{{exitFocus}}" aria-label="Exit focus mode" style="position: absolute; top: 20px; right: 20px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 22px; border: 0; background: transparent; color: {{t.muted}}; cursor: pointer">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+<span style="font-size: 32px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; max-width: 720px; text-align: center">{{curNames}}</span>
+<div style="position: relative; width: min(64vmin, 520px); aspect-ratio: 1 / 1">
+<svg viewBox="0 0 300 300" width="100%" height="100%" role="img" aria-label="{{ringAria}}" style="display: block">
+<circle cx="150" cy="150" r="132" style="fill: none; stroke: {{t.line}}; stroke-width: 6"></circle>
+<path d="{{progressD}}" style="fill: none; stroke: {{t.accent}}; stroke-width: 6; stroke-linecap: round"></path>
+</svg>
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; pointer-events: none">
+<span aria-label="{{countdownAria}}" style="display: flex; align-items: baseline; font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; line-height: 1"><sc-if value="{{cdShowH}}" hint-placeholder-val="{{ true }}"><span style="font-size: min(12vmin, 96px); font-weight: 700; letter-spacing: -0.04em">{{cdH}}</span><span style="font-size: min(2.4vmin, 18px); color: {{t.muted}}; margin-right: min(1.4vmin, 12px)">h</span></sc-if><span style="font-size: min(12vmin, 96px); font-weight: 400; letter-spacing: -0.04em">{{cdM}}</span><span style="font-size: min(2.4vmin, 18px); color: {{t.muted}}; margin-right: min(1.4vmin, 12px)">m</span><span style="font-size: min(5vmin, 40px); font-weight: 400; color: {{t.muted}}">{{cdS}}</span><span style="font-size: min(2.4vmin, 18px); color: {{t.muted}}">s</span></span>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{remind}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="position: fixed; right: 20px; bottom: 20px; width: 320px; max-width: calc(100% - 40px); display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 16px; background: {{t.ink}}; color: {{t.page}}; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25); z-index: 30">
+<span style="flex: none; width: 36px; height: 36px; border-radius: 10px; background: {{t.accent}}; color: {{t.accentInk}}; display: flex; align-items: center; justify-content: center">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+</span>
+<span style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; opacity: 0.75">UP NEXT IN {{remindIn}}</span>
+<span style="font-size: 15px; font-weight: 600; line-height: 1.3">{{nextNames}}</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; opacity: 0.75">{{nextRange}}</span>
+</span>
+<button onClick="{{dismiss}}" aria-label="Dismiss reminder" style="flex: none; width: 32px; height: 32px; border-radius: 8px; border: 0; background: transparent; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"reminderMinutes":{"editor":"int","default":5,"min":1,"max":30},"hourHeight":{"editor":"int","default":48,"min":24,"max":60,"unit":"px","section":"Timetable"},"dayHourHeight":{"editor":"int","default":64,"min":36,"max":90,"unit":"px","section":"Timetable"},"$preview":{"width":1280,"height":2000}}'>
+var CATS = [["Work"], ["Training"], ["Leisure"], ["Health"], ["Travel"], ["Chores"], ["Rest"]];
+// [fill, text on fill] — light: white + blue family; dark: black + yellow / white family
+var PALETTES = {
+  light: { Work: ["#1F4FD8", "#FFFFFF"], Training: ["#5B86F0", "#FFFFFF"], Leisure: ["#AFC6F8", "#0B1220"], Health: ["#0B1F5C", "#FFFFFF"],
+           Travel: ["#7D8AA6", "#FFFFFF"], Chores: ["#D6DCE6", "#0B1220"], Rest: ["#EEF1F6", "#556070"] },
+  dark:  { Work: ["#FFD60A", "#000000"], Training: ["#FFFFFF", "#000000"], Leisure: ["#B89C14", "#000000"], Health: ["#FFF1B0", "#000000"],
+           Travel: ["#6E5C0C", "#FFFFFF"], Chores: ["#4A4A4A", "#FFFFFF"], Rest: ["#242424", "#A6A6A6"] }
+};
+var PAL = PALETTES.light;
+var ACTS = {
+  bed: ["Bed time", ["Rest"]], wake: ["Wake-Up", ["Chores"]], shower: ["Shower + Breakfast", ["Chores"]],
+  walk: ["Walk", ["Health"]], ex: ["Exercise", ["Health"]], jp: ["Japanese Study", ["Training"]],
+  anki: ["JP Anki", ["Training"]], side: ["Side projects", ["Training"]], deep: ["Deep learning (library)", ["Training"]],
+  admin: ["Admin", ["Chores"]], travel: ["Travel", ["Travel"]], work: ["Work", ["Work"]], meal: ["Meal", ["Chores"]],
+  unwind: ["Unwind", ["Rest"]], free: ["Free time", ["Leisure"]], gaming: ["Gaming", ["Leisure"]],
+  vg: ["Vanguard", ["Leisure"]], rift: ["Riftbound", ["Leisure"]],
+  darksphere: ["Dark Sphere", ["Leisure"]], family: ["Family time", ["Leisure"]],
+  read: ["Read", ["Training"]], chores: ["Chores", ["Chores"]], beth: ["Beth time", ["Leisure"]],
+  grocery: ["Grocery run", ["Chores"]], mealprep: ["Weekly meal prep", ["Chores"]]
+};
+var DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+var DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+var THEMES = {
+  light: { page: "#F3F5FA", surface: "#FFFFFF", ink: "#0B1220", muted: "#556070", line: "#E4E8F0", accent: "#1F4FD8", accentInk: "#FFFFFF", soft: "#EAF0FF" },
+  dark: { page: "#0A0A0A", surface: "#151515", ink: "#FFFFFF", muted: "#A6A6A6", line: "#262626", accent: "#FFD60A", accentInk: "#000000", soft: "#262106" }
+};
+
+function fillDay(ranges) {
+  var s = new Array(48);
+  ranges.forEach(function (r) { for (var i = Math.round(r[0] * 2); i < Math.round(r[1] * 2); i++) s[i] = r[2]; });
+  return s;
+}
+function weekday(d) {
+  var morning = ["shower", d === 0 ? "walk" : "ex", "jp", "anki"];
+  var eve = [["side"], ["gaming"], ["jp", "deep"], ["vg", "rift"], ["gaming"]][d];
+  return fillDay([[0, 5, ["bed"]], [5, 5.5, morning], [5.5, 7.5, ["side"]], [7.5, 8, ["travel"]], [8, 9, ["admin"]],
+    [9, 13, ["work"]], [13, 13.5, ["meal"]], [13.5, 17, ["work"]], [17, 17.5, ["travel"]], [17.5, 18.5, ["unwind", "meal"]],
+    [18.5, 21.5, eve], [21.5, 22, ["read"]], [22, 24, ["bed"]]]);
+}
+function saturday(main) {
+  return fillDay([[0, 9, ["bed"]], [9, 9.5, ["wake"]], [9.5, 10, ["shower", "ex", "jp", "anki"]], [10, 10.5, ["free"]],
+    [10.5, 11.5, ["travel", "read"]], [11.5, 19, [main]], [19, 20, ["travel", "read"]], [20, 20.5, ["meal"]], [20.5, 21, ["free"]],
+    [21, 21.5, ["read"]], [21.5, 22, ["chores"]], [22, 23, ["beth"]], [23, 23.5, ["unwind"]], [23.5, 24, ["bed"]]]);
+}
+var WEEK = [0, 1, 2, 3, 4].map(weekday);
+WEEK.push(saturday("darksphere"));
+WEEK.push(fillDay([[0, 9, ["bed"]], [9, 9.5, ["wake"]], [9.5, 10, ["shower", "ex", "jp", "anki"]], [10, 10.5, ["family"]],
+  [10.5, 11, ["admin"]], [11, 12, ["chores"]], [12, 12.5, ["grocery"]], [12.5, 13, ["meal"]], [13, 18, ["family"]],
+  [18, 19.5, ["mealprep"]], [19.5, 20, ["meal"]], [20, 20.5, ["admin"]], [20.5, 21, ["family"]], [21, 21.5, ["chores"]],
+  [21.5, 22, ["read"]], [22, 24, ["bed"]]]));
+
+function runsOf(slots) {
+  var out = [];
+  for (var i = 0; i < slots.length; i++) {
+    var k = slots[i].join("|");
+    var last = out[out.length - 1];
+    if (last && last.key === k) last.e = i + 1;
+    else out.push({ key: k, s: i, e: i + 1, acts: slots[i] });
+  }
+  return out;
+}
+function catHours(slots) {
+  var h = {};
+  CATS.forEach(function (c) { h[c[0]] = 0; });
+  slots.forEach(function (acts) {
+    var share = 0.5 / acts.length;
+    acts.forEach(function (a) {
+      var cats = ACTS[a][1];
+      cats.forEach(function (c) { h[c] += share / cats.length; });
+    });
+  });
+  return h;
+}
+var WEEK_B = WEEK.slice(0, 5).concat([saturday("deep"), WEEK[6]]);
+var WEEKS = { A: WEEK, B: WEEK_B };
+var STORE_KEY = "nou-life-timetable-v2";
+function isoWeek(d) {
+  var x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), dn = x.getUTCDay() || 7;
+  x.setUTCDate(x.getUTCDate() + 4 - dn);
+  var y0 = new Date(Date.UTC(x.getUTCFullYear(), 0, 1));
+  return Math.ceil(((x - y0) / 86400000 + 1) / 7);
+}
+var _cache = [];
+function derive(week) {
+  for (var ci = 0; ci < _cache.length; ci++) if (_cache[ci][0] === week) return _cache[ci][1];
+  var days = week.map(function (slots) { return { runs: runsOf(slots), cat: catHours(slots) }; });
+  var wc = {};
+  CATS.forEach(function (c) { wc[c[0]] = days.reduce(function (s, d) { return s + d.cat[c[0]]; }, 0); });
+  var flat = [].concat.apply([], week);
+  var out = { days: days, weekCat: wc, triRuns: runsOf([].concat(flat, flat, flat)) };
+  _cache.unshift([week, out]); if (_cache.length > 6) _cache.pop();
+  return out;
+}
+function validWeek(w) {
+  return Array.isArray(w) && w.length === 7 && w.every(function (d) {
+    return Array.isArray(d) && d.length === 48 && d.every(function (sl) {
+      return Array.isArray(sl) && sl.length > 0 && sl.every(function (a) { return !!ACTS[a]; });
+    });
+  });
+}
+function loadStore() {
+  try {
+    var o = JSON.parse(window.localStorage.getItem(STORE_KEY)) || {};
+    return { weeks: o.weeks && validWeek(o.weeks.A) && validWeek(o.weeks.B) ? o.weeks : null, swap: !!o.swap };
+  } catch (e) { return { weeks: null, swap: false }; }
+}
+function saveStore(weeks, swap) {
+  try { window.localStorage.setItem(STORE_KEY, JSON.stringify({ weeks: weeks === WEEKS ? null : weeks, swap: !!swap })); } catch (e) {}
+}
+var ACT_KEYS = Object.keys(ACTS);
+
+function pt(cx, cy, r, deg) { var a = deg * Math.PI / 180; return [cx + r * Math.sin(a), cy - r * Math.cos(a)]; }
+function f2(n) { return Math.round(n * 100) / 100; }
+function arc(cx, cy, r0, r1, a0, a1) {
+  if (a1 - a0 >= 359.99) a1 = a0 + 359.99;
+  var large = a1 - a0 > 180 ? 1 : 0;
+  var p0 = pt(cx, cy, r1, a0), p1 = pt(cx, cy, r1, a1), p2 = pt(cx, cy, r0, a1), p3 = pt(cx, cy, r0, a0);
+  return "M" + f2(p0[0]) + " " + f2(p0[1]) + " A" + r1 + " " + r1 + " 0 " + large + " 1 " + f2(p1[0]) + " " + f2(p1[1]) +
+    " L" + f2(p2[0]) + " " + f2(p2[1]) + " A" + r0 + " " + r0 + " 0 " + large + " 0 " + f2(p3[0]) + " " + f2(p3[1]) + " Z";
+}
+function pad(n) { return (n < 10 ? "0" : "") + n; }
+function hm(min) { min = Math.round(min); if (min === 1440) return "24:00"; min = ((min % 1440) + 1440) % 1440; return pad(Math.floor(min / 60)) + ":" + pad(min % 60); }
+function dur(min) {
+  var secs = Math.max(0, Math.round(min * 60)), h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+  return h ? h + "h " + pad(m) + "m" : m + "m";
+}
+function clock(secs) { secs = Math.max(0, Math.round(secs)); return pad(Math.floor(secs / 3600)) + ":" + pad(Math.floor((secs % 3600) / 60)) + ":" + pad(secs % 60); }
+function fh(x) { var v = x >= 10 ? x.toFixed(1) : x.toFixed(2); v = v.replace(/\.?0+$/, ""); return v === "" ? "0" : v; }
+function names(acts) { return acts.map(function (a) { return ACTS[a][0]; }).join(" + "); }
+function colorOf(a) { return PAL[ACTS[a][1][0]][0]; }
+function inkOf(a) { return PAL[ACTS[a][1][0]][1]; }
+function catsOf(acts) { var o = []; acts.forEach(function (a) { ACTS[a][1].forEach(function (c) { if (o.indexOf(c) < 0) o.push(c); }); }); return o; }
+function hexA(hex, a) { var n = parseInt(hex.slice(1), 16); return "rgba(" + (n >> 16) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")"; }
+
+class Component extends DCLogic {
+  componentDidMount() { var self = this; this._timer = setInterval(function () { self.setState({ tick: Date.now() }); }, 1000); }
+  componentWillUnmount() { clearInterval(this._timer); }
+
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var dark = st.dark != null ? st.dark : !!this.props.dark;
+    var t = dark ? THEMES.dark : THEMES.light;
+    PAL = dark ? PALETTES.dark : PALETTES.light;
+    if (!this._loaded) { this._loaded = true; this._store = loadStore(); }
+    var weeks = st.weeks || this._store.weeks || WEEKS;
+    var swap = st.swap != null ? st.swap : this._store.swap;
+    var curVar = ((isoWeek(new Date()) % 2 === 1) !== swap) ? "A" : "B";
+    var viewVar = st.variant || curVar;
+    var week = weeks[viewVar];
+    var D = derive(week), DAYS = D.days, WEEK_CAT = D.weekCat;
+    var edited = weeks !== WEEKS;
+    var lead = this.props.reminderMinutes != null ? this.props.reminderMinutes : 5;
+    var hourPx = this.props.hourHeight != null ? this.props.hourHeight : 48;
+    var slotPx = hourPx / 2;
+
+    var now = new Date();
+    var realDay = (now.getDay() + 6) % 7;
+    var realMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    var day = st.day != null ? st.day : realDay;
+    var scrub = null; // timer is always live
+    var live = scrub == null;
+    var vDay = live ? realDay : day;
+    var vMin = live ? realMin : scrub;
+    // live timer follows this week's timetable; preview follows the one on screen
+    var timerVar = live ? curVar : viewVar;
+    var TRI_RUNS = derive(weeks[timerVar]).triRuns;
+    var onScreenLive = timerVar === viewVar;
+
+    // focus = the current event only, on the continuous week timeline
+    var vAbs = (7 + vDay) * 1440 + vMin;
+    var slotIdx = Math.floor(vAbs / 30), ci = 0;
+    for (var i = 0; i < TRI_RUNS.length; i++) { if (TRI_RUNS[i].s <= slotIdx && slotIdx < TRI_RUNS[i].e) { ci = i; break; } }
+    var cur = TRI_RUNS[ci], nxt = TRI_RUNS[ci + 1];
+    var curStart = cur.s * 30, curEnd = cur.e * 30;
+    var remainSec = (curEnd - vAbs) * 60;
+    var pct = Math.min(100, Math.max(0, (vAbs - curStart) / (curEnd - curStart) * 100));
+    var remind = remainSec > 0 && remainSec <= lead * 60 && st.dismissed !== cur.s;
+    var curDayStart = Math.floor(curStart / 1440), curDayEnd = Math.floor((curEnd - 1) / 1440);
+    var curRange = hm(curStart) + "–" + hm(curEnd) + (curDayEnd !== curDayStart ? " (+1)" : "");
+
+    // distribution rings: day and week
+    var hc = st.hoverCat != null ? st.hoverCat : null;
+    function ring(hours, total, scopeName) {
+      var acc = 0, segs = [];
+      CATS.forEach(function (c) {
+        var v = hours[c[0]];
+        if (v <= 0) return;
+        var a0 = acc / total * 360, a1 = (acc + v) / total * 360, isF = hc === c[0];
+        segs.push({ d: arc(150, 150, 98, isF ? 146 : 138, a0, a1), color: PAL[c[0]][0], op: hc == null || isF ? 1 : 0.25,
+          title: c[0] + " · " + fh(v) + "h (" + Math.round(v / total * 100) + "%)",
+          enter: function () { self.setState({ hoverCat: c[0] }); } });
+        acc += v;
+      });
+      var focusV = hc != null ? hours[hc] : null;
+      return {
+        segs: segs, aria: "Time per category, " + scopeName,
+        kicker: hc != null ? hc.toUpperCase() : scopeName.toUpperCase(), kickerColor: hc != null ? t.ink : t.muted,
+        big: hc != null ? fh(focusV) + "h" : total + "h",
+        sub: hc != null ? Math.round(focusV / total * 100) + "% of " + scopeName : (total === 24 ? "in the day" : "in the week")
+      };
+    }
+    var dayCat = DAYS[day].cat;
+    var distScope = (st.view || "week") === "day" ? "day" : "week";
+    var distHours = distScope === "day" ? dayCat : WEEK_CAT, distTotal = distScope === "day" ? 24 : 168;
+    var oneRing = distScope === "day" ? ring(dayCat, 24, DAY_LONG[day]) : ring(WEEK_CAT, 168, "Week");
+    var legend = CATS.map(function (c) {
+      var v = distHours[c[0]];
+      return {
+        name: c[0], color: PAL[c[0]][0],
+        hours: v > 0 ? fh(v) + "h" : "–", pct: v > 0 ? Math.round(v / distTotal * 100) + "%" : "–",
+        bg: hc === c[0] ? t.soft : "transparent",
+        enter: function () { self.setState({ hoverCat: c[0] }); }
+      };
+    });
+
+    // timetable (week + day views)
+    var view = st.view || "week";
+    var dayPx = this.props.dayHourHeight != null ? this.props.dayHourHeight : 64;
+    function stripeFor(acts) {
+      var cs = acts.map(colorOf);
+      return "linear-gradient(to right, " + cs.map(function (c, i) { return c + " " + f2(i / cs.length * 100) + "% " + f2((i + 1) / cs.length * 100) + "%"; }).join(", ") + ")";
+    }
+    function blocksFor(di, px, detailed) {
+      var sp = px / 2;
+      return DAYS[di].runs.map(function (r) {
+        var hpx = (r.e - r.s) * sp, n = r.acts.length, h = hpx - 6;
+        var isCur = onScreenLive && di === vDay && r.s * 30 <= vMin && vMin < r.e * 30;
+        var isBed = n === 1 && r.acts[0] === "bed";
+        var mins = (r.e - r.s) * 30;
+        return {
+          top: r.s * sp + 3, h: h, radius: Math.floor(Math.min(h, 40) / 2),
+          border: "0",
+          bg: isBed ? "transparent" : (n > 1 ? (dark ? "#1E1E1E" : t.soft) : colorOf(r.acts[0])),
+          ring: isCur ? "0 0 0 2px " + t.surface + ", 0 0 0 4px " + t.ink : "none",
+          fg: isBed ? t.muted : (n > 1 ? t.ink : inkOf(r.acts[0])),
+          showStripe: !isBed && n > 1, stripe: n > 1 ? stripeFor(r.acts) : "none",
+          label: names(r.acts), range: hm(r.s * 30) + "–" + hm(r.e * 30), dur: dur(mins),
+          wrap: h >= 40 ? "normal" : "nowrap",
+          showRange: h >= (detailed ? 44 : 52),
+          showShare: detailed && n > 1 && h >= 66, share: n + " activities · " + dur(mins / n) + " each",
+          title: "Edit " + names(r.acts) + " · " + hm(r.s * 30) + "–" + hm(r.e * 30) + (n > 1 ? " · split equally" : ""),
+          edit: function () { self.setState({ edit: { isNew: false, days: [di], start: r.s, end: r.e, acts: r.acts.slice() } }); }
+        };
+      });
+    }
+    var cols = DAYS.map(function (d, di) {
+      var sel = di === day, isToday = di === realDay;
+      return {
+        label: DAY_SHORT[di], selected: sel ? "true" : "false",
+        band: di % 2 === 0 ? t.page : "transparent",
+        fg: isToday ? t.accent : t.ink,
+        mark: sel ? t.accent : "transparent",
+        blocks: blocksFor(di, hourPx, false), showNow: onScreenLive && di === vDay,
+        pick: function () { self.setState({ day: di }); }
+      };
+    });
+    var weekHours = [], dayHours = [];
+    for (var h = 0; h < 24; h++) { weekHours.push({ top: h * hourPx + 6, label: pad(h) + ":00" }); dayHours.push({ top: h * dayPx + 8, label: pad(h) + ":00" }); }
+    var dayPills = DAY_SHORT.map(function (lbl, di) {
+      var sel = di === day;
+      return { label: lbl, selected: sel ? "true" : "false", bg: sel ? t.accent : "transparent", fg: sel ? t.accentInk : (di === realDay ? t.accent : t.muted),
+        pick: function () { self.setState({ day: di }); } };
+    });
+    var tabOn = dark ? "#262626" : "#FFFFFF", tabShadow = dark ? "none" : "0 1px 2px rgba(11,18,32,0.12)";
+
+
+    // ----- block editor -----
+    var ed = st.edit || null;
+    var commit = function (ws) { saveStore(ws, swap); self.setState({ weeks: ws, edit: null }); };
+    var applyEdit = function (acts) {
+      var w = week.map(function (d) { return d.map(function (sl) { return sl.slice(); }); });
+      ed.days.forEach(function (d) { for (var i = ed.start; i < ed.end; i++) w[d][i] = acts.slice(); });
+      var ws = { A: weeks.A, B: weeks.B }; ws[viewVar] = w;
+      commit(ws);
+    };
+    var setEd = function (patch) { var n = {}; for (var k in ed) n[k] = ed[k]; for (var k2 in patch) n[k2] = patch[k2]; self.setState({ edit: n }); };
+    var startOpts = [], endOpts = [];
+    for (var so = 0; so < 48; so++) startOpts.push({ v: String(so), label: hm(so * 30) });
+    for (var eo = 1; eo <= 48; eo++) endOpts.push({ v: String(eo), label: hm(eo * 30) });
+    var edErr = ed ? (ed.end <= ed.start ? "End time must be after the start." : (!ed.days.length ? "Pick at least one day." : (!ed.acts.length ? "Pick at least one activity." : ""))) : "";
+    var editVals = {
+      editing: !!ed, edited: edited,
+      editTitle: (ed && ed.isNew ? "Add block" : "Edit block") + " · Week " + viewVar,
+      editStart: ed ? String(ed.start) : "0", editEnd: ed ? String(ed.end) : "1",
+      startOpts: startOpts, endOpts: endOpts,
+      setStart: function (e) { var v = Number(e.target.value); setEd({ start: v, end: Math.max(ed.end, v + 1) }); },
+      setEnd: function (e) { setEd({ end: Number(e.target.value) }); },
+      editDays: DAY_SHORT.map(function (lbl, di) {
+        var on = !!ed && ed.days.indexOf(di) >= 0;
+        return { label: lbl, on: on ? "true" : "false", bg: on ? t.accent : "transparent", fg: on ? t.accentInk : t.ink, border: on ? t.accent : t.line,
+          toggle: function () { setEd({ days: on ? ed.days.filter(function (x) { return x !== di; }) : ed.days.concat([di]).sort() }); } };
+      }),
+      editActNote: ed && ed.acts.length > 1 ? ed.acts.length + " SELECTED · TIME SPLIT EQUALLY" : (ed && ed.acts.length === 1 ? "1 SELECTED" : "PICK ONE OR MORE"),
+      actGroups: CATS.map(function (c) {
+        return { cat: c[0], acts: ACT_KEYS.filter(function (k) { return ACTS[k][1][0] === c[0]; }).map(function (k) {
+          var on = !!ed && ed.acts.indexOf(k) >= 0;
+          return { name: ACTS[k][0], on: on ? "true" : "false",
+            bg: on ? PAL[c[0]][0] : "transparent", fg: on ? PAL[c[0]][1] : t.ink, border: on ? PAL[c[0]][0] : t.line,
+            toggle: function () { setEd({ acts: on ? ed.acts.filter(function (x) { return x !== k; }) : ed.acts.concat([k]) }); } };
+        }) };
+      }).filter(function (g) { return g.acts.length; }),
+      editError: !!edErr, editErrorText: edErr,
+      saveDisabled: !!edErr, saveOpacity: edErr ? 0.4 : 1,
+      canClear: !!ed && !ed.isNew,
+      saveEdit: function () { if (!edErr) applyEdit(ed.acts); },
+      clearBlock: function () { if (ed.end > ed.start && ed.days.length) applyEdit(["free"]); },
+      cancelEdit: function () { self.setState({ edit: null }); },
+      addBlock: function () { self.setState({ edit: { isNew: true, days: [day], start: 24, end: 26, acts: [] } }); },
+      resetWeek: function () { commit(WEEKS); },
+      varABg: viewVar === "A" ? tabOn : "transparent", varBBg: viewVar === "B" ? tabOn : "transparent",
+      varAShadow: viewVar === "A" ? tabShadow : "none", varBShadow: viewVar === "B" ? tabShadow : "none",
+      varAPressed: viewVar === "A" ? "true" : "false", varBPressed: viewVar === "B" ? "true" : "false",
+      varADot: curVar === "A" ? t.accent : "transparent", varBDot: curVar === "B" ? t.accent : "transparent",
+      viewA: function () { self.setState({ variant: "A" }); }, viewB: function () { self.setState({ variant: "B" }); },
+      viewVar: viewVar, viewDot: viewVar === curVar ? t.accent : "transparent",
+      flipAria: "Showing Week " + viewVar + (viewVar === curVar ? " (this week)" : "") + ". Switch to Week " + (viewVar === "A" ? "B" : "A"),
+      flipVar: function () { self.setState({ variant: viewVar === "A" ? "B" : "A" }); },
+      thisWeekLabel: "This week is " + curVar,
+      swapAB: function () { saveStore(weeks, !swap); self.setState({ swap: !swap, variant: null }); }
+    };
+    var elapsedMin = vAbs - curStart;
+    var durMin = curEnd - curStart;
+    var pDeg = pct * 3.6;
+    var knob = pt(150, 150, 128, pDeg), handIn = pt(150, 150, 96, pDeg);
+    var ringTicks = [];
+    for (var k = 0; k < 12; k++) {
+      var q = k % 3 === 0, a = pt(150, 150, q ? 100 : 104, k * 30), b = pt(150, 150, 110, k * 30);
+      ringTicks.push({ x1: f2(a[0]), y1: f2(a[1]), x2: f2(b[0]), y2: f2(b[1]), w: q ? 2 : 1 });
+    }
+    var rStart = Math.max(0, (1 - lead / durMin) * 360);
+    var ra = pt(150, 150, 148, rStart), rb = pt(150, 150, 148, 359.9);
+    var remindD = "M" + f2(ra[0]) + " " + f2(ra[1]) + " A148 148 0 " + (359.9 - rStart > 180 ? 1 : 0) + " 1 " + f2(rb[0]) + " " + f2(rb[1]);
+    var out = {
+      progressD: (function () { var e = Math.min(359.9, Math.max(0.5, pDeg)), p0 = pt(150, 150, 132, 0), p1 = pt(150, 150, 132, e);
+        return "M" + f2(p0[0]) + " " + f2(p0[1]) + " A132 132 0 " + (e > 180 ? 1 : 0) + " 1 " + f2(p1[0]) + " " + f2(p1[1]); })(),
+      totalLabel: dur(durMin),
+      cdShowH: Math.floor(Math.max(0, remainSec) / 3600) > 0,
+      cdH: String(Math.floor(Math.max(0, remainSec) / 3600)),
+      cdM: (function () { var r = Math.max(0, Math.round(remainSec)), m = Math.floor((r % 3600) / 60); return r >= 3600 ? pad(m) : String(m); })(),
+      cdS: pad(Math.max(0, Math.round(remainSec)) % 60),
+      countdownAria: dur(remainSec / 60) + " left",
+      focusMode: !!st.focus, enterFocus: function () { self.setState({ focus: true }); }, exitFocus: function () { self.setState({ focus: false }); },
+      knobX: f2(knob[0]), knobY: f2(knob[1]), handX: f2(handIn[0]), handY: f2(handIn[1]),
+      ringTicks: ringTicks, curColor: colorOf(cur.acts[0]),
+      showRemindArc: lead < durMin, remindD: remindD,
+      pctLabel: Math.round(pct) + "%",
+      ringAria: "Current event progress, " + Math.round(pct) + "% done, " + dur(remainSec / 60) + " left",
+      t: t, dark: dark, light: !dark, themeLabel: dark ? "Switch to light mode" : "Switch to dark mode",
+      todayLabel: DAY_LONG[realDay].toUpperCase() + " · " + hm(realMin),
+      toggleDark: function () { self.setState({ dark: !dark }); },
+      jumpNow: function () { self.setState({ day: realDay, scrub: null }); },
+
+      nowKicker: (live ? "NOW · " : "PREVIEW · " + DAY_SHORT[vDay] + " ") + hm(vMin),
+      curNames: names(cur.acts), curRange: curRange,
+      curCats: catsOf(cur.acts).map(function (c) { return { name: c, color: PAL[c][1], bg: PAL[c][0], fg: PAL[c][1] }; }),
+      countdown: clock(remainSec), pct: f2(pct),
+      elapsedLabel: dur(elapsedMin), remainLabel: dur(remainSec / 60),
+      nextNames: names(nxt.acts), nextStart: hm(nxt.s * 30), nextColor: colorOf(nxt.acts[0]),
+      nextRange: hm(nxt.s * 30) + "–" + hm(nxt.e * 30),
+
+      dayShort: DAY_SHORT[day],
+      scrubVal: Math.round((live ? (day === realDay ? realMin : 720) : scrub) / 5) * 5,
+      scrubLabel: live ? hm(realMin) : hm(scrub),
+      onScrub: function (e) { self.setState({ scrub: Number(e.target.value) }); },
+      goLive: function () { self.setState({ scrub: null }); },
+      liveBg: live ? t.accent : "transparent", liveFg: live ? t.accentInk : t.ink, liveBorder: live ? t.accent : t.line,
+
+      ring: oneRing, distScopeLabel: distScope === "day" ? DAY_SHORT[day] : "WEEK",
+      distTitle: (distScope === "day" ? DAY_LONG[day].toUpperCase() + " · 24H" : "WHOLE WEEK · 168H") + " · WEEK " + viewVar,
+      legend: legend, leaveCat: function () { self.setState({ hoverCat: null }); },
+      hourLess: hourPx - 1, dayLess: dayPx - 1, dayPx: dayPx, dayLongUpper: DAY_LONG[day].toUpperCase(),
+      cols: cols, weekHours: weekHours, weekH: 24 * hourPx, weekNowTop: f2(vMin / 30 * slotPx),
+      dayBlocks: blocksFor(day, dayPx, true), dayHours: dayHours, dayH: 24 * dayPx,
+      dayShowNow: onScreenLive && day === vDay, dayNowTop: f2(vMin / 60 * dayPx), dayPills: dayPills,
+      isWeekView: view === "week", isDayView: view === "day",
+      weekPressed: view === "week" ? "true" : "false", dayPressed: view === "day" ? "true" : "false",
+      weekTabBg: view === "week" ? tabOn : "transparent", dayTabBg: view === "day" ? tabOn : "transparent",
+      weekTabShadow: view === "week" ? tabShadow : "none", dayTabShadow: view === "day" ? tabShadow : "none",
+      viewWeek: function () { self.setState({ view: "week" }); }, viewDay: function () { self.setState({ view: "day" }); },
+
+      remind: remind, remindIn: Math.floor(remainSec / 60) + ":" + pad(Math.floor(remainSec % 60)),
+      dismiss: function () { self.setState({ dismissed: cur.s }); }
+    };
+    for (var ek in editVals) out[ek] = editVals[ek];
+    return out;
+  }
+}
+</script>
+</body>
+</html>

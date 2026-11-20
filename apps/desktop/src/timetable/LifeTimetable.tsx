@@ -1,168 +1,176 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ActivitiesPanel from "./ActivitiesPanel";
+import BlockEditor, { type EditorState } from "./BlockEditor";
 import { now } from "./clock";
-import { CATEGORIES, SLOTS_PER_DAY, dayBlocks, names, totals, weekdayOf, type Activity, type Category } from "./schedule";
-import { addActivity, copyDay, deleteActivity, saveSlots, updateActivity, useTick, useTimetable } from "./useTimetable";
+import Distribution from "./Distribution";
+import NowPanel, { kickerOf } from "./NowPanel";
+import { colours } from "./palette";
+import { dayBlocks, fmtDuration, hm, names, otherVariant, weekdayOf, type Activity, type Block, type Variant } from "./schedule";
+import { addActivity, resetVariant, restoreCells, saveRange, setSwap, useTick, useTimetable, type Cell } from "./useTimetable";
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const ROW = 28; // px per half hour
-const hhmm = (slot: number) => `${String(Math.floor(slot / 2)).padStart(2, "0")}:${slot % 2 ? "30" : "00"}`;
-const hours = (n: number) => (n === 0 ? "–" : Number.isInteger(n) ? String(n) : n.toFixed(1));
+const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+const DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const WEEK_PX = 48, DAY_PX = 64; // pixels per hour
 type Status = { state: "saved" | "saving" | "error"; message?: string };
-type Selection = { day: number; anchor: number; focus: number } | null;
-const colourStyle = (a?: Activity): React.CSSProperties | undefined => (a?.colour ? ({ "--cat-bar": a.colour, "--cat-bg": `color-mix(in srgb, ${a.colour} 22%, var(--card))` } as React.CSSProperties) : undefined);
+
+function BlockButton({ block, day, px, detailed, activities, live, nowMin, onEdit }: { block: Block; day: number; px: number; detailed: boolean; activities: Activity[]; live: boolean; nowMin: number; onEdit: (el: HTMLElement) => void }) {
+  const acts = block.ids.map(id => activities.find(a => a.id === id)).filter((a): a is Activity => !!a);
+  const n = acts.length, sp = px / 2, h = block.count * sp - 6;
+  const isBed = n === 1 && acts[0].name.toLowerCase() === "bed time";
+  const quiet = isBed || n === 0;
+  const mins = block.count * 30, range = `${hm(block.first * 30)}–${hm((block.first + block.count) * 30)}`;
+  const isCur = live && nowMin >= block.first * 30 && nowMin < (block.first + block.count) * 30;
+  const single = n === 1 ? colours(acts[0]) : null;
+  const label = n === 0 ? "Empty" : names(block.ids, activities);
+  const stripe = n > 1 ? `linear-gradient(to right, ${acts.map((a, i) => `${colours(a).fill} ${(i / n) * 100}% ${((i + 1) / n) * 100}%`).join(", ")})` : "";
+  const style: React.CSSProperties = {
+    top: block.first * sp + 3, height: h, borderRadius: Math.floor(Math.min(h, 40) / 2),
+    background: quiet ? "transparent" : n > 1 ? "var(--tt-shared)" : single!.fill,
+    color: quiet ? "var(--muted)" : n > 1 ? "var(--text)" : single!.ink,
+    boxShadow: isCur ? "0 0 0 2px var(--tt-surface), 0 0 0 4px var(--text)" : "none",
+  };
+  const title = `Edit ${label} · ${range}${n > 1 ? " · split equally" : ""}`;
+  return <button type="button" className={"tt-block" + (detailed ? " day" : "") + (isCur ? " current" : "")} data-day={day} data-first={block.first} style={style} title={title} aria-label={title} onClick={e => onEdit(e.currentTarget)}>
+    <span className={"tt-block-name" + (h >= 40 ? " wrap" : "")}>{label}</span>
+    {h >= (detailed ? 44 : 52) && <span className="tt-block-range">{range}{detailed ? " · " + fmtDuration(mins) : ""}</span>}
+    {detailed && n > 1 && h >= 66 && <span className="tt-block-share">{n} activities · {fmtDuration(mins / n)} each</span>}
+    {!quiet && n > 1 && <span className="tt-block-stripe" style={{ background: stripe }} />}
+  </button>;
+}
 
 export default function LifeTimetable({ disabled = false }: { disabled?: boolean }) {
-  const { data, grid, activities, error } = useTimetable();
-  const t = useTick(30000, now);
-  const [status, setStatus] = useState<Status>({ state: "saved" });
-  const [sel, setSel] = useState<Selection>(null);
-  const [picker, setPicker] = useState(false);
-  const [checked, setChecked] = useState<string[]>([]);
-  const [copyTo, setCopyTo] = useState<number[]>([]);
+  const { data, timeline, activities, swap, error, variantNow } = useTimetable();
+  const t = useTick(15000, now);
+  const [view, setView] = useState<"week" | "day">("week");
+  const [viewVar, setViewVar] = useState<Variant | null>(null);
+  const [selDay, setSelDay] = useState<number | null>(null);
   const [showActs, setShowActs] = useState(false);
-  const [focusCell, setFocusCell] = useState({ day: weekdayOf(now()), slot: 0 });
-  const dragging = useRef(false);
-  const scroller = useRef<HTMLDivElement>(null);
-  const scrolled = useRef(false);
-  const byId = useMemo(() => new Map(activities.map(a => [a.id, a])), [activities]);
-  const sums = useMemo(() => totals(grid, activities), [grid, activities]);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [editorError, setEditorError] = useState("");
+  const [undo, setUndo] = useState<{ variant: Variant; cells: Cell[] } | null>(null);
+  const [status, setStatus] = useState<Status>({ state: "saved" });
+  const opener = useRef<HTMLElement | null>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+
   const today = weekdayOf(t);
-  const nowSlotFloat = (t.getHours() * 60 + t.getMinutes()) / 30;
+  const nowMin = t.getHours() * 60 + t.getMinutes() + t.getSeconds() / 60;
+  const currentVar = variantNow(t);
+  const variant = viewVar ?? currentVar;
+  const day = selDay ?? today;
+  const live = variant === currentVar;
+  const grid = timeline.grids[variant];
+  const usedBy = useMemo(() => (id: string) => (data?.slots ?? []).filter(s => s.activity_id === id).length, [data]);
 
-  useEffect(() => {
-    if (!data || scrolled.current || !scroller.current) return;
-    scrolled.current = true;
-    scroller.current.scrollTop = Math.max(0, nowSlotFloat * ROW - 140);
-  }, [data, nowSlotFloat]);
+  useEffect(() => { if (!undo) return; const id = setTimeout(() => setUndo(null), 10000); return () => clearTimeout(id); }, [undo]);
 
-  const persist = async (job: () => Promise<void>) => {
+  const run = async (job: () => Promise<unknown>) => {
     setStatus({ state: "saving" });
-    try { await job(); setStatus({ state: "saved" }); } catch (e) { setStatus({ state: "error", message: String(e) }); }
+    try { await job(); setStatus({ state: "saved" }); } catch (e) { setStatus({ state: "error", message: String(e) }); throw e; }
   };
-  const range = sel ? { first: Math.min(sel.anchor, sel.focus), last: Math.max(sel.anchor, sel.focus) } : null;
-  const slotsOfSel = () => (sel && range ? Array.from({ length: range.last - range.first + 1 }, (_, i) => range.first + i) : []);
-  const inSel = (day: number, slot: number) => !!sel && !!range && sel.day === day && slot >= range.first && slot <= range.last;
+  const runQuiet = (job: () => Promise<unknown>) => run(job).catch(() => undefined);
 
-  function openPicker(next: Selection) {
-    if (!next) return;
-    const lo = Math.min(next.anchor, next.focus), hi = Math.max(next.anchor, next.focus);
-    const cells = Array.from({ length: hi - lo + 1 }, (_, i) => grid[next.day * SLOTS_PER_DAY + lo + i]);
-    setChecked(cells.length ? cells[0].filter(id => cells.every(c => c.includes(id))) : []);
-    setCopyTo([]);
-    setPicker(true);
+  const closeEditor = () => {
+    setEditor(null); setEditorError("");
+    const el = opener.current;
+    requestAnimationFrame(() => { if (el && el.isConnected) el.focus(); else addButton.current?.focus(); });
+  };
+  const openEdit = (state: EditorState, from?: HTMLElement | null) => { opener.current = from ?? (document.activeElement as HTMLElement | null); setEditorError(""); setEditor(state); };
+  const editBlock = (b: Block, d: number, el: HTMLElement) => openEdit({ isNew: false, days: [d], start: b.first, end: b.first + b.count, acts: [...b.ids] }, el);
+
+  async function commit(s: EditorState, acts: string[]) {
+    try {
+      let before: Cell[] = [];
+      await run(async () => { before = await saveRange(variant, s.days, s.start, s.end, acts); });
+      setUndo({ variant, cells: before });
+      closeEditor();
+    } catch (e) { setEditorError(String(e)); }
   }
-  const select = (next: Selection, open = false) => { setSel(next); if (next) setFocusCell({ day: next.day, slot: next.focus }); if (open) openPicker(next); else setPicker(false); };
-  const apply = (ids: string[]) => { if (!sel) return; void persist(() => saveSlots(sel.day, slotsOfSel(), ids)).then(() => setPicker(false)); };
-
-  function onKey(e: React.KeyboardEvent, day: number, slot: number) {
-    const move = (dd: number, ds: number) => {
-      e.preventDefault();
-      const nd = Math.min(6, Math.max(0, day + dd)), ns = Math.min(SLOTS_PER_DAY - 1, Math.max(0, slot + ds));
-      if (e.shiftKey && dd === 0) select({ day, anchor: sel && sel.day === day ? sel.anchor : slot, focus: ns });
-      else select({ day: nd, anchor: ns, focus: ns });
-      requestAnimationFrame(() => scroller.current?.querySelector<HTMLElement>(`[data-cell="${nd}-${ns}"]`)?.focus());
-    };
-    if (e.key === "ArrowDown") move(0, 1); else if (e.key === "ArrowUp") move(0, -1);
-    else if (e.key === "ArrowRight") move(1, 0); else if (e.key === "ArrowLeft") move(-1, 0);
-    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPicker(sel && sel.day === day ? sel : { day, anchor: slot, focus: slot }); if (!sel || sel.day !== day) setSel({ day, anchor: slot, focus: slot }); }
-    else if ((e.key === "Delete" || e.key === "Backspace") && !disabled) { e.preventDefault(); const s = sel && sel.day === day ? sel : { day, anchor: slot, focus: slot }; void persist(() => saveSlots(day, Array.from({ length: Math.abs(s.focus - s.anchor) + 1 }, (_, i) => Math.min(s.anchor, s.focus) + i), [])); }
-    else if (e.key === "Escape") { setSel(null); setPicker(false); }
+  async function clearToFree(s: EditorState) {
+    try {
+      let id = activities.find(a => a.name.toLowerCase() === "free time")?.id;
+      if (!id) await run(async () => { id = (await addActivity("Free time", "Leisure")).id; });
+      await commit(s, [id!]);
+    } catch (e) { setEditorError(String(e)); }
   }
+  const undoLast = () => { if (!undo) return; const u = undo; setUndo(null); void runQuiet(() => restoreCells(u.variant, u.cells)); };
+  const reset = () => { if (window.confirm(`Reset Week ${variant} to the original plan? Your edits to this week will be replaced.`)) void runQuiet(() => resetVariant(variant)); };
+  const flip = () => setViewVar(otherVariant(variant));
+  const toggleSwap = () => { setViewVar(null); void runQuiet(() => setSwap(!swap)); };
+  const jump = () => {
+    setSelDay(today); setViewVar(null);
+    setTimeout(() => document.querySelector<HTMLElement>('[data-testid="now-line"]')?.scrollIntoView?.({ block: "center", behavior: "smooth" }), 30);
+  };
 
-  const [adding, setAdding] = useState({ name: "", category: "Training" as Category });
-  const [deleting, setDeleting] = useState<{ id: string; to: string } | null>(null);
-  const usedBy = (id: string) => (data?.slots ?? []).filter(s => s.activity_id === id).length;
-
-  if (!data) return <div className="document tt-screen"><h1>Life Timetable</h1><p className={error ? "error" : "hint"} role={error ? "alert" : "status"}>{error || "Opening the timetable…"}</p></div>;
-  const pickerTitle = sel && range ? `${DAYS[sel.day]} ${hhmm(range.first)}–${hhmm(range.last + 1)}` : "";
-  const grouped = CATEGORIES.map(c => ({ c, list: activities.filter(a => a.category === c) })).filter(g => g.list.length);
+  if (!data) return <div className="document tt-screen"><h1 className="tt-title">Life Timetable</h1><p className={error ? "error" : "hint"} role={error ? "alert" : "status"}>{error || "Opening the timetable…"}</p></div>;
+  const edited = variant === "A" ? data.edited.a : data.edited.b;
+  const hourLines = (px: number): React.CSSProperties => ({ ["--hr" as string]: px + "px" });
+  const hours = Array.from({ length: 24 }, (_, h) => h);
+  const nowLine = (px: number) => <div className="tt-nowline" data-testid="now-line" style={{ top: (nowMin / 60) * px }} aria-hidden="true"><span /></div>;
 
   return <div className="document tt-screen" aria-label="Life Timetable">
     <header className="tt-head">
-      <div><h1>Life Timetable</h1><p className="hint">Your week in half-hour slots. Click or drag to choose slots, then pick what happens in them.</p></div>
-      <div className="tt-tools">
-        <span className={"tt-status " + status.state} role="status">{status.state === "saving" ? "Saving…" : status.state === "error" ? "Not saved: " + status.message : "Saved"}</span>
-        <button onClick={() => { if (scroller.current) scroller.current.scrollTop = Math.max(0, nowSlotFloat * ROW - 140); }}>Jump to now</button>
-        <button aria-expanded={showActs} onClick={() => setShowActs(v => !v)}>Activities</button>
+      <div className="tt-head-title">
+        <span className="tt-kicker-mono">{kickerOf(t)}</span>
+        <h1 className="tt-title">Life Timetable</h1>
+      </div>
+      <div className="tt-wrap">
+        <button type="button" className="tt-btn primary big" onClick={jump}>Jump to now</button>
+        <button type="button" className="tt-btn big" aria-expanded={showActs} onClick={() => setShowActs(v => !v)}>Activities</button>
       </div>
     </header>
+    <span className="tt-status" role="status">{status.state === "saving" ? "Saving…" : status.state === "error" ? "Not saved: " + status.message : ""}</span>
 
-    {showActs && <section className="tt-acts" aria-label="Activities">
-      <ul>
-        {activities.map(a => <li key={a.id} className="tt-act">
-          <input aria-label={"Name of " + a.name} defaultValue={a.name} disabled={disabled} onBlur={e => { const v = e.target.value.trim(); if (v && v !== a.name) void persist(() => updateActivity({ id: a.id, name: v, category: a.category, colour: a.colour, remind: a.remind })); else e.target.value = a.name; }} />
-          <select aria-label={"Category of " + a.name} value={a.category} disabled={disabled} onChange={e => void persist(() => updateActivity({ id: a.id, name: a.name, category: e.target.value as Category, colour: a.colour, remind: a.remind }))}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
-          <input type="color" aria-label={"Colour of " + a.name} value={a.colour ?? "#1d4ed8"} disabled={disabled} onChange={e => void persist(() => updateActivity({ id: a.id, name: a.name, category: a.category, colour: e.target.value, remind: a.remind }))} />
-          {a.colour && <button className="link-button" disabled={disabled} onClick={() => void persist(() => updateActivity({ id: a.id, name: a.name, category: a.category, colour: null, remind: a.remind }))}>Reset colour</button>}
-          <label className="tt-check"><input type="checkbox" checked={a.remind} disabled={disabled} onChange={e => void persist(() => updateActivity({ id: a.id, name: a.name, category: a.category, colour: a.colour, remind: e.target.checked }))} /> Remind</label>
-          {deleting?.id === a.id
-            ? <span className="tt-del">{usedBy(a.id) > 0 && <><label>Move its {usedBy(a.id)} slots to <select aria-label="Reassign slots to" value={deleting.to} onChange={e => setDeleting({ id: a.id, to: e.target.value })}><option value="">Choose…</option>{activities.filter(o => o.id !== a.id).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label></>}
-              <button className="danger" disabled={disabled || (usedBy(a.id) > 0 && !deleting.to)} onClick={() => void persist(() => deleteActivity(a.id, deleting.to || null)).then(() => setDeleting(null))}>Delete {a.name}</button>
-              <button onClick={() => setDeleting(null)}>Cancel</button></span>
-            : <button className="danger" disabled={disabled} aria-label={"Delete " + a.name} onClick={() => setDeleting({ id: a.id, to: "" })}>Delete</button>}
-        </li>)}
-      </ul>
-      <form className="tt-add" onSubmit={e => { e.preventDefault(); if (!adding.name.trim()) return; void persist(() => addActivity(adding.name.trim(), adding.category)).then(() => setAdding({ ...adding, name: "" })); }}>
-        <input aria-label="New activity name" placeholder="New activity" value={adding.name} disabled={disabled} onChange={e => setAdding({ ...adding, name: e.target.value })} />
-        <select aria-label="New activity category" value={adding.category} onChange={e => setAdding({ ...adding, category: e.target.value as Category })}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
-        <button className="primary" type="submit" disabled={disabled || !adding.name.trim()}>Add activity</button>
-      </form>
-    </section>}
-
-    <div className="tt-scroll" ref={scroller} tabIndex={-1} onMouseUp={() => { if (dragging.current) { dragging.current = false; openPicker(sel); } }} onMouseLeave={() => { if (dragging.current) { dragging.current = false; openPicker(sel); } }}>
-      <div className="tt-grid" role="grid" aria-label="Weekly timetable" aria-rowcount={SLOTS_PER_DAY} aria-colcount={7} style={{ ["--row" as string]: ROW + "px" }}>
-        <div className="tt-corner" />
-        {DAYS.map((d, i) => <div key={d} className={"tt-dayhead" + (i === today ? " today" : "")} role="columnheader" aria-current={i === today ? "date" : undefined}>{d.slice(0, 3)}</div>)}
-        <div className="tt-gutter" aria-hidden="true">{Array.from({ length: SLOTS_PER_DAY }, (_, s) => <div key={s} className="tt-time">{s % 2 === 0 ? hhmm(s) : ""}</div>)}</div>
-        {DAYS.map((d, day) => <div key={d} className={"tt-day" + (day === today ? " today" : "")} role="rowgroup" aria-label={d}>
-          {dayBlocks(grid, day).map(b => {
-            const first = byId.get(b.ids[0]);
-            const label = b.ids.length ? names(b.ids, activities) : "";
-            return <div key={b.first} className={"tt-block cat-" + (first?.category ?? "").toLowerCase() + (b.ids.length ? "" : " empty")} style={{ top: b.first * ROW, height: b.count * ROW, ...colourStyle(first) }}>
-              {b.ids.length > 0 && <><span className="tt-name">{label}</span>{b.count > 1 && <span className="tt-range">{hhmm(b.first)}–{hhmm(b.first + b.count)}</span>}</>}
-            </div>;
-          })}
-          {day === today && <div className="tt-nowline" data-testid="now-line" style={{ top: nowSlotFloat * ROW }} aria-hidden="true" />}
-          <div className="tt-cells">
-            {Array.from({ length: SLOTS_PER_DAY }, (_, slot) => {
-              const ids = grid[day * SLOTS_PER_DAY + slot];
-              return <button key={slot} type="button" role="gridcell" data-cell={day + "-" + slot} aria-selected={inSel(day, slot)} disabled={disabled}
-                className={"tt-cell" + (inSel(day, slot) ? " selected" : "")}
-                tabIndex={focusCell.day === day && focusCell.slot === slot ? 0 : -1}
-                aria-label={`${d} ${hhmm(slot)}${ids.length ? ": " + names(ids, activities) : ", empty"}`}
-                title={ids.length ? `${hhmm(slot)} ${names(ids, activities)}` : undefined}
-                onMouseDown={e => { if (e.button !== 0) return; dragging.current = true; select({ day, anchor: slot, focus: slot }); }}
-                onMouseEnter={() => { if (dragging.current && sel && sel.day === day) select({ day, anchor: sel.anchor, focus: slot }); }}
-                onFocus={() => setFocusCell({ day, slot })}
-                onKeyDown={e => onKey(e, day, slot)} />;
-            })}
-          </div>
-        </div>)}
-      </div>
+    <div className="tt-top">
+      <NowPanel />
+      <Distribution grid={grid} activities={activities} day={view === "day" ? day : null} variant={variant} />
     </div>
 
-    {picker && sel && <aside className="tt-picker" role="dialog" aria-label="Choose activities">
-      <h2>{pickerTitle}</h2>
-      {grouped.map(g => <fieldset key={g.c}><legend>{g.c}</legend>
-        {g.list.map(a => <label key={a.id} className="tt-check"><input type="checkbox" checked={checked.includes(a.id)} onChange={e => setChecked(e.target.checked ? [...checked, a.id] : checked.filter(x => x !== a.id))} /> {a.name}</label>)}</fieldset>)}
-      <div className="tt-picker-actions">
-        <button className="primary" disabled={disabled} onClick={() => apply(checked)}>Apply</button>
-        <button disabled={disabled} onClick={() => apply([])}>Clear slots</button>
-        <button onClick={() => setPicker(false)}>Close</button>
-      </div>
-      <fieldset><legend>Copy {DAYS[sel.day]} to…</legend>
-        {DAYS.map((d, i) => i !== sel.day && <label key={d} className="tt-check"><input type="checkbox" checked={copyTo.includes(i)} onChange={e => setCopyTo(e.target.checked ? [...copyTo, i] : copyTo.filter(x => x !== i))} /> {d}</label>)}
-        <button disabled={disabled || !copyTo.length} onClick={() => { if (window.confirm(`Replace ${copyTo.map(i => DAYS[i]).join(", ")} with a copy of ${DAYS[sel.day]}?`)) void persist(() => copyDay(sel.day, copyTo)).then(() => setPicker(false)); }}>Copy day</button>
-      </fieldset>
-    </aside>}
+    {showActs && <ActivitiesPanel activities={activities} usedBy={usedBy} disabled={disabled} run={runQuiet} />}
 
-    <section className="tt-totals" aria-label="Hours per category">
-      <h2>Hours per category</h2>
-      <p className="hint">A slot with several activities counts each of them.</p>
-      <div className="tt-totals-scroll"><table>
-        <thead><tr><th scope="col">Category</th>{DAYS.map(d => <th key={d} scope="col">{d.slice(0, 3)}</th>)}<th scope="col">Week</th></tr></thead>
-        <tbody>{CATEGORIES.map(c => <tr key={c}><th scope="row"><span className={"tt-dot cat-" + c.toLowerCase()} aria-hidden="true" />{c}</th>{sums.perDay[c].map((n, i) => <td key={i}>{hours(n)}</td>)}<td className="week">{hours(sums.perWeek[c])}</td></tr>)}</tbody>
-      </table></div>
+    <section className="tt-card tt-table" aria-label="Timetable">
+      <div className="tt-table-head">
+        <div className="tt-wrap center">
+          <h2>Timetable</h2>
+          <button type="button" className="tt-btn" onClick={flip} aria-label={`Showing Week ${variant}${live ? " (this week)" : ""}. Switch to Week ${otherVariant(variant)}`} title="Switch between Week A and Week B">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 4L3 8l4 4" /><path d="M3 8h14" /><path d="M17 20l4-4-4-4" /><path d="M21 16H7" /></svg>Week {variant}{live && <span className="tt-dot-live" aria-hidden="true" />}
+          </button>
+          <button type="button" className="tt-text-btn mono" onClick={toggleSwap} title="Swap which week is current" disabled={disabled}>This week is {currentVar} · swap</button>
+        </div>
+        <div className="tt-wrap center">
+          {view === "day" && <div role="tablist" aria-label="Day" className="tt-pills">{DAY_SHORT.map((d, i) => <button key={d} type="button" role="tab" aria-selected={i === day} className={"tt-daypill" + (i === day ? " on" : "") + (i === today ? " today" : "")} onClick={() => setSelDay(i)}>{d}</button>)}</div>}
+          {edited && <button type="button" className="tt-text-btn" disabled={disabled} onClick={reset}>Reset to plan</button>}
+          <button ref={addButton} type="button" className="tt-btn" disabled={disabled} onClick={e => openEdit({ isNew: true, days: [day], start: 24, end: 26, acts: [] }, e.currentTarget)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Add block
+          </button>
+          <div role="group" aria-label="View" className="tt-seg-toggle">
+            <button type="button" aria-pressed={view === "week"} className={view === "week" ? "on" : ""} onClick={() => setView("week")}>Week</button>
+            <button type="button" aria-pressed={view === "day"} className={view === "day" ? "on" : ""} onClick={() => setView("day")}>Day</button>
+          </div>
+        </div>
+      </div>
+
+      {view === "week" ? <div className="tt-scroll-x"><div className="tt-weekgrid">
+        <div className="tt-headcell" />
+        {DAY_SHORT.map((d, i) => <button key={d} type="button" className={"tt-colhead" + (i % 2 === 0 ? " band" : "") + (i === today ? " today" : "")} aria-pressed={i === day} onClick={() => setSelDay(i)}>
+          <span>{d}</span><span className={"tt-mark" + (i === day ? " on" : "")} /></button>)}
+        <div className="tt-gutter" style={{ ...hourLines(WEEK_PX), height: 24 * WEEK_PX }}>{hours.map(h => <span key={h} style={{ top: h * WEEK_PX + 6 }}>{String(h).padStart(2, "0")}:00</span>)}</div>
+        {DAY_SHORT.map((d, i) => <div key={d} className={"tt-col" + (i % 2 === 0 ? " band" : "")} style={{ ...hourLines(WEEK_PX), height: 24 * WEEK_PX }}>
+          {dayBlocks(grid, i).map(b => <BlockButton key={b.first} block={b} day={i} px={WEEK_PX} detailed={false} activities={activities} live={live} nowMin={nowMin} onEdit={el => editBlock(b, i, el)} />)}
+          {live && i === today && nowLine(WEEK_PX)}
+        </div>)}
+      </div></div>
+      : <div className="tt-daygrid">
+        <div className="tt-headcell" />
+        <div className="tt-dayhead">{DAY_LONG[day].toUpperCase()}</div>
+        <div className="tt-gutter" style={{ ...hourLines(DAY_PX), height: 24 * DAY_PX }}>{hours.map(h => <span key={h} style={{ top: h * DAY_PX + 8 }}>{String(h).padStart(2, "0")}:00</span>)}</div>
+        <div className="tt-col band" style={{ ...hourLines(DAY_PX), height: 24 * DAY_PX }}>
+          {dayBlocks(grid, day).map(b => <BlockButton key={b.first} block={b} day={day} px={DAY_PX} detailed activities={activities} live={live} nowMin={nowMin} onEdit={el => editBlock(b, day, el)} />)}
+          {live && day === today && nowLine(DAY_PX)}
+        </div>
+      </div>}
     </section>
+
+    {undo && <div className="tt-undo" role="status"><span>Block saved</span><button type="button" onClick={undoLast}>Undo</button></div>}
+    {editor && <BlockEditor initial={editor} variant={variant} activities={activities} serverError={editorError} onSave={s => void commit(s, s.acts)} onClear={s => void clearToFree(s)} onCancel={closeEditor} />}
   </div>;
 }

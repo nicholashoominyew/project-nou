@@ -1,5 +1,5 @@
 {
- "_note": "Seed for the Life Timetable, from the Notion page Life Timetable (Areas), updated 20 Nov 2026. Times are local. A run is [start, end, activities sharing the slot]. Used once, when the timetable tables are first created and are empty.",
+ "_note": "Seed for the Life Timetable, from the Notion page Life Timetable (Areas), updated 20 Nov 2026. Times are local. A run is [start, end, activities sharing the slot]. 'days' is Week A. 'variants.B' replaces whole days for Week B (Saturday 11:30-19:00 is Deep learning (library) instead of Dark Sphere). Used once, when the timetable tables are first created and are empty.",
  "activities": [
   {
    "name": "Bed time",
@@ -92,7 +92,7 @@
    "remind": true
   },
   {
-   "name": "Dark Sphere / Library deep learning (alternating)",
+   "name": "Dark Sphere",
    "category": "Leisure",
    "remind": true
   },
@@ -684,7 +684,7 @@
     "11:30",
     "19:00",
     [
-     "Dark Sphere / Library deep learning (alternating)"
+     "Dark Sphere"
     ]
    ],
    [
@@ -862,5 +862,114 @@
     ]
    ]
   ]
+ },
+ "variants": {
+  "B": {
+   "sat": [
+    [
+     "00:00",
+     "09:00",
+     [
+      "Bed time"
+     ]
+    ],
+    [
+     "09:00",
+     "09:30",
+     [
+      "Wake-Up"
+     ]
+    ],
+    [
+     "09:30",
+     "10:00",
+     [
+      "Shower + Breakfast",
+      "Exercise",
+      "Japanese Study",
+      "JP Anki"
+     ]
+    ],
+    [
+     "10:00",
+     "10:30",
+     [
+      "Free time"
+     ]
+    ],
+    [
+     "10:30",
+     "11:30",
+     [
+      "Travel",
+      "Read"
+     ]
+    ],
+    [
+     "11:30",
+     "19:00",
+     [
+      "Deep learning (library)"
+     ]
+    ],
+    [
+     "19:00",
+     "20:00",
+     [
+      "Travel",
+      "Read"
+     ]
+    ],
+    [
+     "20:00",
+     "20:30",
+     [
+      "Meal"
+     ]
+    ],
+    [
+     "20:30",
+     "21:00",
+     [
+      "Free time"
+     ]
+    ],
+    [
+     "21:00",
+     "21:30",
+     [
+      "Read"
+     ]
+    ],
+    [
+     "21:30",
+     "22:00",
+     [
+      "Chores"
+     ]
+    ],
+    [
+     "22:00",
+     "23:00",
+     [
+      "Beth time"
+     ]
+    ],
+    [
+     "23:00",
+     "23:30",
+     [
+      "Unwind"
+     ]
+    ],
+    [
+     "23:30",
+     "24:00",
+     [
+      "Bed time"
+     ]
+    ]
+   ]
+  }
  }
 }
