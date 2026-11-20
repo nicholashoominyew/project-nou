@@ -58,14 +58,90 @@ pub fn handle(c: &Connection, req: &ApiRequest, port: u16) -> ApiResponse {
             if let Err(r) = needs(&who, "chat:read") { return r; }
             let after = req.query.get("after").and_then(|v| v.parse::<i64>().ok());
             let limit = req.query.get("limit").and_then(|v| v.parse::<u32>().ok()).unwrap_or(50);
-            match crate::chat::list(c, after, limit) { Ok(list) => data(serde_json::to_value(list).unwrap_or(Value::Null)), Err(_) => fail(500, "The chat could not be read") }
+            let room = req.query.get("room").map(String::as_str);
+            let found = match req.query.get("mentioning").filter(|n| !n.trim().is_empty()) {
+                Some(name) => crate::chat::list_mentioning(c, after, limit, room, name),
+                None => crate::chat::list(c, after, limit, room),
+            };
+            match found { Ok(list) => data(serde_json::to_value(list).unwrap_or(Value::Null)), Err(m) if m == "Unknown room" => fail(404, &m), Err(_) => fail(500, "The chat could not be read") }
+        }
+        ("GET", ["v1", "rooms"]) => {
+            if let Err(r) = needs(&who, "chat:read") { return r; }
+            match crate::chat::rooms(c) { Ok(list) => data(serde_json::to_value(list).unwrap_or(Value::Null)), Err(_) => fail(500, "The rooms could not be read") }
         }
         ("POST", ["v1", "chat"]) => {
             if let Err(r) = needs(&who, "chat:write") { return r; }
             let Ok(body) = serde_json::from_slice::<Value>(&req.body) else { return fail(400, "The body must be JSON") };
             let Some(text) = body.get("body").and_then(Value::as_str) else { return fail(400, "body is required") };
-            match crate::chat::post_assistant(c, &who.id, &who.name, text) {
-                Ok(m) => reply(201, json!({ "id": m.id, "at": m.at, "author": m.author })),
+            let (room, role) = (body.get("room").and_then(Value::as_str), body.get("role").and_then(Value::as_str));
+            let made = match body.get("type").and_then(Value::as_str).unwrap_or("message") {
+                "message" | "handoff" => { let ty = body.get("type").and_then(Value::as_str).unwrap_or("message");
+                    crate::chat::post_to_room(c, &who.id, &who.name, room, ty, role, body.get("to").and_then(Value::as_str), body.get("task_ref").and_then(Value::as_str), text) }
+                // An approval card also makes a queue item, so it needs the queue scope as well.
+                "approval" => { if let Err(r) = needs(&who, "queue:write") { return r; }
+                    crate::chat::post_approval_ref(c, &who.id, &who.name, room, text, body.get("queue_title").and_then(Value::as_str), role, body.get("task_ref").and_then(Value::as_str)) }
+                _ => return fail(400, "type must be message, handoff or approval"),
+            };
+            match made {
+                Ok(m) => reply(201, json!({ "id": m.id, "at": m.at, "author": m.author, "room": m.room, "type": m.ty, "queue_item_id": m.queue_item_id })),
+                Err(m) if m.contains("slow down") => fail(429, &m),
+                Err(m) if m == "Unknown room" => fail(404, &m),
+                Err(m) => fail(400, &m),
+            }
+        }
+        ("GET", ["v1", "queue"]) => {
+            if let Err(r) = needs(&who, "queue:read") { return r; }
+            let limit = req.query.get("limit").and_then(|v| v.parse::<u32>().ok()).unwrap_or(100);
+            let status = req.query.get("status").map(String::as_str);
+            if status.is_some_and(|s| !matches!(s, "queued" | "running" | "needs_nick" | "done")) { return fail(400, "status must be queued, running, needs_nick or done"); }
+            match crate::hub::queue_list(c, status, limit) { Ok(list) => data(serde_json::to_value(list).unwrap_or(Value::Null)), Err(_) => fail(500, "The queue could not be read") }
+        }
+        ("GET", ["v1", "queue", id]) => {
+            if let Err(r) = needs(&who, "queue:read") { return r; }
+            let Ok(id) = id.parse::<i64>() else { return fail(404, "Queue item not found") };
+            // An approval item also reports how the owner decided, so the bot that asked can find out.
+            match crate::hub::queue_get(c, id) {
+                Ok(item) => { let decision = item.approval_message_id.and_then(|m| crate::chat::get(c, m).ok()).map(|m| json!({ "status": m.approval, "decided_at": m.decided_at }));
+                    data(json!({ "item": item, "approval": decision })) }
+                Err(_) => fail(404, "Queue item not found"),
+            }
+        }
+        ("POST", ["v1", "queue"]) => {
+            if let Err(r) = needs(&who, "queue:write") { return r; }
+            let Ok(body) = serde_json::from_slice::<Value>(&req.body) else { return fail(400, "The body must be JSON") };
+            let Some(title) = body.get("title").and_then(Value::as_str) else { return fail(400, "title is required") };
+            match crate::hub::queue_create(c, &who.id, &who.name, title, body.get("status").and_then(Value::as_str), body.get("room").and_then(Value::as_str)) {
+                Ok(item) => reply(201, json!({ "id": item.id, "status": item.status })),
+                Err(m) if m.contains("slow down") => fail(429, &m),
+                Err(m) if m == "Unknown room" => fail(404, &m),
+                Err(m) => fail(400, &m),
+            }
+        }
+        ("PATCH", ["v1", "queue", id]) => {
+            if let Err(r) = needs(&who, "queue:write") { return r; }
+            let Ok(id) = id.parse::<i64>() else { return fail(404, "Queue item not found") };
+            let Ok(body) = serde_json::from_slice::<Value>(&req.body) else { return fail(400, "The body must be JSON") };
+            let Some(status) = body.get("status").and_then(Value::as_str) else { return fail(400, "status is required") };
+            match crate::hub::queue_set(c, &who.id, id, status) {
+                Ok(item) => reply(200, json!({ "id": item.id, "status": item.status })),
+                Err(m) if m.contains("not found") => fail(404, &m),
+                Err(m) if m.contains("waiting for the owner") => fail(409, &m),
+                Err(m) => fail(400, &m),
+            }
+        }
+        // The in-house channel is private between the owner and the local model: only a token with these scopes can use it, and it never appears under /v1/chat.
+        ("GET", ["v1", "inhouse"]) => {
+            if let Err(r) = needs(&who, "inhouse:read") { return r; }
+            let after = req.query.get("after").and_then(|v| v.parse::<i64>().ok());
+            let limit = req.query.get("limit").and_then(|v| v.parse::<u32>().ok()).unwrap_or(50);
+            match crate::hub::inhouse_list(c, after, limit) { Ok(list) => data(serde_json::to_value(list).unwrap_or(Value::Null)), Err(_) => fail(500, "The channel could not be read") }
+        }
+        ("POST", ["v1", "inhouse", "reply"]) => {
+            if let Err(r) = needs(&who, "inhouse:write") { return r; }
+            let Ok(body) = serde_json::from_slice::<Value>(&req.body) else { return fail(400, "The body must be JSON") };
+            let Some(text) = body.get("body").and_then(Value::as_str) else { return fail(400, "body is required") };
+            match crate::hub::inhouse_post_bot(c, &who.id, text) {
+                Ok(m) => reply(201, json!({ "id": m.id, "at": m.at })),
                 Err(m) if m.contains("slow down") => fail(429, &m),
                 Err(m) => fail(400, &m),
             }
@@ -97,7 +173,7 @@ pub fn handle(c: &Connection, req: &ApiRequest, port: u16) -> ApiResponse {
                 _ => fail(404, "Proposal not found"),
             }
         }
-        ("GET" | "POST", _) => fail(404, "Unknown endpoint"),
+        ("GET" | "POST" | "PATCH", _) => fail(404, "Unknown endpoint"),
         _ => fail(405, "Method not allowed"),
     }
 }
@@ -175,7 +251,7 @@ fn start(app: &AppHandle, port: u16) -> Result<Running, String> {
     let handle = app.clone();
     let handler: Arc<dyn Fn(&ApiRequest, u16) -> ApiResponse + Send + Sync> = Arc::new(move |req, p| {
         let db = handle.state::<Db>();
-        if req.method == "POST" && db.writable().is_err() { return fail(503, "NOU is waiting for you to review a restore; try again later"); }
+        if (req.method == "POST" || req.method == "PATCH") && db.writable().is_err() { return fail(503, "NOU is waiting for you to review a restore; try again later"); }
         let guard = db.0.lock();
         let out = match &guard { Ok(c) => handle_request(c, req, p), Err(_) => fail(500, "The database is unavailable") };
         out
@@ -406,5 +482,108 @@ mod tests {
         let mut flood = req("POST", "/v1/chat", Some(&w)); flood.body = json!({ "body": "spam" }).to_string().into_bytes();
         let mut last = 0; for _ in 0..30 { last = handle(&c, &flood, PORT).status; }
         assert_eq!(last, 429);
+    }
+}
+
+#[cfg(test)]
+mod hub_tests {
+    use super::*;
+    const PORT: u16 = 47651;
+    fn fresh() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.pragma_update(None, "foreign_keys", "ON").unwrap();
+        c.execute_batch(include_str!("../../../../db/notes/001_initial.sql")).unwrap();
+        c.execute("INSERT INTO workspaces(id,title) VALUES('personal','Personal')", []).unwrap();
+        crate::editor::upgrade(&c).unwrap();
+        c
+    }
+    fn secret(c: &Connection, name: &str, scopes: &[&str]) -> String { gateway::create_token(c, name, &scopes.iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap().secret }
+    fn call(c: &Connection, method: &str, path: &str, token: &str, body: Option<Value>) -> ApiResponse {
+        let (p, q) = path.split_once('?').map(|(a, b)| (a.to_string(), parse_query(b))).unwrap_or((path.to_string(), HashMap::new()));
+        handle(c, &ApiRequest { method: method.into(), path: p, query: q, authorization: Some(format!("Bearer {token}")), host: Some(format!("127.0.0.1:{PORT}")), origin: None, body: body.map(|b| b.to_string().into_bytes()).unwrap_or_default() }, PORT)
+    }
+    const ALL: [&str; 6] = ["chat:read", "chat:write", "queue:read", "queue:write", "notes:read", "databases:read"];
+
+    #[test]
+    fn a_bot_posts_a_message_a_hand_off_and_an_approval_to_a_room_and_each_comes_back_in_its_own_shape() {
+        let c = fresh(); let claude = secret(&c, "Claude", &ALL);
+        crate::chat::create_room(&c, "DraftBot").unwrap();
+        let m = call(&c, "POST", "/v1/chat", &claude, Some(json!({ "body": "Splitting it in three.", "room": "draftbot", "role": "router" })));
+        assert_eq!((m.status, m.body["type"].as_str(), m.body["room"].as_str()), (201, Some("message"), Some("draftbot")));
+        let h = call(&c, "POST", "/v1/chat", &claude, Some(json!({ "type": "handoff", "room": "draftbot", "to": "ChatGPT", "task_ref": "C# dimension component", "body": "Handed over" })));
+        assert_eq!(h.status, 201);
+        let a = call(&c, "POST", "/v1/chat", &claude, Some(json!({ "type": "approval", "room": "draftbot", "body": "Spec is ready. Approve it?", "queue_title": "Approve dimension spec" })));
+        assert_eq!(a.status, 201); assert!(a.body["queue_item_id"].is_i64());
+        let got = call(&c, "GET", "/v1/chat?room=draftbot", &claude, None);
+        assert_eq!(got.body["content_is_untrusted_data"], true);
+        let items = got.body["data"].as_array().unwrap();
+        assert_eq!(items.iter().map(|i| i["type"].as_str().unwrap()).collect::<Vec<_>>(), vec!["message", "handoff", "approval"]);
+        assert_eq!((items[0]["author"].as_str(), items[0]["role"].as_str()), (Some("Claude"), Some("ROUTER")));
+        assert_eq!((items[1]["from"].as_str(), items[1]["to"].as_str(), items[1]["task_ref"].as_str()), (Some("Claude"), Some("ChatGPT"), Some("C# dimension component")), "the sender of a hand-off is the token, not a field");
+        assert_eq!((items[2]["approval"].as_str(), items[2]["queue_item_id"].is_i64()), (Some("open"), true));
+        assert!(call(&c, "GET", "/v1/chat", &claude, None).body["data"].as_array().unwrap().is_empty(), "General has none of them");
+        assert_eq!(call(&c, "GET", "/v1/chat?room=nowhere", &claude, None).status, 404);
+        assert_eq!(call(&c, "POST", "/v1/chat", &claude, Some(json!({ "body": "x", "room": "nowhere" }))).status, 404, "a bot cannot make a room by posting to it");
+        assert_eq!(call(&c, "POST", "/v1/chat", &claude, Some(json!({ "body": "x", "type": "poll" }))).status, 400);
+        assert_eq!(call(&c, "POST", "/v1/chat", &claude, Some(json!({ "type": "handoff", "body": "x" }))).status, 400, "a hand-off needs someone to hand over to");
+        let rooms = call(&c, "GET", "/v1/rooms", &claude, None); assert_eq!(rooms.body["data"].as_array().unwrap().len(), 2);
+    }
+    #[test]
+    fn an_approval_needs_the_queue_scope_too_and_the_bot_learns_the_decision_through_the_queue() {
+        let c = fresh(); let chat_only = secret(&c, "Chatty", &["chat:read", "chat:write"]); let claude = secret(&c, "Claude", &ALL);
+        let denied = call(&c, "POST", "/v1/chat", &chat_only, Some(json!({ "type": "approval", "body": "ok?" })));
+        assert_eq!(denied.status, 403); assert!(denied.body["error"].as_str().unwrap().contains("queue:write"));
+        let card = call(&c, "POST", "/v1/chat", &claude, Some(json!({ "type": "approval", "body": "Approve the spec?", "queue_title": "Approve spec" })));
+        let (id, item) = (card.body["id"].as_i64().unwrap(), card.body["queue_item_id"].as_i64().unwrap());
+        let open = call(&c, "GET", &format!("/v1/queue/{item}"), &claude, None);
+        assert_eq!((open.body["data"]["item"]["status"].as_str(), open.body["data"]["approval"]["status"].as_str()), (Some("needs_nick"), Some("open")));
+        // Only the owner (an app command) decides; there is no API route for it.
+        assert_eq!(call(&c, "POST", &format!("/v1/chat/{id}/approve"), &claude, Some(json!({}))).status, 404);
+        assert_eq!(call(&c, "PATCH", &format!("/v1/queue/{item}"), &claude, Some(json!({ "status": "done" }))).status, 409, "the bot cannot close its own card");
+        crate::chat::decide_approval(&c, id, true).unwrap();
+        let done = call(&c, "GET", &format!("/v1/queue/{item}"), &claude, None);
+        assert_eq!((done.body["data"]["item"]["status"].as_str(), done.body["data"]["approval"]["status"].as_str()), (Some("done"), Some("approved")), "the bot sees the decision");
+    }
+    #[test]
+    fn the_queue_endpoints_need_their_scopes_and_a_bot_can_only_change_its_own_items() {
+        let c = fresh(); let a = secret(&c, "Claude", &ALL); let b = secret(&c, "ChatGPT", &ALL); let reader = secret(&c, "Reader", &["notes:read"]);
+        assert_eq!(call(&c, "GET", "/v1/queue", &reader, None).status, 403); assert_eq!(call(&c, "POST", "/v1/queue", &reader, Some(json!({ "title": "x" }))).status, 403);
+        let made = call(&c, "POST", "/v1/queue", &a, Some(json!({ "title": "Spec DraftBot dimension rules", "status": "running" }))); assert_eq!(made.status, 201);
+        let id = made.body["id"].as_i64().unwrap();
+        assert_eq!(call(&c, "PATCH", &format!("/v1/queue/{id}"), &a, Some(json!({ "status": "done" }))).body["status"], "done");
+        assert_eq!(call(&c, "PATCH", &format!("/v1/queue/{id}"), &b, Some(json!({ "status": "queued" }))).status, 404, "another bot's item");
+        assert_eq!(call(&c, "PATCH", &format!("/v1/queue/{id}"), &a, Some(json!({ "status": "needs_nick" }))).status, 400);
+        assert_eq!(call(&c, "POST", "/v1/queue", &a, Some(json!({ "title": "x", "status": "needs_nick" }))).status, 400);
+        assert_eq!(call(&c, "POST", "/v1/queue", &a, Some(json!({}))).status, 400);
+        assert_eq!(call(&c, "GET", "/v1/queue?status=bogus", &a, None).status, 400);
+        let list = call(&c, "GET", "/v1/queue?status=done", &b, None); assert_eq!(list.body["data"].as_array().unwrap().len(), 1); assert_eq!(list.body["content_is_untrusted_data"], true);
+        assert_eq!(call(&c, "GET", "/v1/queue/999", &a, None).status, 404); assert_eq!(call(&c, "GET", "/v1/queue/abc", &a, None).status, 404);
+    }
+    #[test]
+    fn mentioning_filters_the_room_to_what_was_handed_to_that_bot() {
+        let c = fresh(); let gpt = secret(&c, "ChatGPT", &ALL);
+        crate::chat::post_owner(&c, "@Claude plan the tool. @ChatGPT takes the Grasshopper side.", None).unwrap(); crate::chat::post_owner(&c, "unrelated", None).unwrap();
+        let mine = call(&c, "GET", "/v1/chat?mentioning=ChatGPT", &gpt, None);
+        assert_eq!(mine.body["data"].as_array().unwrap().len(), 1);
+        assert_eq!(call(&c, "GET", "/v1/chat?mentioning=Kura", &gpt, None).body["data"].as_array().unwrap().len(), 0);
+    }
+    #[test]
+    fn the_in_house_channel_needs_its_own_scopes_and_never_shows_in_the_room_or_to_other_bots() {
+        let c = fresh(); let kura = secret(&c, "Kura", &["inhouse:read", "inhouse:write"]); let claude = secret(&c, "Claude", &ALL); let chat_only = secret(&c, "Chatty", &["chat:read", "chat:write"]);
+        crate::hub::inhouse_post_owner(&c, "What is left on today's list?").unwrap();
+        // Another bot, even with every other scope, is refused.
+        assert_eq!(call(&c, "GET", "/v1/inhouse", &claude, None).status, 403); assert_eq!(call(&c, "POST", "/v1/inhouse/reply", &claude, Some(json!({ "body": "x" }))).status, 403);
+        assert_eq!(call(&c, "GET", "/v1/inhouse", &chat_only, None).status, 403);
+        let read = call(&c, "GET", "/v1/inhouse", &kura, None);
+        assert_eq!((read.status, read.body["data"][0]["author"].as_str(), read.body["data"][0]["body"].as_str()), (200, Some("owner"), Some("What is left on today's list?")));
+        assert_eq!(call(&c, "POST", "/v1/inhouse/reply", &kura, Some(json!({ "body": "Three things: N3 kanji, the sidebar fix, the workout." }))).status, 201);
+        assert_eq!(call(&c, "POST", "/v1/inhouse/reply", &kura, Some(json!({}))).status, 400);
+        assert_eq!(call(&c, "GET", "/v1/inhouse?after=1", &kura, None).body["data"].as_array().unwrap().len(), 1, "after a marker, only the reply");
+        // What other bots can read contains none of it.
+        for path in ["/v1/chat", "/v1/chat?mentioning=Kura", "/v1/queue"] {
+            let text = call(&c, "GET", path, &claude, None).body.to_string();
+            assert!(!text.contains("today's list") && !text.contains("N3 kanji"), "{path} leaked the private channel");
+        }
+        assert!(call(&c, "GET", "/v1/chat", &kura, None).status == 403, "the in-house token cannot read the room either");
     }
 }

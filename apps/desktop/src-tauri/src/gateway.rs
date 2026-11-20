@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 use uuid::Uuid;
 
-pub const SCOPES: [&str; 6] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write"];
+pub const SCOPES: [&str; 10] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write", "inhouse:read", "inhouse:write"];
 pub const OPS: [&str; 6] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item"];
 const MAX_PENDING_PER_TOKEN: i64 = 50;
 const MAX_PAYLOAD: usize = 60_000;
