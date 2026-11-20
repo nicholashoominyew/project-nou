@@ -611,3 +611,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
   .sun-wrap .sun-anchor .sun-zone{transition:opacity .2s .05s,transform .22s .05s}.sun-wrap .sun-anchor.to-right .sun-zone{transform:translateX(-6px)}.sun-wrap .sun-anchor.to-left .sun-zone{transform:translateX(6px)}
   .sun-wrap .sun-anchor:hover .sun-dot-btn::after,.sun-wrap .sun-anchor .sun-dot-btn:focus-visible::after,.sun-wrap .sun-anchor .sun-dot-btn[aria-expanded=true]::after{animation:sunRing 1.4s ease-out infinite}
 }
+
+/* ---------- Elementel radius tokens (colour, type and spacing tokens already match the theme above) ---------- */
+:root{--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:10px;--radius-full:999px}

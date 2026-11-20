@@ -1,0 +1,104 @@
+{
+  "name": "Elementel",
+  "version": 1,
+  "meta": { "source": "Elementel site (artifact 'Elementel', Nov 2026) and Project NOU — Elementel redesign (Nov 2026)" },
+  "color": {
+    "themes": [
+      { "id": "dark", "name": "Elementel dark" },
+      { "id": "light", "name": "NOU light" }
+    ],
+    "tokens": [
+      { "name": "bg", "value": { "dark": "#0b0c0e", "light": "#ffffff" }, "usage": "Page ground. Near-black in dark (the Elementel site, Kura, VG Companion), white in NOU light." },
+      { "name": "panel", "value": { "dark": "#121317", "light": "#f5f7fb" }, "usage": "Sidebars, screens, day tiles and hover fills — one step off the ground." },
+      { "name": "card", "value": { "dark": "#1b1d23", "light": "#ffffff" }, "usage": "Cards and tiles that sit on panel. In light, cards are white and separated by line." },
+      { "name": "raised", "value": { "dark": "#23252c", "light": "#ffffff" }, "usage": "The selected tab and anything floating above a track." },
+      { "name": "active", "value": { "dark": "#23252c", "light": "#e2eafc" }, "usage": "Selected sidebar row fill (paired with a 2px accent inset on the left)." },
+      { "name": "track", "value": { "dark": "#121317", "light": "#eef1f6" }, "usage": "Recessed tracks: tab strip, segmented controls, progress bars." },
+      { "name": "line", "value": { "dark": "#2b2e36", "light": "#e1e6ef" }, "usage": "Every hairline: card borders, section rules, dividers. 1px only. Decorative — never the only boundary of a control." },
+      { "name": "ink", "value": { "dark": "#ecebe7", "light": "#0e1a2b" }, "usage": "Body text and headings on bg, panel and card. 15:1+ in both themes." },
+      { "name": "muted", "value": { "dark": "#8e919a", "light": "#5b6880" }, "usage": "Secondary text, mono labels, idle icons and idle status dots. ≥5.5:1 on bg, ≥5:1 on panel in both themes." },
+      { "name": "accent", "value": { "dark": "#ffff90", "light": "#1d4ed8" }, "usage": "THE brand colour: pale signal yellow in dark, deep blue in light. Primary buttons, the mark, live status dots, today/current markers. Once per view as a fill. Safe as text on bg in its own theme (yellow 18:1 on dark, blue 6.7:1 on white) — never carry yellow into a light layout." },
+      { "name": "accent-ink", "value": { "dark": "#17170a", "light": "#ffffff" }, "usage": "Text and icons on an accent fill." },
+      { "name": "accent-soft", "value": { "dark": "rgba(255,255,144,0.16)", "light": "rgba(29,78,216,0.14)" }, "usage": "Glow ring around a live dot (3px), focus halo behind the quick-capture button, soft highlight fills. Never behind text you need to read." },
+      { "name": "danger", "value": { "dark": "#ff8a7a", "light": "#c0352b" }, "usage": "Destructive actions and errors only, always with a word. 4.5:1+ on bg in both themes." }
+    ]
+  },
+  "type": {
+    "fonts": [],
+    "families": {
+      "display": "\"Barlow Condensed\", \"Arial Narrow\", system-ui, sans-serif",
+      "sans": "\"IBM Plex Sans\", \"IBM Plex Sans JP\", \"Yu Gothic UI\", \"Segoe UI\", system-ui, sans-serif",
+      "mono": "\"JetBrains Mono\", Consolas, \"Courier New\", monospace",
+      "glyph": "\"Noto Serif JP\", \"Yu Mincho\", \"Hiragino Mincho ProN\", serif"
+    },
+    "groups": [
+      {
+        "name": "Display",
+        "family": "display",
+        "styles": [
+          { "name": "display-hero", "fontSize": "120px", "lineHeight": 0.88, "fontWeight": 600, "letterSpacing": "0.01em", "sample": "ONE PRODUCT. SEVEN DAYS.", "usage": "Room heroes on the Elementel site. Always uppercase. Fluid: clamp(56px, 11.5vw, 150px)." },
+          { "name": "display-h2", "fontSize": "52px", "lineHeight": 0.98, "fontWeight": 600, "letterSpacing": "0.02em", "sample": "A BUILD IN SEVEN POSTS", "usage": "Section headings. Uppercase, text-wrap: balance. Fluid: clamp(34px, 5vw, 52px)." },
+          { "name": "display-title", "fontSize": "30px", "lineHeight": 1, "fontWeight": 600, "letterSpacing": "0.04em", "sample": "KURA", "usage": "Card and tool titles. Uppercase." },
+          { "name": "display-tile", "fontSize": "22px", "lineHeight": 1, "fontWeight": 600, "letterSpacing": "0.02em", "sample": "DEMO", "usage": "Small tile titles (week days, map node names). Uppercase." },
+          { "name": "display-brand", "fontSize": "20px", "lineHeight": 1, "fontWeight": 600, "letterSpacing": "0.08em", "sample": "ELEMENTEL", "usage": "The wordmark beside the mark in headers. Uppercase, wide tracking." }
+        ]
+      },
+      {
+        "name": "Text",
+        "family": "sans",
+        "styles": [
+          { "name": "page-title", "fontSize": "36px", "lineHeight": 1.15, "fontWeight": 700, "letterSpacing": "-0.02em", "sample": "Good evening", "usage": "NOU page titles. Sentence case — NOU is the quiet, note-taking side, so no condensed caps here." },
+          { "name": "tagline", "fontSize": "24px", "lineHeight": 1.35, "fontWeight": 500, "sample": "Using AI to fix small everyday problems.", "usage": "One line under a hero. Max 30ch." },
+          { "name": "body", "fontSize": "15px", "lineHeight": 1.55, "fontWeight": 400, "sample": "Each week I pick an everyday problem and build a fix in the open.", "usage": "Default text everywhere. Max 58ch." },
+          { "name": "body-strong", "fontSize": "15px", "lineHeight": 1.55, "fontWeight": 600, "sample": "Project NOU", "usage": "Button labels, selected rows, the app name in the sidebar." },
+          { "name": "small", "fontSize": "13px", "lineHeight": 1.4, "fontWeight": 400, "sample": "The problem, and a rough sketch of the fix.", "usage": "Sidebar rows, tile descriptions, captions." }
+        ]
+      },
+      {
+        "name": "Labels",
+        "family": "mono",
+        "styles": [
+          { "name": "eyebrow", "fontSize": "11px", "lineHeight": 1.4, "fontWeight": 500, "letterSpacing": "0.14em", "sample": "SEVEN DAY LAB", "usage": "Section eyebrows, status words, dt labels. Uppercase, muted." },
+          { "name": "nav", "fontSize": "12px", "lineHeight": 1, "fontWeight": 500, "letterSpacing": "0.1em", "sample": "LAB  STUDIO  ABOUT", "usage": "Header navigation. Uppercase." },
+          { "name": "micro", "fontSize": "10px", "lineHeight": 1.3, "fontWeight": 500, "letterSpacing": "0.14em", "sample": "LDN · 4H 12M OF LIGHT", "usage": "Readouts, counts, timestamps, sidebar section labels. Uppercase; tabular-nums for numbers." }
+        ]
+      },
+      {
+        "name": "Glyph",
+        "family": "glyph",
+        "styles": [
+          { "name": "app-glyph", "fontSize": "40px", "lineHeight": 1, "fontWeight": 700, "sample": "脳 蔵", "usage": "Single kanji app marks: 脳 for NOU, 蔵 for Kura. One character, accent colour. Load Noto Serif JP with &text= for just those glyphs." }
+        ]
+      }
+    ]
+  },
+  "spacing": {
+    "tokens": [
+      { "name": "space-1", "value": "4px", "usage": "Icon-to-label nudges, tab gaps." },
+      { "name": "space-2", "value": "8px", "usage": "Gap between pills, small cards in a row, gallery gutters." },
+      { "name": "space-3", "value": "12px", "usage": "Grid gap between tool cards; eyebrow gaps." },
+      { "name": "space-4", "value": "16px", "usage": "Page gutter on mobile; card inner gaps." },
+      { "name": "space-5", "value": "20px", "usage": "NOU card padding (18–20px); button side padding." },
+      { "name": "space-6", "value": "24px", "usage": "Tool-card padding; gap between header blocks." },
+      { "name": "space-8", "value": "32px", "usage": "Gap under a section head; NOU page top padding." },
+      { "name": "space-12", "value": "48px", "usage": "NOU page side padding; minimum band padding." },
+      { "name": "space-24", "value": "96px", "usage": "Maximum band padding between sections on the site (fluid 48–96px)." }
+    ]
+  },
+  "radius": {
+    "tokens": [
+      { "name": "radius-xs", "value": "4px", "usage": "Gallery figures, small bars." },
+      { "name": "radius-sm", "value": "6px", "usage": "Buttons, inputs, nav items, sidebar rows (5–6px), the NOU app tile." },
+      { "name": "radius-md", "value": "8px", "usage": "Cards, tiles and panels on the Elementel site." },
+      { "name": "radius-lg", "value": "10px", "usage": "NOU home cards and the tab track." },
+      { "name": "radius-full", "value": "999px", "usage": "Status dots, the quick-capture button, avatar initials." }
+    ]
+  },
+  "shadow": {
+    "tokens": [
+      { "name": "shadow-hover", "value": "0 12px 28px rgba(0,0,0,0.08)", "usage": "NOU card on hover, with a 2px lift. Cards rest flat — borders, not shadows." },
+      { "name": "shadow-tab", "value": "0 1px 2px rgba(0,0,0,0.12)", "usage": "The selected tab on the tab track, plus a 1px line ring." },
+      { "name": "shadow-float", "value": "0 10px 28px rgba(0,0,0,0.28)", "usage": "The floating quick-capture button only." }
+    ]
+  }
+}

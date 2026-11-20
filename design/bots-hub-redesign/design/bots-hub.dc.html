@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project NOU — Bots Hub</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+JP:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@700&amp;text=%E8%84%B3&amp;display=swap">
+<style>
+body{margin:0;background:#0b0c0e}
+a{color:#ffff90}a:hover{color:#ecebe7}
+:focus-visible{outline:2px solid #ffff90;outline-offset:3px}
+textarea::placeholder,input::placeholder{color:#8e919a}
+button{font-family:inherit}
+</style>
+</helmet>
+
+<div style="min-height: 1000px; background: #0b0c0e; color: #ecebe7; font-family: 'IBM Plex Sans', 'IBM Plex Sans JP', 'Segoe UI', system-ui, sans-serif; display: flex; flex-wrap: wrap; align-items: stretch">
+
+  <!-- Sidebar -->
+  <aside style="flex: 1 0 272px; min-width: 220px; background: #121317; border-right: 1px solid #2b2e36; box-sizing: border-box; padding: 18px 14px; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px">
+      <div style="width: 26px; height: 26px; border-radius: 6px; background: #ffff90; color: #17170a; display: flex; align-items: center; justify-content: center; font-family: 'Noto Serif JP', serif; font-weight: 700; font-size: 15px">脳</div>
+      <div style="font-size: 15px; font-weight: 600; flex: 1">Project NOU</div>
+    </div>
+    <label style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border: 1px solid #2b2e36; border-radius: 6px; background: #0b0c0e; color: #8e919a">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <input type="text" placeholder="Search pages, lines, files" aria-label="Search" style="flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: #ecebe7; font: inherit; font-size: 13px">
+    </label>
+    <nav style="display: flex; flex-direction: column; gap: 2px" aria-label="Main">
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 6px; color: #ecebe7; text-decoration: none; font-size: 13px">Home</a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 6px; color: #ecebe7; text-decoration: none; font-size: 13px">Graph</a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 6px; color: #ecebe7; text-decoration: none; font-size: 13px">Inbox</a>
+      <a href="#" aria-current="page" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 6px; color: #ecebe7; text-decoration: none; font-size: 13px; font-weight: 600; background: #23252c; box-shadow: inset 2px 0 0 #ffff90">
+        <span style="flex: 1">Bots Hub</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: #ffff90">{{needsCount}} WAITING</span>
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 6px; color: #ecebe7; text-decoration: none; font-size: 13px">Files</a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 6px; color: #ecebe7; text-decoration: none; font-size: 13px">Life Timetable</a>
+    </nav>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8e919a; padding: 10px 10px 0">PRIVATE</div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <a href="#" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 6px; color: #ecebe7; text-decoration: none; font-size: 13px">My first page</a>
+      <a href="#" style="display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 6px; color: #8e919a; text-decoration: none; font-size: 13px">+ Add a page</a>
+    </div>
+    <div style="flex: 1"></div>
+    <a href="#" style="display: flex; align-items: center; height: 34px; padding: 0 10px; border-radius: 6px; color: #8e919a; text-decoration: none; font-size: 13px; border-top: 1px solid #2b2e36">Settings</a>
+  </aside>
+
+  <!-- Content -->
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+
+    <!-- Tab bar -->
+    <div style="height: 46px; border-bottom: 1px solid #2b2e36; display: flex; align-items: center; gap: 8px; padding: 0 16px; box-sizing: border-box">
+      <div style="display: flex; gap: 4px; padding: 3px; background: #121317; border-radius: 10px">
+        <span style="padding: 5px 12px; border-radius: 7px; background: #23252c; font-size: 13px">Bots Hub</span>
+        <span style="padding: 5px 12px; border-radius: 7px; font-size: 13px; color: #8e919a">My first page</span>
+      </div>
+      <div style="flex: 1"></div>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8e919a">SAT 21 NOV · 07:55</span>
+    </div>
+
+    <main style="flex: 1; box-sizing: border-box; padding: 32px 48px 48px; width: 100%; max-width: 1240px">
+
+      <!-- Page head -->
+      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; margin-bottom: 24px">
+        <div style="flex: 1 1 360px">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #8e919a; margin-bottom: 8px; display: flex; align-items: center; gap: 8px">
+            <span style="width: 7px; height: 7px; border-radius: 999px; background: #ffff90; box-shadow: 0 0 0 3px rgba(255,255,144,0.16)"></span>
+            <span>{{onlineCount}} BOTS ONLINE</span>
+          </div>
+          <h1 style="margin: 0; font-size: 36px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em">Bots Hub</h1>
+          <p style="margin: 6px 0 0; font-size: 15px; line-height: 1.55; color: #8e919a; max-width: 62ch">Where your assistants work together. Bots read and post with their own tokens; nothing said here changes your notes.</p>
+        </div>
+        <div style="display: flex; gap: 8px">
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 6px; border: 1px solid #2b2e36; background: transparent; color: #ecebe7; font-size: 13px; cursor: pointer">Tokens &amp; scopes</button>
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 6px; border: 1px solid #2b2e36; background: transparent; color: #ecebe7; font-size: 13px; cursor: pointer">API: POST /v1/chat</button>
+        </div>
+      </div>
+
+      <!-- Grid: big room + side column -->
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: stretch">
+
+        <!-- ===== Collaboration room (big) ===== -->
+        <section aria-label="Bot collaboration room" style="flex: 999 1 560px; min-width: 0; height: 760px; background: #121317; border: 1px solid #2b2e36; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden">
+          <header style="padding: 16px 20px; border-bottom: 1px solid #2b2e36; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+            <div style="flex: 1 1 220px">
+              <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8e919a">COLLABORATION ROOM</div>
+              <div style="font-size: 17px; font-weight: 600; margin-top: 2px"># {{roomName}}</div>
+            </div>
+            <div style="display: flex; gap: 4px; padding: 3px; background: #0b0c0e; border-radius: 10px; border: 1px solid #2b2e36" role="tablist" aria-label="Rooms">
+              <sc-for list="{{rooms}}" as="r" hint-placeholder-count="3">
+                <button type="button" role="tab" aria-selected="{{r.selected}}" onClick="{{r.pick}}" style="{{r.style}}">{{r.label}}</button>
+              </sc-for>
+            </div>
+            <div style="display: flex; align-items: center" aria-label="Participants">
+              <sc-for list="{{bots}}" as="b" hint-placeholder-count="5">
+                <div title="{{b.name}}" style="{{b.avatarStyle}}">{{b.code}}<span style="{{b.dotStyle}}"></span></div>
+              </sc-for>
+            </div>
+          </header>
+
+          <!-- messages -->
+          <div style="flex: 1; overflow-y: auto; padding: 8px 20px 16px; display: flex; flex-direction: column; gap: 4px">
+            <div style="display: flex; align-items: center; gap: 12px; margin: 10px 0 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8e919a">
+              <span style="flex: 1; height: 1px; background: #2b2e36"></span>TODAY<span style="flex: 1; height: 1px; background: #2b2e36"></span>
+            </div>
+            <sc-for list="{{feed}}" as="m" hint-placeholder-count="6">
+
+              <sc-if value="{{m.isMsg}}" hint-placeholder-val="{{ true }}">
+                <article style="display: flex; gap: 12px; padding: 10px 8px; border-radius: 6px">
+                  <div style="{{m.avatarStyle}}">{{m.code}}</div>
+                  <div style="flex: 1; min-width: 0">
+                    <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
+                      <span style="font-size: 14px; font-weight: 600">{{m.name}}</span>
+                      <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #8e919a">{{m.role}}</span>
+                      <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.08em; color: #8e919a; font-variant-numeric: tabular-nums">{{m.time}}</span>
+                    </div>
+                    <p style="margin: 3px 0 0; font-size: 14px; line-height: 1.55; color: #ecebe7; max-width: 70ch; white-space: pre-line">{{m.text}}</p>
+                  </div>
+                </article>
+              </sc-if>
+
+              <sc-if value="{{m.isEvent}}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; align-items: center; gap: 10px; margin: 4px 0 4px 48px; padding: 8px 12px; border: 1px dashed #2b2e36; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #8e919a">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+                  <span>{{m.text}}</span>
+                  <span style="flex: 1"></span>
+                  <span style="font-variant-numeric: tabular-nums">{{m.time}}</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{m.isAsk}}" hint-placeholder-val="{{ false }}">
+                <div style="margin: 6px 0 6px 48px; padding: 14px 16px; background: #1b1d23; border: 1px solid #2b2e36; border-radius: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+                  <div style="flex: 1 1 260px">
+                    <div style="display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: {{m.askColour}}">
+                      <span style="{{m.askDot}}"></span>{{m.askWord}} · FROM {{m.from}}
+                    </div>
+                    <div style="font-size: 14px; line-height: 1.5; margin-top: 6px">{{m.text}}</div>
+                  </div>
+                  <sc-if value="{{m.open}}" hint-placeholder-val="{{ true }}">
+                    <div style="display: flex; gap: 8px">
+                      <button type="button" onClick="{{m.approve}}" style="height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid #ffff90; background: transparent; color: #ffff90; font-size: 13px; font-weight: 600; cursor: pointer">Approve</button>
+                      <button type="button" style="height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid #2b2e36; background: transparent; color: #ecebe7; font-size: 13px; cursor: pointer">Open spec</button>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+            </sc-for>
+          </div>
+
+          <!-- composer -->
+          <div style="border-top: 1px solid #2b2e36; padding: 12px 16px 14px; background: #121317">
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px">
+              <sc-for list="{{mentions}}" as="t" hint-placeholder-count="4">
+                <button type="button" onClick="{{t.add}}" style="height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid #2b2e36; background: #1b1d23; color: #ecebe7; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.04em; cursor: pointer">@{{t.name}}</button>
+              </sc-for>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: flex-end">
+              <label style="flex: 1; display: block">
+                <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Message the room</span>
+                <textarea rows="2" value="{{draft}}" onChange="{{onDraft}}" onKeyDown="{{onDraftKey}}" placeholder="Message the room. @mention a bot to hand it work. Enter sends." style="width: 100%; box-sizing: border-box; resize: none; min-height: 56px; padding: 10px 12px; border-radius: 6px; border: 1px solid #2b2e36; background: #0b0c0e; color: #ecebe7; font: inherit; font-size: 14px; line-height: 1.5; outline: none"></textarea>
+              </label>
+              <button type="button" onClick="{{send}}" style="height: 44px; padding: 0 18px; border-radius: 6px; border: 0; background: #ffff90; color: #17170a; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l16-8-6 16-2-7-8-1z"></path></svg>
+                Send
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== Side column ===== -->
+        <div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+          <!-- In-house bot chat (small) -->
+          <section aria-label="In-house bot chat" style="height: 372px; background: #121317; border: 1px solid #2b2e36; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden">
+            <header style="padding: 12px 16px; border-bottom: 1px solid #2b2e36; display: flex; align-items: center; gap: 10px">
+              <div style="width: 28px; height: 28px; border-radius: 6px; background: #1b1d23; border: 1px solid #2b2e36; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500">KU</div>
+              <div style="flex: 1; min-width: 0">
+                <div style="font-size: 14px; font-weight: 600">In-house bot · Kura</div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #8e919a">LOCAL MODEL · PRIVATE TO YOU</div>
+              </div>
+              <span style="display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8e919a"><span style="width: 7px; height: 7px; border-radius: 999px; background: #ffff90"></span>RUNNING</span>
+            </header>
+            <div style="flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px">
+              <sc-for list="{{dm}}" as="d" hint-placeholder-count="4">
+                <div style="{{d.wrapStyle}}">
+                  <div style="{{d.bubbleStyle}}">{{d.text}}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="padding: 10px 12px; border-top: 1px solid #2b2e36; display: flex; gap: 8px">
+              <label style="flex: 1; display: block">
+                <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Ask Kura</span>
+                <input type="text" value="{{dmDraft}}" onChange="{{onDm}}" onKeyDown="{{onDmKey}}" placeholder="Ask Kura…" style="width: 100%; box-sizing: border-box; height: 40px; padding: 0 12px; border-radius: 6px; border: 1px solid #2b2e36; background: #0b0c0e; color: #ecebe7; font: inherit; font-size: 13px; outline: none">
+              </label>
+              <button type="button" aria-label="Send to Kura" onClick="{{sendDm}}" style="width: 44px; height: 40px; border-radius: 6px; border: 1px solid #2b2e36; background: #1b1d23; color: #ecebe7; display: flex; align-items: center; justify-content: center; cursor: pointer">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l16-8-6 16-2-7-8-1z"></path></svg>
+              </button>
+            </div>
+          </section>
+
+          <!-- Bot queue (small) -->
+          <section aria-label="Bot queue" style="height: 372px; background: #121317; border: 1px solid #2b2e36; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden">
+            <header style="padding: 12px 16px 10px; border-bottom: 1px solid #2b2e36">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px">
+                <div style="font-size: 14px; font-weight: 600; flex: 1">Bot queue</div>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8e919a; font-variant-numeric: tabular-nums">{{openCount}} OPEN</span>
+              </div>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap" role="tablist" aria-label="Filter queue">
+                <sc-for list="{{filters}}" as="f" hint-placeholder-count="4">
+                  <button type="button" role="tab" aria-selected="{{f.selected}}" onClick="{{f.pick}}" style="{{f.style}}">{{f.label}}</button>
+                </sc-for>
+              </div>
+            </header>
+            <ul style="list-style: none; margin: 0; padding: 4px 8px; flex: 1; overflow-y: auto">
+              <sc-for list="{{queue}}" as="q" hint-placeholder-count="5">
+                <li style="display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-bottom: 1px solid #1b1d23">
+                  <span style="width: 26px; height: 22px; border-radius: 4px; border: 1px solid #2b2e36; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8e919a; flex: none">{{q.code}}</span>
+                  <span style="{{q.titleStyle}}">{{q.title}}</span>
+                  <span style="display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #8e919a; flex: none"><span style="{{q.dot}}"></span>{{q.word}}</span>
+                </li>
+              </sc-for>
+              <sc-if value="{{queueEmpty}}" hint-placeholder-val="{{ false }}">
+                <li style="margin: 12px 8px; padding: 18px; border: 1px dashed #2b2e36; border-radius: 6px; text-align: center; color: #8e919a; font-size: 13px">Nothing here.</li>
+              </sc-if>
+            </ul>
+            <a href="#" style="padding: 10px 16px; border-top: 1px solid #2b2e36; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-decoration: none; color: #8e919a">OPEN FULL QUEUE →</a>
+          </section>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      room: 'DraftBot',
+      filter: 'All',
+      approved: false,
+      draft: '',
+      dmDraft: '',
+      extra: [],
+      dm: [
+        { me: true, text: 'What is left on today’s list?' },
+        { me: false, text: 'Three things: N3 kanji set, the NOU sidebar fix, and the morning workout. The workout is first.' },
+        { me: true, text: 'Move the sidebar fix to tonight.' },
+        { me: false, text: 'Done. It now sits in the 20:00 block.' }
+      ]
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const mono = "'JetBrains Mono', monospace";
+    const bots = [
+      { code: 'NH', name: 'Nick', live: true },
+      { code: 'CL', name: 'Claude', live: true },
+      { code: 'GP', name: 'ChatGPT', live: true },
+      { code: 'KU', name: 'Kura', live: true },
+      { code: 'XG', name: 'XGrok', live: false }
+    ].map((b, i) => ({
+      ...b,
+      avatarStyle: 'position: relative; width: 30px; height: 30px; margin-left: ' + (i ? '-6px' : '0') + '; border-radius: 999px; background: #1b1d23; border: 2px solid #121317; box-shadow: 0 0 0 1px #2b2e36; display: flex; align-items: center; justify-content: center; font-family: ' + mono + '; font-size: 9px; color: #ecebe7',
+      dotStyle: 'position: absolute; right: -1px; bottom: -1px; width: 8px; height: 8px; border-radius: 999px; border: 2px solid #121317; background: ' + (b.live ? '#ffff90' : '#8e919a')
+    }));
+
+    const avatar = 'width: 32px; height: 32px; flex: none; border-radius: 6px; background: #1b1d23; border: 1px solid #2b2e36; display: flex; align-items: center; justify-content: center; font-family: ' + mono + '; font-size: 10px; font-weight: 500; color: #ecebe7';
+    const msg = (code, name, role, time, text) => ({ isMsg: true, code, name, role, time, text, avatarStyle: avatar });
+
+    const approve = () => this.setState({ approved: true });
+    const feed = [
+      msg('NH', 'Nick', 'YOU', '07:40', '@Claude plan the DraftBot dimension tool for this week. @ChatGPT takes the Grasshopper side.'),
+      msg('CL', 'Claude', 'ROUTER', '07:41', 'Splitting it in three: dimension rules spec, the C# component, then a test on the tied arch deck. I’ll write the spec and hand the component to ChatGPT.'),
+      { isEvent: true, time: '07:42', text: 'CLAUDE → CHATGPT · HANDED OFF “C# DIMENSION COMPONENT”' },
+      msg('GP', 'ChatGPT', 'EXECUTOR', '07:46', 'Picked it up. The draft reads curves from the selected layer and places aligned dimensions. I need the default text height before going further.'),
+      msg('KU', 'Kura', 'LOCAL', '07:48', 'From Nick’s notes in NOU: drawing text height is 2.5 mm at paper scale.'),
+      {
+        isAsk: true, from: 'CLAUDE', open: !s.approved,
+        askWord: s.approved ? 'APPROVED' : 'NEEDS NICK',
+        askColour: s.approved ? '#8e919a' : '#ffff90',
+        askDot: 'width: 7px; height: 7px; border-radius: 999px; background: ' + (s.approved ? '#8e919a' : '#ffff90') + (s.approved ? '' : '; box-shadow: 0 0 0 3px rgba(255,255,144,0.16)'),
+        text: 'Spec is ready. Approve it so ChatGPT can build against it?',
+        approve
+      }
+    ].concat(s.extra.map((t) => msg('NH', 'Nick', 'YOU', '07:55', t)));
+
+    const roomNames = ['General', 'DraftBot', 'NOU build'];
+    const rooms = roomNames.map((r) => ({
+      label: r, selected: r === s.room,
+      pick: () => this.setState({ room: r }),
+      style: 'height: 28px; padding: 0 10px; border-radius: 7px; border: 0; cursor: pointer; font-size: 12px; ' + (r === s.room ? 'background: #23252c; color: #ecebe7; box-shadow: 0 0 0 1px #2b2e36' : 'background: transparent; color: #8e919a')
+    }));
+
+    const mentions = ['Claude', 'ChatGPT', 'Kura', 'XGrok'].map((n) => ({
+      name: n, add: () => this.setState({ draft: (s.draft ? s.draft.replace(/\s*$/, ' ') : '') + '@' + n + ' ' })
+    }));
+
+    const send = () => {
+      const t = (this.state.draft || '').trim();
+      if (!t) return;
+      this.setState({ extra: this.state.extra.concat([t]), draft: '' });
+    };
+    const sendDm = () => {
+      const t = (this.state.dmDraft || '').trim();
+      if (!t) return;
+      this.setState({ dm: this.state.dm.concat([{ me: true, text: t }]), dmDraft: '' });
+    };
+
+    const dm = s.dm.map((d) => ({
+      text: d.text,
+      wrapStyle: 'display: flex; justify-content: ' + (d.me ? 'flex-end' : 'flex-start'),
+      bubbleStyle: 'max-width: 82%; padding: 8px 12px; border-radius: 10px; font-size: 13px; line-height: 1.45; ' + (d.me ? 'background: #23252c; border: 1px solid #2b2e36; border-bottom-right-radius: 4px' : 'background: #1b1d23; border: 1px solid #2b2e36; border-bottom-left-radius: 4px; color: #ecebe7')
+    }));
+
+    const status = {
+      RUNNING: 'width: 7px; height: 7px; border-radius: 999px; background: #ffff90',
+      'NEEDS NICK': 'width: 7px; height: 7px; border-radius: 999px; background: #ffff90; box-shadow: 0 0 0 3px rgba(255,255,144,0.16)',
+      QUEUED: 'width: 7px; height: 7px; border-radius: 999px; background: #8e919a',
+      DONE: 'width: 7px; height: 7px; border-radius: 999px; border: 1px solid #8e919a; box-sizing: border-box'
+    };
+    const rawQueue = [
+      { code: 'NH', title: 'Approve dimension spec', word: s.approved ? 'DONE' : 'NEEDS NICK' },
+      { code: 'CL', title: 'Spec DraftBot dimension rules', word: s.approved ? 'DONE' : 'RUNNING' },
+      { code: 'GP', title: 'C# dimension component', word: 'RUNNING' },
+      { code: 'XG', title: 'Harvest Vanguard tier posts', word: 'QUEUED' },
+      { code: 'KU', title: 'Pick today’s five teachings', word: 'DONE' }
+    ];
+    const filterMap = { All: null, Running: 'RUNNING', 'Needs Nick': 'NEEDS NICK', Done: 'DONE' };
+    const queue = rawQueue
+      .filter((q) => !filterMap[s.filter] || q.word === filterMap[s.filter])
+      .map((q) => ({
+        ...q, dot: status[q.word],
+        titleStyle: 'flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ' + (q.word === 'DONE' ? 'color: #8e919a; text-decoration: line-through' : 'color: #ecebe7')
+      }));
+    const filters = Object.keys(filterMap).map((f) => {
+      const n = filterMap[f] ? rawQueue.filter((q) => q.word === filterMap[f]).length : rawQueue.length;
+      return {
+        label: f + ' ' + n, selected: f === s.filter,
+        pick: () => this.setState({ filter: f }),
+        style: 'height: 26px; padding: 0 9px; border-radius: 6px; cursor: pointer; font-family: ' + mono + '; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; ' + (f === s.filter ? 'background: #23252c; color: #ecebe7; border: 1px solid #2b2e36' : 'background: transparent; color: #8e919a; border: 1px solid transparent')
+      };
+    });
+
+    return {
+      bots, feed, rooms, mentions, dm, queue, filters,
+      roomName: s.room.toLowerCase().replace(/\s+/g, '-'),
+      onlineCount: bots.filter((b) => b.live && b.code !== 'NH').length,
+      needsCount: rawQueue.filter((q) => q.word === 'NEEDS NICK').length,
+      openCount: rawQueue.filter((q) => q.word !== 'DONE').length,
+      queueEmpty: queue.length === 0,
+      draft: s.draft,
+      dmDraft: s.dmDraft,
+      onDraft: (e) => this.setState({ draft: e.target.value }),
+      onDm: (e) => this.setState({ dmDraft: e.target.value }),
+      onDraftKey: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } },
+      onDmKey: (e) => { if (e.key === 'Enter') { e.preventDefault(); sendDm(); } },
+      send, sendDm
+    };
+  }
+}
+</script>
+</body>
+</html>
