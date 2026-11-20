@@ -69,12 +69,10 @@ describe("current event panel", () => {
     await screen.findByRole("timer");
     expect(document.querySelector(".tt-now-head")!.textContent).toContain("22:00–02:00 (+1)");
   });
-  it("on Home it offers a link to the timetable, and Focus", async () => {
-    const open = vi.fn();
-    render(<NowCard open={open} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Open the Life Timetable" }));
-    expect(open).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Enter focus mode" })).toBeTruthy();
+  it("on Home it is the same panel with Focus, and no link to the page", async () => {
+    render(<NowCard />);
+    expect(await screen.findByRole("button", { name: "Enter focus mode" })).toBeTruthy();
+    expect(screen.queryByText("Open the Life Timetable")).toBeNull();
   });
 });
 
@@ -161,7 +159,9 @@ describe("Life Timetable page", () => {
   it("blocks are buttons with accessible names, merged, with a ring on the current one and a now line", async () => {
     render(<LifeTimetable />);
     const work = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
-    expect(work.tagName).toBe("BUTTON"); expect(work.className).toContain("current");
+    expect(work.tagName).toBe("BUTTON"); expect(work.className).toContain("current"); expect(work.getAttribute("aria-current")).toBe("time");
+    expect(document.querySelectorAll(".tt-block.current").length).toBe(1); // only today's block, not the same hour on other days
+    for (const b of document.querySelectorAll<HTMLElement>(".tt-block")) { expect(b.style.boxShadow).toBe(""); expect(b.style.border).toBe(""); expect(b.style.outline).toBe(""); } // no strokes on any block
     expect(screen.getByRole("button", { name: "Edit Meal + Quiet · 13:30–14:30 · split equally" })).toBeTruthy();
     expect(screen.getByTestId("now-line")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /^Edit Bed time/ }).length).toBeGreaterThan(0);

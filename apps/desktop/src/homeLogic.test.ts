@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityLevel, editsPerDay, pickForDay, rangePosition, staleFraction, sunPosition, sunTimes, writingDays } from "./homeLogic";
+import { activityLevel, editsPerDay, pickForDay, pickSunPlace, placeDate, rangePosition, staleFraction, sunPosition, sunTimes, writingDays } from "./homeLogic";
 
 describe("sunTimes", () => {
   it("gives London's mid-November daylight to within a few minutes", () => {
@@ -65,5 +65,40 @@ describe("small helpers", () => {
     expect(new Set(a).size).toBe(5);
     expect(c).not.toEqual(a);
     expect(pickForDay([1, 2], "x")).toEqual([1, 2]);
+  });
+});
+
+describe("sunrise and sunset belong to the place's own day", () => {
+  const LONDON = { lat: 51.5074, lng: -0.1278, tz: "Europe/London" }, KL = { lat: 3.139, lng: 101.6869, tz: "Asia/Kuala_Lumpur" };
+  const hm = (d: Date, tz: string) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+  // 07:43 on 21 Nov in Kuala Lumpur is 23:43 on 20 Nov in London.
+  const now = new Date("2026-11-20T23:43:00Z");
+  it("in Kuala Lumpur at 07:43 the sun is up, with sunrise before and sunset after", () => {
+    const t = sunTimes(now, KL.lat, KL.lng, KL.tz)!;
+    expect(placeDate(t.rise, KL.lng, KL.tz)).toBe("2026-11-21");
+    expect(hm(t.rise, KL.tz) >= "06:50" && hm(t.rise, KL.tz) <= "07:20").toBe(true);
+    expect(hm(t.set, KL.tz) >= "18:50" && hm(t.set, KL.tz) <= "19:20").toBe(true);
+    expect(sunPosition(now, t).up).toBe(true);
+  });
+  it("in London at the same moment it is night, after today's sunset (20 Nov), not before tomorrow's sunrise", () => {
+    const t = sunTimes(now, LONDON.lat, LONDON.lng, LONDON.tz)!;
+    expect(placeDate(t.rise, LONDON.lng, LONDON.tz)).toBe("2026-11-20");
+    expect(hm(t.rise, LONDON.tz)).toMatch(/^07:[0-4]/); expect(hm(t.set, LONDON.tz)).toMatch(/^16:/);
+    const p = sunPosition(now, t); expect(p.up).toBe(false); expect(p.fraction).toBe(1);
+  });
+  it("works the same just after local midnight and just before sunrise", () => {
+    const early = new Date("2026-11-21T00:30:00Z"); // London 00:30 on the 21st
+    const t = sunTimes(early, LONDON.lat, LONDON.lng, LONDON.tz)!;
+    expect(placeDate(t.rise, LONDON.lng, LONDON.tz)).toBe("2026-11-21");
+    expect(sunPosition(early, t)).toMatchObject({ up: false, fraction: 0 });
+  });
+  it("falls back to longitude when no time zone is known, and refuses bad coordinates", () => {
+    expect(sunTimes(now, KL.lat, KL.lng)).not.toBeNull(); expect(sunTimes(now, 99, 0)).toBeNull();
+    expect(placeDate(new Date("2026-11-20T23:43:00Z"), 101.7)).toBe("2026-11-21");
+  });
+  it("describes the place in the device's time zone, otherwise the first one", () => {
+    expect(pickSunPlace(["Europe/London", "Asia/Kuala_Lumpur"], "Asia/Kuala_Lumpur")).toBe(1);
+    expect(pickSunPlace(["Europe/London", "Asia/Kuala_Lumpur"], "Europe/London")).toBe(0);
+    expect(pickSunPlace([null, undefined], "Asia/Tokyo")).toBe(0);
   });
 });

@@ -14,13 +14,13 @@ const DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satur
 const WEEK_PX = 48, DAY_PX = 64; // pixels per hour
 type Status = { state: "saved" | "saving" | "error"; message?: string };
 
-function BlockButton({ block, day, px, detailed, activities, live, nowMin, onEdit }: { block: Block; day: number; px: number; detailed: boolean; activities: Activity[]; live: boolean; nowMin: number; onEdit: (el: HTMLElement) => void }) {
+function BlockButton({ block, day, today, px, detailed, activities, live, nowMin, onEdit }: { block: Block; day: number; today: number; px: number; detailed: boolean; activities: Activity[]; live: boolean; nowMin: number; onEdit: (el: HTMLElement) => void }) {
   const acts = block.ids.map(id => activities.find(a => a.id === id)).filter((a): a is Activity => !!a);
   const n = acts.length, sp = px / 2, h = block.count * sp - 6;
   const isBed = n === 1 && acts[0].name.toLowerCase() === "bed time";
   const quiet = isBed || n === 0;
   const mins = block.count * 30, range = `${hm(block.first * 30)}–${hm((block.first + block.count) * 30)}`;
-  const isCur = live && nowMin >= block.first * 30 && nowMin < (block.first + block.count) * 30;
+  const isCur = live && day === today && nowMin >= block.first * 30 && nowMin < (block.first + block.count) * 30;
   const single = n === 1 ? colours(acts[0]) : null;
   const label = n === 0 ? "Empty" : names(block.ids, activities);
   const stripe = n > 1 ? `linear-gradient(to right, ${acts.map((a, i) => `${colours(a).fill} ${(i / n) * 100}% ${((i + 1) / n) * 100}%`).join(", ")})` : "";
@@ -28,10 +28,9 @@ function BlockButton({ block, day, px, detailed, activities, live, nowMin, onEdi
     top: block.first * sp + 3, height: h, borderRadius: Math.floor(Math.min(h, 40) / 2),
     background: quiet ? "transparent" : n > 1 ? "var(--tt-shared)" : single!.fill,
     color: quiet ? "var(--muted)" : n > 1 ? "var(--text)" : single!.ink,
-    boxShadow: isCur ? "0 0 0 2px var(--tt-surface), 0 0 0 4px var(--text)" : "none",
   };
   const title = `Edit ${label} · ${range}${n > 1 ? " · split equally" : ""}`;
-  return <button type="button" className={"tt-block" + (detailed ? " day" : "") + (isCur ? " current" : "")} data-day={day} data-first={block.first} style={style} title={title} aria-label={title} onClick={e => onEdit(e.currentTarget)}>
+  return <button type="button" className={"tt-block" + (detailed ? " day" : "") + (isCur ? " current" : "")} data-day={day} data-first={block.first} aria-current={isCur ? "time" : undefined} style={style} title={title} aria-label={title} onClick={e => onEdit(e.currentTarget)}>
     <span className={"tt-block-name" + (h >= 40 ? " wrap" : "")}>{label}</span>
     {h >= (detailed ? 44 : 52) && <span className="tt-block-range">{range}{detailed ? " · " + fmtDuration(mins) : ""}</span>}
     {detailed && n > 1 && h >= 66 && <span className="tt-block-share">{n} activities · {fmtDuration(mins / n)} each</span>}
@@ -156,7 +155,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
           <span>{d}</span><span className={"tt-mark" + (i === day ? " on" : "")} /></button>)}
         <div className="tt-gutter" style={{ ...hourLines(WEEK_PX), height: 24 * WEEK_PX }}>{hours.map(h => <span key={h} style={{ top: h * WEEK_PX + 6 }}>{String(h).padStart(2, "0")}:00</span>)}</div>
         {DAY_SHORT.map((d, i) => <div key={d} className={"tt-col" + (i % 2 === 0 ? " band" : "")} style={{ ...hourLines(WEEK_PX), height: 24 * WEEK_PX }}>
-          {dayBlocks(grid, i).map(b => <BlockButton key={b.first} block={b} day={i} px={WEEK_PX} detailed={false} activities={activities} live={live} nowMin={nowMin} onEdit={el => editBlock(b, i, el)} />)}
+          {dayBlocks(grid, i).map(b => <BlockButton key={b.first} block={b} day={i} today={today} px={WEEK_PX} detailed={false} activities={activities} live={live} nowMin={nowMin} onEdit={el => editBlock(b, i, el)} />)}
           {live && i === today && nowLine(WEEK_PX)}
         </div>)}
       </div></div>
@@ -165,7 +164,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
         <div className="tt-dayhead">{DAY_LONG[day].toUpperCase()}</div>
         <div className="tt-gutter" style={{ ...hourLines(DAY_PX), height: 24 * DAY_PX }}>{hours.map(h => <span key={h} style={{ top: h * DAY_PX + 8 }}>{String(h).padStart(2, "0")}:00</span>)}</div>
         <div className="tt-col band" style={{ ...hourLines(DAY_PX), height: 24 * DAY_PX }}>
-          {dayBlocks(grid, day).map(b => <BlockButton key={b.first} block={b} day={day} px={DAY_PX} detailed activities={activities} live={live} nowMin={nowMin} onEdit={el => editBlock(b, day, el)} />)}
+          {dayBlocks(grid, day).map(b => <BlockButton key={b.first} block={b} day={day} today={today} px={DAY_PX} detailed activities={activities} live={live} nowMin={nowMin} onEdit={el => editBlock(b, day, el)} />)}
           {live && day === today && nowLine(DAY_PX)}
         </div>
       </div>}

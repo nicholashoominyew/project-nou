@@ -10,7 +10,7 @@ const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"
 export const kickerOf = (d: Date) => `PROJECT NOU · 脳 · ${DAYS[weekdayOf(d)]} · ${clock(d)}`;
 
 /** The current event: kicker, time range, category chips, name, and the circular timer. Always live; the next event only shows in the reminder. */
-export default function NowPanel({ openTimetable }: { openTimetable?: () => void }) {
+export default function NowPanel() {
   const { timeline, activities, data } = useTimetable();
   const t = useTick(1000, now);
   const [focus, setFocus] = useState(false);
@@ -43,7 +43,6 @@ export default function NowPanel({ openTimetable }: { openTimetable?: () => void
       <ProgressRing fraction={pct} label={planned ? `Current event progress, ${Math.round(pct * 100)}% done` : "Nothing planned"} />
       <div className="tt-ring-center">{planned ? <Countdown ms={left} /> : <span className="tt-mono-muted">–</span>}</div>
     </div>
-    {openTimetable && <button type="button" className="tt-link" onClick={openTimetable}>Open the Life Timetable</button>}
     {focus && <Suspense fallback={null}><FocusMode onClose={() => setFocus(false)} /></Suspense>}
   </section>;
 }

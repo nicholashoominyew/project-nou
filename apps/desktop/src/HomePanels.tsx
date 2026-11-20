@@ -5,7 +5,7 @@ import type { HomeContext } from "./Home";
 import { Arc, CardHead, Flip, SkyIcon, StateDot } from "./HomeBits";
 import { searchPlaces, type FoundPlace } from "./geocode";
 import { fetchWeather, normalizePlaces, WEATHER_KEY, type Place, type Weather } from "./weather";
-import { activityLevel, dayFraction, isDaytime, pickForDay, rangePosition, sunPosition, sunTimes, writingDays } from "./homeLogic";
+import { activityLevel, dayFraction, isDaytime, pickForDay, pickSunPlace, rangePosition, sunPosition, sunTimes, writingDays } from "./homeLogic";
 import { COUNTDOWNS_KEY, MAX_COUNTDOWNS, clockParts, countdownState, dayKey, groupByDay, localZone, monthGrid, normalizeCountdowns, parseDay, periods, validZone, zoneCity, zoneList, type CalendarEvent, type Countdown, type Unit } from "./timeLogic";
 
 function read(key: string): unknown { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; } }
@@ -60,10 +60,13 @@ export function useWeatherStore(fetchImpl?: typeof fetch, enabled = true): Weath
 // ---- daylight arc in the header ------------------------------------------------------------------------------------
 export function SunArc({ store }: { store: WeatherStore }) {
   const now = useNow(30000);
-  const place = store.places[0], w = store.slots[0]?.weather;
-  const t = place ? sunTimes(now, place.lat, place.lng) : null;
-  if (!place || !t) return null;
+  // Describe the place that is in the device's own time zone (where you are), otherwise the first place.
+  let device = ""; try { device = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* unknown */ }
+  const at0 = pickSunPlace(store.slots.map(s => s?.weather?.timezone), device);
+  const place = store.places[at0] ?? store.places[0], w = store.slots[at0]?.weather ?? store.slots[0]?.weather;
   const tz = w?.timezone && validZone(w.timezone) ? w.timezone : undefined;
+  const t = place ? sunTimes(now, place.lat, place.lng, tz) : null;
+  if (!place || !t) return null;
   const at = (d: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
   const pos = sunPosition(now, t), x = 130 - 120 * Math.cos(Math.PI * pos.fraction), y = 58 - 50 * Math.sin(Math.PI * pos.fraction);
   const code = place.name.replace(/[^\p{L}]/gu, "").slice(0, 3).toUpperCase() || "SUN";

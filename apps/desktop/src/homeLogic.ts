@@ -4,10 +4,10 @@ import { dayKey, parseDay } from "./timeLogic";
 const RAD = Math.PI / 180;
 
 /** Sunrise and sunset (as instants) for a place, from the standard "sunrise equation". Null in polar day or night. Good to a few minutes. */
-export function sunTimes(now: Date, lat: number, lng: number): { rise: Date; set: Date } | null {
+function sunCore(now: Date, lat: number, lng: number): { rise: Date; set: Date } | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   const jd = now.getTime() / 86400000 + 2440587.5;
-  const n = Math.ceil(jd - 2451545.0 + 0.0008), jStar = n + lng / 360;
+  const n = Math.ceil(jd - 2451545.0 + 0.0008), jStar = n - lng / 360; // east longitude is positive: solar noon comes earlier in UTC the further east you are
   const M = (357.5291 + 0.98560028 * jStar) % 360;
   const C = 1.9148 * Math.sin(M * RAD) + 0.02 * Math.sin(2 * M * RAD) + 0.0003 * Math.sin(3 * M * RAD);
   const lambda = (M + C + 180 + 102.9372) % 360;
@@ -17,6 +17,34 @@ export function sunTimes(now: Date, lat: number, lng: number): { rise: Date; set
   if (!Number.isFinite(cosW) || cosW < -1 || cosW > 1) return null;
   const w = Math.acos(cosW) / RAD, toDate = (j: number) => new Date((j - 2440587.5) * 86400000);
   return { rise: toDate(transit - w / 360), set: toDate(transit + w / 360) };
+}
+
+/** The calendar date (YYYY-MM-DD) at a place: by its IANA time zone when known, otherwise by longitude (15 degrees per hour). */
+export function placeDate(at: Date, lng: number, tz?: string): string {
+  if (tz) { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(at); } catch { /* fall through to longitude */ } }
+  return new Date(at.getTime() + (lng / 15) * 3600000).toISOString().slice(0, 10);
+}
+/**
+ * Sunrise and sunset on the place's own calendar day containing `now`. (The raw formula returns the next solar day's events when it is
+ * evening in one time zone and already tomorrow in another, so the neighbouring days are tried and the one that belongs to today is used.)
+ */
+export function sunTimes(now: Date, lat: number, lng: number, tz?: string): { rise: Date; set: Date } | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  const today = placeDate(now, lng, tz);
+  let fallback: { rise: Date; set: Date } | null = null;
+  for (const k of [0, -1, 1]) {
+    const t = sunCore(new Date(now.getTime() + k * 86400000), lat, lng);
+    if (!t) continue;
+    fallback = fallback ?? t;
+    if (placeDate(new Date((t.rise.getTime() + t.set.getTime()) / 2), lng, tz) === today) return t;
+  }
+  return fallback;
+}
+
+/** Which weather place the daylight arc should describe: the one in the device's own time zone, otherwise the first. */
+export function pickSunPlace(zones: (string | null | undefined)[], deviceZone: string): number {
+  const i = zones.findIndex(z => !!z && z === deviceZone);
+  return i >= 0 ? i : 0;
 }
 
 /** Where the sun is on its arc: 0 at sunrise to 1 at sunset, `up` false at night (the position then stays at the nearer end). */
