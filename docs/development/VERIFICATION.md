@@ -56,3 +56,7 @@ Trusted Authenticode signing remains open. The delivered installer was explicitl
 ## Databases branch status — 11 November 2026
 
 `feature/databases` adds inline databases, views, relations/rollups, a Notion-style sidebar, file drops and many shortcuts. Evidence so far is unit tests (91 Vitest, 38 Rust library) and a browser-pane layout check with a fake backend. It has **not** been run in a real Windows window: Smart App Control blocks the unsigned dev binary on the development machine. See `docs/development/DATABASES.md` for the acceptance checklist and known limitations. The user's real profile has not been opened by this branch; rehearse the schema v4 upgrade on a copy first.
+
+## Life Timetable branch status — 20 November 2026
+
+`feature/life-timetable` (built on `feature/elementel-redesign`) adds schema 10, a protected built-in Life Timetable page, the Home Now card, a Focus view and a reminder. Run locally on Windows: `cargo test --locked --lib` (109 tests), Vitest (532 tests, 48 files), `tsc --noEmit`, `npm run build`, the three Python schema/snapshot/trash tests and `npm run test:mcp` (15). The grid, Now card and Focus view were looked at in a browser with a fake backend in light and dark. Not run: Windows CI for this branch, the installer build, a real Windows notification (including permission denial), a reminder while the real window is minimised, and the manual checklist in LIFE-TIMETABLE.md. Older alphas cannot open a schema 10 database.

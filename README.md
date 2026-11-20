@@ -21,6 +21,8 @@ The first 0.0.1 Windows alpha was installed and manually confirmed by the user: 
 
 **Choosing a destination does not prove independence.** Another folder or drive letter can share a physical disk. External-drive and remote/cloud protection are user declarations; NOU cannot verify physical separation, remote upload, provider retention or offline ransomware protection. Regular scheduled packages are not application-encrypted; manual portable encrypted exports are available. See [backup and recovery guide](docs/development/BACKUP-RESTORE.md).
 
+- **Life Timetable** (schema 10): a permanent page for the weekly routine, a Home Now timer with a round Focus view, and a reminder before the next event. See [docs/development/LIFE-TIMETABLE.md](docs/development/LIFE-TIMETABLE.md).
+
 ### Verification
 
 On 21 October 2026 the user reported all acceptance checks completed successfully for 0.0.3. [PR #7](https://github.com/nicholashoominyew/project-nou/pull/7) was merged after the exact-head Windows CI passed. This is an accepted Windows alpha; the distributed installer is unsigned and trusted code signing remains unverified. See the verification record for the distinction between CI evidence and the user's report.
