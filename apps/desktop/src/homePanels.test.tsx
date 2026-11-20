@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, TasksWidget, TeachingWidget, WeatherWidget } from "./HomePanels";
+import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, SunArc, TasksWidget, TeachingWidget, WeatherWidget, type WeatherStore } from "./HomePanels";
 import { Flip } from "./HomeBits";
 import { dayKey } from "./timeLogic";
 
@@ -240,5 +240,40 @@ describe("teaching of the day", () => {
     fireEvent.click(screen.getByLabelText("Teaching 2 of 5"));
     expect(screen.getByText(/Teaching number/).textContent).not.toBe(first);
     expect(screen.getByText(/2 OF 5/)).toBeTruthy();
+  });
+});
+
+describe("the daylight arc", () => {
+  const wx = (timezone: string) => ({ timezone, temp: 20, high: 24, low: 15, wind: 5, label: "Clear", code: 0 });
+  const store = (): WeatherStore => ({
+    places: [{ name: "London", lat: 51.5074, lng: -0.1278 }, { name: "Kuala Lumpur", lat: 3.139, lng: 101.6869 }],
+    slots: [{ weather: wx("Europe/London") }, { weather: wx("Asia/Kuala_Lumpur") }], setPlace() {}, refresh() {},
+  });
+  it("starts on the first place and lets you choose which place it describes, and remembers the choice", () => {
+    const view = render(<SunArc store={store()} />);
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in (London|Kuala Lumpur)/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose where the daylight arc is for" }));
+    const menu = screen.getByRole("group", { name: "Daylight arc place" });
+    expect(within(menu).getAllByRole("radio").length).toBe(3); // where I am, London, Kuala Lumpur
+    fireEvent.click(within(menu).getByRole("radio", { name: /Kuala Lumpur/ }));
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in Kuala Lumpur: sunrise (06|07):/);
+    expect(JSON.parse(localStorage.getItem("nou-sun-place")!)).toBe(1);
+    expect(screen.queryByRole("group", { name: "Daylight arc place" })).toBeNull(); // the menu closes after a choice
+    view.unmount();
+    render(<SunArc store={store()} />); // a new mount keeps it
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in Kuala Lumpur/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose where the daylight arc is for" }));
+    fireEvent.click(screen.getByRole("radio", { name: /London/ }));
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in London/);
+  });
+  it("closes with Escape, and a chosen place that was removed falls back", () => {
+    localStorage.setItem("nou-sun-place", "1");
+    const s = store(); s.places[1] = null; s.slots[1] = {};
+    render(<SunArc store={s} />);
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in London/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose where the daylight arc is for" }));
+    expect(screen.getAllByRole("radio").length).toBe(2); // no entry for the empty place
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("group", { name: "Daylight arc place" })).toBeNull();
   });
 });

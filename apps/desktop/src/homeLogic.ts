@@ -42,9 +42,10 @@ export function sunTimes(now: Date, lat: number, lng: number, tz?: string): { ri
 }
 
 /** Which weather place the daylight arc should describe: the one in the device's own time zone, otherwise the first. */
-export function pickSunPlace(zones: (string | null | undefined)[], deviceZone: string): number {
-  const i = zones.findIndex(z => !!z && z === deviceZone);
-  return i >= 0 ? i : 0;
+export function pickSunPlace(zones: (string | null | undefined)[], deviceZone: string, choice: "auto" | number = "auto", present: boolean[] = [true, true]): number {
+  if (typeof choice === "number" && present[choice]) return choice; // the place picked by hand wins
+  const i = zones.findIndex((z, k) => !!z && z === deviceZone && present[k] !== false);
+  return i >= 0 ? i : Math.max(0, present.findIndex(Boolean));
 }
 
 /** Where the sun is on its arc: 0 at sunrise to 1 at sunset, `up` false at night (the position then stays at the nearer end). */

@@ -405,7 +405,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
   .mcal-day{height:42px;padding:4px 6px}
   .mcal-dow{padding:2px 4px 4px}
   .home-head h1{font-size:30px}
-  .home-actions .sun-arc{display:none}
+  .home-actions .sun-wrap{display:none}
 }
 @media (max-width:760px){
   .home{padding:24px 16px 96px}
@@ -578,3 +578,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .tt-sim legend{font:600 11px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 4px}
 @media (max-width:760px){.document.tt-screen{padding:24px 16px 48px}.tt-title{font-size:32px}.tt-card{padding:16px}}
 @media (prefers-reduced-motion:reduce){.tt-seg{transition:none}}
+.sun-wrap{position:relative;display:inline-block;margin-right:12px}.sun-wrap .sun-arc{margin-right:0}
+.sun-pick{position:absolute;top:-4px;right:-4px;width:26px;height:26px;min-height:0;padding:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;background:var(--bg);color:var(--muted);cursor:pointer}
+.sun-pick:hover,.sun-pick[aria-expanded=true]{color:var(--text);border-color:var(--accent)}
+.sun-menu{position:absolute;top:26px;right:-4px;z-index:30;min-width:230px;margin:0;padding:10px 12px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;background:var(--raised,var(--bg));box-shadow:0 12px 32px rgba(0,0,0,.2);font-size:13px}
+.sun-menu legend{padding:0 4px;font:600 10px var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.sun-menu label{display:flex;align-items:center;gap:8px;min-height:28px;cursor:pointer}.sun-menu small{margin-left:auto;font:10px var(--font-mono);color:var(--muted)}
+.sun-menu .hint{margin:4px 0 0;padding:0;font-size:12px}

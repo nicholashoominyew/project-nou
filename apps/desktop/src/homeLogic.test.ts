@@ -100,5 +100,8 @@ describe("sunrise and sunset belong to the place's own day", () => {
     expect(pickSunPlace(["Europe/London", "Asia/Kuala_Lumpur"], "Asia/Kuala_Lumpur")).toBe(1);
     expect(pickSunPlace(["Europe/London", "Asia/Kuala_Lumpur"], "Europe/London")).toBe(0);
     expect(pickSunPlace([null, undefined], "Asia/Tokyo")).toBe(0);
+    expect(pickSunPlace(["Europe/London", "Asia/Kuala_Lumpur"], "Asia/Kuala_Lumpur", 0)).toBe(0); // a place picked by hand wins
+    expect(pickSunPlace(["Europe/London", "Asia/Kuala_Lumpur"], "Asia/Kuala_Lumpur", 1, [true, false])).toBe(0); // unless it is no longer set
+    expect(pickSunPlace(["Europe/London", null], "Asia/Tokyo", "auto", [false, true])).toBe(1);
   });
 });

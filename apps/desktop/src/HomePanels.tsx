@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icons";
 import type { HomeContext } from "./Home";
@@ -58,11 +58,25 @@ export function useWeatherStore(fetchImpl?: typeof fetch, enabled = true): Weath
 }
 
 // ---- daylight arc in the header ------------------------------------------------------------------------------------
+const SUN_KEY = "nou-sun-place";
+const readSunChoice = (): "auto" | number => { try { const v = JSON.parse(localStorage.getItem(SUN_KEY) || "null"); return v === 0 || v === 1 ? v : "auto"; } catch { return "auto"; } };
 export function SunArc({ store }: { store: WeatherStore }) {
   const now = useNow(30000);
+  const [choice, setChoice] = useState(readSunChoice);
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const pick = (c: "auto" | number) => { setChoice(c); setOpen(false); try { localStorage.setItem(SUN_KEY, JSON.stringify(c)); } catch { /* a preference only */ } };
   // Describe the place that is in the device's own time zone (where you are), otherwise the first place.
   let device = ""; try { device = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* unknown */ }
-  const at0 = pickSunPlace(store.slots.map(s => s?.weather?.timezone), device);
+  const present = store.places.map(p => !!p);
+  const at0 = pickSunPlace(store.slots.map(s => s?.weather?.timezone), device, choice, present);
   const place = store.places[at0] ?? store.places[0], w = store.slots[at0]?.weather ?? store.slots[0]?.weather;
   const tz = w?.timezone && validZone(w.timezone) ? w.timezone : undefined;
   const t = place ? sunTimes(now, place.lat, place.lng, tz) : null;
@@ -72,7 +86,7 @@ export function SunArc({ store }: { store: WeatherStore }) {
   const code = place.name.replace(/[^\p{L}]/gu, "").slice(0, 3).toUpperCase() || "SUN";
   const note = pos.up ? `${code} · ${Math.floor(pos.leftMinutes / 60)}H ${pos.leftMinutes % 60}M OF LIGHT` : `${code} · NIGHT`;
   const label = `Daylight in ${place.name}: sunrise ${at(t.rise)}, sunset ${at(t.set)}, ` + (pos.up ? `${Math.floor(pos.leftMinutes / 60)} hours ${pos.leftMinutes % 60} minutes of light left` : "the sun has set");
-  return <svg className="sun-arc" width="260" height="78" viewBox="0 0 260 78" role="img" aria-label={label}>
+  return <div className="sun-wrap" ref={wrap}><svg className="sun-arc" width="260" height="78" viewBox="0 0 260 78" role="img" aria-label={label}>
     <line x1="0" y1="58" x2="260" y2="58" className="sun-base" />
     <path d="M10 58 A120 50 0 0 1 250 58" className="sun-dash" fill="none" />
     <path d="M10 58 A120 50 0 0 1 250 58" pathLength="100" className="sun-done" fill="none" strokeDasharray={`${(pos.fraction * 100).toFixed(1)} 100`} />
@@ -81,7 +95,15 @@ export function SunArc({ store }: { store: WeatherStore }) {
     <text x="10" y="74" className="sun-text">↑ {at(t.rise)}</text>
     <text x="250" y="74" textAnchor="end" className="sun-text">{at(t.set)} ↓</text>
     <text x="130" y="74" textAnchor="middle" className="sun-text ink">{note}</text>
-  </svg>;
+  </svg>
+    <button type="button" className="sun-pick" aria-label="Choose where the daylight arc is for" aria-haspopup="true" aria-expanded={open} title={"Daylight for " + place.name} onClick={() => setOpen(v => !v)}><Icon name="globe" size={13} /></button>
+    {open && <fieldset className="sun-menu" aria-label="Daylight arc place">
+      <legend>Daylight for</legend>
+      <label><input type="radio" name="sun-place" checked={choice === "auto"} onChange={() => pick("auto")} /> Where I am <small>{device || "this device"}</small></label>
+      {store.places.map((p, i) => p && <label key={i}><input type="radio" name="sun-place" checked={choice === i} onChange={() => pick(i)} /> {p.name}{store.slots[i]?.weather?.timezone && <small>{store.slots[i]!.weather!.timezone}</small>}</label>)}
+      <p className="hint">Change the places in the Weather card.</p>
+    </fieldset>}
+  </div>;
 }
 
 // ---- two flip clocks ------------------------------------------------------------------------------------------------
