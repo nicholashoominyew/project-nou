@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icons";
+import { PlaceSearchBox } from "./PlaceSearch";
 import type { HomeContext } from "./Home";
 import { Arc, CardHead, Flip, SkyIcon, StateDot } from "./HomeBits";
 import { searchPlaces, type FoundPlace } from "./geocode";
@@ -58,27 +59,49 @@ export function useWeatherStore(fetchImpl?: typeof fetch, enabled = true): Weath
 }
 
 // ---- daylight arc in the header ------------------------------------------------------------------------------------
-const SUN_KEY = "nou-sun-place";
-const readSunChoice = (): "auto" | number => { try { const v = JSON.parse(localStorage.getItem(SUN_KEY) || "null"); return v === 0 || v === 1 ? v : "auto"; } catch { return "auto"; } };
-export function SunArc({ store }: { store: WeatherStore }) {
+const SUN_KEY = "nou-sun-place", SUN_CUSTOM_KEY = "nou-sun-custom";
+/** Index 0 and 1 are the two weather places; 2 is a place searched for in the arc's own menu (a city that is not one of the weather places). */
+const CUSTOM = 2;
+type SunCustom = { name: string; lat: number; lng: number; timezone?: string };
+const readSunChoice = (): "auto" | number => { try { const v = JSON.parse(localStorage.getItem(SUN_KEY) || "null"); return v === 0 || v === 1 || v === CUSTOM ? v : "auto"; } catch { return "auto"; } };
+function readSunCustom(): SunCustom | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(SUN_CUSTOM_KEY) || "null") as SunCustom | null;
+    return v && typeof v.name === "string" && v.name && Number.isFinite(v.lat) && Number.isFinite(v.lng) && Math.abs(v.lat) <= 90 && Math.abs(v.lng) <= 180 ? { name: v.name.slice(0, 100), lat: v.lat, lng: v.lng, timezone: validZone(v.timezone) ? v.timezone : undefined } : null;
+  } catch { return null; }
+}
+export function SunArc({ store, fetchImpl }: { store: WeatherStore; fetchImpl?: typeof fetch }) {
   const now = useNow(30000);
   const [choice, setChoice] = useState(readSunChoice);
+  const [custom, setCustom] = useState(readSunCustom);
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const away = (e: MouseEvent) => { if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false); };
+    // Results of the place search are drawn outside this box, so a click on them is not "away".
+    const away = (e: MouseEvent) => { const el = e.target as Element; if (wrap.current && !wrap.current.contains(el) && !el.closest?.(".db-place-results")) setOpen(false); };
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("mousedown", away); document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [open]);
-  const pick = (c: "auto" | number) => { setChoice(c); setOpen(false); try { localStorage.setItem(SUN_KEY, JSON.stringify(c)); } catch { /* a preference only */ } };
-  // Describe the place that is in the device's own time zone (where you are), otherwise the first place.
+  const save = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* a preference only */ } };
+  const pick = (c: "auto" | number) => { setChoice(c); setOpen(false); save(SUN_KEY, c); };
+  const pickFound = (f: { name: string; lat: number; lng: number }) => {
+    const c: SunCustom = { name: f.name, lat: f.lat, lng: f.lng };
+    setCustom(c); save(SUN_CUSTOM_KEY, c); pick(CUSTOM);
+    // The time zone of the searched place comes from the same weather service the weather cards use (coordinates only).
+    fetchWeather({ name: c.name, lat: c.lat, lng: c.lng }, undefined, fetchImpl).then(w => {
+      if (!validZone(w.timezone)) return;
+      const withZone = { ...c, timezone: w.timezone }; setCustom(withZone); save(SUN_CUSTOM_KEY, withZone);
+    }).catch(() => { /* the longitude is then used to find the place's day */ });
+  };
+  // Describe the place in the device's own time zone (where you are), unless one was picked by hand.
   let device = ""; try { device = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* unknown */ }
-  const present = store.places.map(p => !!p);
-  const at0 = pickSunPlace(store.slots.map(s => s?.weather?.timezone), device, choice, present);
-  const place = store.places[at0] ?? store.places[0], w = store.slots[at0]?.weather ?? store.slots[0]?.weather;
-  const tz = w?.timezone && validZone(w.timezone) ? w.timezone : undefined;
+  const places: (Place | null)[] = [...store.places, custom ? { name: custom.name, lat: custom.lat, lng: custom.lng } : null];
+  const zones = [...store.slots.map(s => s?.weather?.timezone), custom?.timezone];
+  const at0 = pickSunPlace(zones, device, choice, places.map(p => !!p));
+  const place = places[at0] ?? null, tzRaw = zones[at0];
+  const tz = tzRaw && validZone(tzRaw) ? tzRaw : undefined;
   const t = place ? sunTimes(now, place.lat, place.lng, tz) : null;
   if (!place || !t) return null;
   const at = (d: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
@@ -86,6 +109,7 @@ export function SunArc({ store }: { store: WeatherStore }) {
   const code = place.name.replace(/[^\p{L}]/gu, "").slice(0, 3).toUpperCase() || "SUN";
   const note = pos.up ? `${code} · ${Math.floor(pos.leftMinutes / 60)}H ${pos.leftMinutes % 60}M OF LIGHT` : `${code} · NIGHT`;
   const label = `Daylight in ${place.name}: sunrise ${at(t.rise)}, sunset ${at(t.set)}, ` + (pos.up ? `${Math.floor(pos.leftMinutes / 60)} hours ${pos.leftMinutes % 60} minutes of light left` : "the sun has set");
+  const matchesDevice = zones.some(z => !!z && z === device);
   return <div className="sun-wrap" ref={wrap}><svg className="sun-arc" width="260" height="78" viewBox="0 0 260 78" role="img" aria-label={label}>
     <line x1="0" y1="58" x2="260" y2="58" className="sun-base" />
     <path d="M10 58 A120 50 0 0 1 250 58" className="sun-dash" fill="none" />
@@ -100,8 +124,9 @@ export function SunArc({ store }: { store: WeatherStore }) {
     {open && <fieldset className="sun-menu" aria-label="Daylight arc place">
       <legend>Daylight for</legend>
       <label><input type="radio" name="sun-place" checked={choice === "auto"} onChange={() => pick("auto")} /> Where I am <small>{device || "this device"}</small></label>
-      {store.places.map((p, i) => p && <label key={i}><input type="radio" name="sun-place" checked={choice === i} onChange={() => pick(i)} /> {p.name}{store.slots[i]?.weather?.timezone && <small>{store.slots[i]!.weather!.timezone}</small>}</label>)}
-      <p className="hint">Change the places in the Weather card.</p>
+      {places.map((p, i) => p && <label key={i}><input type="radio" name="sun-place" checked={choice === i} onChange={() => pick(i)} /> {p.name}{zones[i] && <small>{zones[i]}</small>}</label>)}
+      {!matchesDevice && <p className="hint">None of these is in {device || "your time zone"}. Search for your city to see its daylight.</p>}
+      <PlaceSearchBox onPick={pickFound} placeholder="Search for a city, for example Tokyo…" />
     </fieldset>}
   </div>;
 }

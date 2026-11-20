@@ -266,6 +266,28 @@ describe("the daylight arc", () => {
     fireEvent.click(screen.getByRole("radio", { name: /London/ }));
     expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in London/);
   });
+  it("lets you search for a city that is not a weather place, such as Tokyo, and uses it", async () => {
+    search.results = [{ name: "Tokyo", address: "Tokyo, Japan", lat: 35.6762, lng: 139.6503 }];
+    const tokyoWeather = (async () => ({ ok: true, status: 200, json: async () => ({ timezone: "Asia/Tokyo", current: { temperature_2m: 12, weather_code: 0, wind_speed_10m: 3 }, daily: { temperature_2m_max: [15], temperature_2m_min: [8] } }) })) as unknown as typeof fetch;
+    render(<SunArc store={store()} fetchImpl={tokyoWeather} />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose where the daylight arc is for" }));
+    const menu = screen.getByRole("group", { name: "Daylight arc place" });
+    fireEvent.change(within(menu).getByRole("searchbox", { name: "Search for a place" }), { target: { value: "Tokyo" } });
+    fireEvent.keyDown(within(menu).getByRole("searchbox", { name: "Search for a place" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("option", { name: /Tokyo/ }));
+    await waitFor(() => expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in Tokyo: sunrise 0[56]:/));
+    expect(JSON.parse(localStorage.getItem("nou-sun-place")!)).toBe(2);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("nou-sun-custom")!).timezone).toBe("Asia/Tokyo")); // learned from the weather service
+    fireEvent.click(screen.getByRole("button", { name: "Choose where the daylight arc is for" }));
+    expect((screen.getByRole("radio", { name: /^Tokyo/ }) as HTMLInputElement).checked).toBe(true);
+  });
+  it("says so when none of the places is in the device's time zone", () => {
+    const s = store(); s.slots = [{ weather: wx("Europe/London") }, { weather: wx("Europe/London") }];
+    render(<SunArc store={s} />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose where the daylight arc is for" }));
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (zone === "Europe/London") expect(screen.queryByText(/None of these is in/)).toBeNull(); else expect(screen.getByText(/None of these is in/)).toBeTruthy();
+  });
   it("closes with Escape, and a chosen place that was removed falls back", () => {
     localStorage.setItem("nou-sun-place", "1");
     const s = store(); s.places[1] = null; s.slots[1] = {};
