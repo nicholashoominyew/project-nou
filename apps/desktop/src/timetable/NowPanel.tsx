@@ -19,7 +19,7 @@ export default function NowPanel() {
   const planned = !!ev && ev.ids.length > 0;
   const mine = ev ? ev.ids.map(id => activities.find(a => a.id === id)).filter(Boolean) : [];
   const cats = CATEGORIES.filter(c => mine.some(a => a!.category === c));
-  const pct = ev ? progress(ev, t) : 0;
+  const pct = ev ? 1 - progress(ev, t) : 0; // the ring starts full and drains as the block runs out
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   // "(+1)" when the event runs past midnight (an event ending exactly at 24:00 does not).
   const crosses = !!ev && startOfDay(new Date(ev.end.getTime() - 60000)) !== startOfDay(ev.start);
@@ -40,7 +40,7 @@ export default function NowPanel() {
       <span className="tt-now-name">{planned ? names(ev!.ids, activities) : "Nothing planned"}</span>
     </div>
     <div className="tt-now-ring">
-      <ProgressRing fraction={pct} label={planned ? `Current event progress, ${Math.round(pct * 100)}% done` : "Nothing planned"} />
+      <ProgressRing fraction={pct} label={planned ? `Current event, ${Math.round(pct * 100)}% of the time left` : "Nothing planned"} />
       <div className="tt-ring-center">{planned ? <Countdown ms={left} /> : <span className="tt-mono-muted">–</span>}</div>
     </div>
     {focus && <Suspense fallback={null}><FocusMode onClose={() => setFocus(false)} /></Suspense>}

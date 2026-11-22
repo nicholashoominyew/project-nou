@@ -49,7 +49,7 @@ describe("current event panel", () => {
     expect(screen.getByRole("timer").getAttribute("aria-label")).toMatch(/^2h 4[78]m \d+s left$/);
     expect(panel.querySelector(".cd-h")!.textContent).toBe("2");
     expect(panel.textContent).not.toMatch(/Next|left of|%/);
-    expect(screen.getByTestId("ring-arc").getAttribute("d")).toMatch(/^M150 18 A132 132 0 0 1/); // starts at 12 o'clock
+    expect(screen.getByTestId("ring-arc").getAttribute("d")).toMatch(/^M150 18 A132 132 0 1 1/); // starts at 12 o clock; 10:12 of 09:00-13:00 leaves about 74%, so the arc is the long way round
     expect(screen.queryByText("LIVE")).toBeNull(); expect(screen.queryByRole("slider")).toBeNull();
   });
   it("hides the hours under an hour and keeps up with the clock", async () => {

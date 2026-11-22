@@ -106,7 +106,8 @@ describe("countdowns", () => {
     fireEvent.change(screen.getByLabelText("Count in"), { target: { value: "week" } });
     fireEvent.click(screen.getByText("Add"));
     expect(screen.getByText("2 weeks 3 days left")).toBeTruthy();
-    expect(screen.getByRole("progressbar", { name: "Exam countdown" })).toBeTruthy();
+    expect(document.querySelector(".cd-ring")).toBeNull(); // no ring or progress bar, just the day count
+    expect(document.querySelector(".cd-num")!.textContent).toBe("17");
     fireEvent.click(screen.getByRole("button", { name: "Settings for Exam" })); // the unit and Remove sit behind one settings button
     fireEvent.change(screen.getByLabelText("Show Exam in"), { target: { value: "day" } });
     expect(screen.getByText("17 days left")).toBeTruthy();
@@ -118,7 +119,7 @@ describe("countdowns", () => {
   it("loads saved countdowns and ignores damaged ones", () => {
     localStorage.setItem("nou-countdowns", JSON.stringify([{ id: "a", label: "Trip", start: future(-10), end: future(10), unit: "month" }, { id: "b", label: "", start: "x", end: "y" }]));
     render(<CountdownWidget />);
-    expect(screen.getAllByRole("progressbar").length).toBe(1);
+    expect(document.querySelectorAll(".cd-num").length).toBe(1); // one countdown row (the damaged one is dropped)
     expect(screen.getByText("10 days left")).toBeTruthy();
   });
 });
@@ -256,7 +257,7 @@ describe("the daylight arc", () => {
     fireEvent.click(screen.getByRole("button", { name: "Choose where the daylight arc is for" }));
     const menu = screen.getByRole("group", { name: "Daylight arc place" });
     expect(within(menu).getAllByRole("radio").length).toBe(3); // where I am, London, Kuala Lumpur
-    fireEvent.click(within(menu).getByRole("radio", { name: /Kuala Lumpur/ }));
+    fireEvent.click(within(menu).getByRole("radio", { name: /^Kuala Lumpur/ }));
     expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in Kuala Lumpur: sunrise (06|07):/);
     expect(JSON.parse(localStorage.getItem("nou-sun-place")!)).toBe(1);
     expect(screen.queryByRole("group", { name: "Daylight arc place" })).toBeNull(); // the menu closes after a choice
@@ -264,7 +265,7 @@ describe("the daylight arc", () => {
     render(<SunArc store={store()} />); // a new mount keeps it
     expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in Kuala Lumpur/);
     fireEvent.click(screen.getByRole("button", { name: "Choose where the daylight arc is for" }));
-    fireEvent.click(screen.getByRole("radio", { name: /London/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^London/ }));
     expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Daylight in London/);
   });
   it("lets you search for a city that is not a weather place, such as Tokyo, and uses it", async () => {

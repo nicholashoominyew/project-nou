@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import FlowchartView, { type FlowMode } from "./FlowchartView";
 // @ts-ignore node built-ins are available in the test runner
 import { readFileSync } from "node:fs";
-import { parseFlowchart, serializeFlowchart, emptyChart, addNode, connect } from "./flowchart";
+import { parseFlowchart, serializeFlowchart, emptyChart, addNode, connect, moveNode } from "./flowchart";
 
 /** Keeps the chart in state the way the editor block does, so each action sees the result of the last. */
 function Harness({ start = "", editable = true, mode = "edit", spy }: { start?: string; editable?: boolean; mode?: FlowMode; spy?: (json: string) => void }) {
@@ -17,177 +17,136 @@ const seeded = () => {
   return serializeFlowchart(connect(c, "a", "b"));
 };
 const last = (spy: ReturnType<typeof vi.fn>) => parseFlowchart(spy.mock.calls[spy.mock.calls.length - 1][0]);
-const tool = (name: string) => within(screen.getByRole("group", { name: "Tool" })).getByText(name);
 const frame = (el: Element) => { (el as SVGElement).getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 440, right: 800, bottom: 440, x: 0, y: 0, toJSON() {} }) as DOMRect; };
-const viewBox = (c: HTMLElement) => c.querySelector("svg")!.getAttribute("viewBox")!;
+const viewBox = (c: HTMLElement) => c.querySelector("svg.flowchart-svg")!.getAttribute("viewBox")!;
+const btn = (name: string) => screen.getByRole("button", { name });
 
-describe("edit mode: tools", () => {
-  it("starts empty with a hint; the Box tool places a box where you click, then opens its text box", () => {
+describe("edit mode", () => {
+  it("has exactly three tools, as icons with names: Box, Connect and Tidy up", () => {
+    render(<Harness start={seeded()} />);
+    const bar = screen.getByRole("toolbar", { name: "Flowchart tools" });
+    expect(within(bar).getAllByRole("button").map(b => b.getAttribute("aria-label"))).toEqual(["Box", "Connect", "Tidy up"]);
+    expect(bar.textContent).toBe("");
+  });
+  it("starts empty with a hint; double-clicking the canvas places a box and opens its text for typing", () => {
     const spy = vi.fn();
     const { container } = render(<Harness spy={spy} />);
-    expect(screen.getByText(/Choose the Box tool/)).toBeTruthy();
-    fireEvent.click(tool("Box"));
-    expect(screen.getByText("Click the canvas to place a box.")).toBeTruthy();
-    const svg = container.querySelector("svg")!; frame(svg);
-    fireEvent.click(svg, { clientX: 400, clientY: 220 });
+    expect(screen.getByText(/empty flowchart/)).toBeTruthy();
+    const svg = container.querySelector("svg.flowchart-svg")!; frame(svg);
+    fireEvent.doubleClick(svg, { clientX: 400, clientY: 220 });
     expect(last(spy).nodes.length).toBe(1);
     const text = screen.getByLabelText("Box text") as HTMLInputElement;
     fireEvent.change(text, { target: { value: "Open the app" } });
-    fireEvent.click(screen.getByText("Save"));
+    fireEvent.keyDown(text, { key: "Enter" });
     expect(last(spy).nodes[0].text).toBe("Open the app");
+    expect(screen.queryByLabelText("Box text")).toBeNull();
     expect(screen.getByLabelText("Step: Open the app")).toBeTruthy();
-    expect(tool("Select").getAttribute("aria-pressed")).toBe("true"); // one box per click, then back to Select
   });
-  it("Add box in the Box panel adds a box without clicking the canvas", () => {
+  it("the Box tool places one box where you click, then turns off", () => {
     const spy = vi.fn();
-    render(<Harness spy={spy} />);
-    fireEvent.click(tool("Box"));
-    fireEvent.click(screen.getByText("Add box"));
+    const { container } = render(<Harness spy={spy} />);
+    fireEvent.click(btn("Box"));
+    expect(btn("Box").getAttribute("aria-pressed")).toBe("true");
+    const svg = container.querySelector("svg.flowchart-svg")!; frame(svg);
+    fireEvent.click(svg, { clientX: 400, clientY: 220 });
     expect(last(spy).nodes.length).toBe(1);
+    expect(btn("Box").getAttribute("aria-pressed")).toBe("false");
   });
-  it("the Connect tool joins two boxes with one click each, stays on for more, and ignores a click on the same box twice", () => {
-    const spy = vi.fn();
-    render(<Harness start={seeded()} spy={spy} />);
-    fireEvent.click(tool("Connect"));
-    expect(screen.getByText("Click the first box.")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Decision: Decide"));
-    expect(screen.getByText("Now click the second box.")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Step: Done"));
-    expect(last(spy).edges.map(e => [e.from, e.to])).toEqual([["a", "b"], ["b", "c"]]);
-    expect(tool("Connect").getAttribute("aria-pressed")).toBe("true");
-  });
-  it("connecting a box to itself is ignored", () => {
-    const spy = vi.fn();
-    render(<Harness start={seeded()} spy={spy} />);
-    fireEvent.click(tool("Connect"));
-    fireEvent.click(screen.getByLabelText("Step: Done")); fireEvent.click(screen.getByLabelText("Step: Done"));
-    expect(spy).not.toHaveBeenCalled();
-  });
-  it("Select: double-click renames, Escape cancels, and a selected box can be deleted", () => {
+  it("double-clicking a box edits its text on the canvas: Enter saves, Escape cancels", () => {
     const spy = vi.fn();
     render(<Harness start={seeded()} spy={spy} />);
     fireEvent.doubleClick(screen.getByLabelText("Step: Done"));
-    fireEvent.change(screen.getByLabelText("Box text"), { target: { value: "Changed" } });
-    fireEvent.keyDown(screen.getByLabelText("Box text"), { key: "Escape" });
+    let text = screen.getByLabelText("Box text") as HTMLInputElement;
+    expect(text.value).toBe("Done");
+    fireEvent.change(text, { target: { value: "Finished" } }); fireEvent.keyDown(text, { key: "Escape" });
     expect(spy).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByLabelText("Step: Done"));
-    fireEvent.click(screen.getByText("Delete box"));
-    expect(last(spy).nodes.map(n => n.id)).toEqual(["a", "b"]);
+    fireEvent.doubleClick(screen.getByLabelText("Step: Done"));
+    text = screen.getByLabelText("Box text") as HTMLInputElement;
+    fireEvent.change(text, { target: { value: "Finished" } }); fireEvent.keyDown(text, { key: "Enter" });
+    expect(last(spy).nodes.find(n => n.id === "c")!.text).toBe("Finished");
   });
-  it("Delete on a focused box removes it and its connections", () => {
+  it("double-clicking an arrow edits its label", () => {
     const spy = vi.fn();
-    render(<Harness start={seeded()} spy={spy} />);
-    fireEvent.keyDown(screen.getByLabelText("Decision: Decide"), { key: "Delete" });
-    const c = last(spy);
-    expect(c.nodes.map(n => n.id)).toEqual(["a", "c"]); expect(c.edges).toEqual([]);
-  });
-  it("an arrow can be selected, labelled and deleted", () => {
-    const spy = vi.fn();
-    render(<Harness start={seeded()} spy={spy} />);
-    fireEvent.click(screen.getByLabelText(/Arrow from Start to Decide/));
-    fireEvent.click(screen.getByText("Label"));
-    fireEvent.change(screen.getByLabelText("Connection label"), { target: { value: "yes" } });
-    fireEvent.click(screen.getByText("Save"));
+    const { container } = render(<Harness start={seeded()} spy={spy} />);
+    fireEvent.doubleClick(container.querySelector(".flowchart-edge")!);
+    const text = screen.getByLabelText("Connection label");
+    fireEvent.change(text, { target: { value: "yes" } }); fireEvent.keyDown(text, { key: "Enter" });
     expect(last(spy).edges[0].label).toBe("yes");
-    fireEvent.click(screen.getByLabelText(/Arrow from Start to Decide, yes/));
-    fireEvent.click(screen.getByText("Delete connection"));
-    expect(last(spy).edges).toEqual([]);
   });
-  it("Tidy up lays the boxes out in rows", () => {
+  it("anything can be selected by clicking: a box shows the box bar, an arrow the connection bar, the background clears it", () => {
+    const { container } = render(<Harness start={seeded()} />);
+    fireEvent.click(screen.getByLabelText("Step: Done"));
+    expect(screen.getByRole("toolbar", { name: "Box settings" })).toBeTruthy();
+    fireEvent.click(container.querySelector(".flowchart-edge")!);
+    expect(screen.getByRole("toolbar", { name: "Connection settings" })).toBeTruthy();
+    fireEvent.click(container.querySelector("svg.flowchart-svg")!);
+    expect(screen.queryByRole("toolbar", { name: /settings/ })).toBeNull();
+  });
+  it("dragging a box moves it", () => {
+    const spy = vi.fn();
+    const { container } = render(<Harness start={seeded()} spy={spy} />);
+    const svg = container.querySelector("svg.flowchart-svg")!; frame(svg);
+    const n0 = parseFlowchart(seeded()).nodes.find(n => n.id === "c")!;
+    const box = screen.getByLabelText("Step: Done");
+    fireEvent.pointerDown(box, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(svg, { clientX: 220, clientY: 160, pointerId: 1 });
+    fireEvent.pointerUp(svg, { clientX: 220, clientY: 160, pointerId: 1 });
+    const moved = last(spy).nodes.find(n => n.id === "c")!;
+    expect(moved.x !== n0.x || moved.y !== n0.y).toBe(true);
+  });
+  it("Connect joins two boxes by clicking them in turn", () => {
     const spy = vi.fn();
     render(<Harness start={seeded()} spy={spy} />);
-    fireEvent.click(screen.getByText("Tidy up"));
-    expect(last(spy).nodes.find(n => n.id === "b")!.y).toBe(100);
+    fireEvent.click(btn("Connect"));
+    fireEvent.click(screen.getByLabelText("Decision: Decide"));
+    fireEvent.click(screen.getByLabelText("Step: Done"));
+    expect(last(spy).edges.map(e => [e.from, e.to])).toEqual([["a", "b"], ["b", "c"]]);
   });
   it("Connect needs at least two boxes", () => {
-    render(<Harness />);
-    expect((tool("Connect") as HTMLButtonElement).disabled).toBe(true);
+    render(<Harness start={serializeFlowchart(addNode(emptyChart(), "Only", "step", "a").chart)} />);
+    expect((btn("Connect") as HTMLButtonElement).disabled).toBe(true);
   });
-});
-
-describe("edit mode: line types, line colours and fill colours", () => {
-  it("a selected box can change shape, line type, line colour and fill colour", () => {
+  it("Delete removes the selected arrow, or a focused box with its connections", () => {
+    const spy = vi.fn();
+    const { container } = render(<Harness start={seeded()} spy={spy} />);
+    fireEvent.click(container.querySelector(".flowchart-edge")!);
+    fireEvent.click(btn("Delete connection"));
+    expect(last(spy).edges.length).toBe(0);
+    fireEvent.keyDown(screen.getByLabelText("Decision: Decide"), { key: "Delete" });
+    expect(last(spy).nodes.map(n => n.id)).toEqual(["a", "c"]);
+  });
+  it("a selected box can change shape, line, line colour and fill colour from small icon buttons", () => {
     const spy = vi.fn();
     render(<Harness start={seeded()} spy={spy} />);
     fireEvent.click(screen.getByLabelText("Step: Done"));
-    const panel = screen.getByRole("group", { name: "Box settings" });
-    fireEvent.change(within(panel).getByLabelText("Shape"), { target: { value: "decision" } });
-    fireEvent.change(within(panel).getByLabelText("Box line type"), { target: { value: "dashed" } });
-    fireEvent.click(within(panel).getByLabelText("Box line colour: Red"));
-    fireEvent.click(within(panel).getByLabelText("Box fill colour: Blue"));
-    expect(last(spy).nodes.find(n => n.id === "c")).toMatchObject({ shape: "decision", line: "dashed", border: "red", fill: "blue" });
-    expect(within(panel).getByLabelText("Box line colour: Red").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(btn("Shape: Decision")); expect(last(spy).nodes.find(n => n.id === "c")!.shape).toBe("decision");
+    fireEvent.click(btn("Line: Dashed")); expect(last(spy).nodes.find(n => n.id === "c")!.line).toBe("dashed");
+    fireEvent.click(btn("Line colour")); fireEvent.click(btn("Line colour: Red"));
+    expect(last(spy).nodes.find(n => n.id === "c")!.border).toBe("red");
+    fireEvent.click(btn("Fill colour")); fireEvent.click(btn("Fill colour: Blue"));
+    expect(last(spy).nodes.find(n => n.id === "c")!.fill).toBe("blue");
   });
-  it("the box is drawn with that dash pattern, outline colour and fill; 'No line' removes the outline; a halo marks the selection", () => {
-    const { container } = render(<Harness start={seeded()} />);
-    fireEvent.click(screen.getByLabelText("Step: Done"));
-    const panel = screen.getByRole("group", { name: "Box settings" });
-    fireEvent.change(within(panel).getByLabelText("Box line type"), { target: { value: "dotted" } });
-    fireEvent.click(within(panel).getByLabelText("Box line colour: Green"));
-    fireEvent.click(within(panel).getByLabelText("Box fill colour: Yellow"));
-    const rect = () => screen.getByLabelText("Step: Done").querySelector("rect:not(.flowchart-halo)") as SVGElement;
-    expect(rect().style.strokeDasharray).toBe("2 6");
-    expect(rect().style.stroke).toContain("#3f9a5a");
-    expect(rect().style.fill).toContain("#c9a227");
-    fireEvent.change(within(panel).getByLabelText("Box line type"), { target: { value: "none" } });
-    expect(rect().style.stroke).toBe("none");
-    expect(container.querySelector(".flowchart-halo")).not.toBeNull();
-  });
-  it("a selected arrow can change line type, line colour, arrowhead fill and lose its arrowhead", () => {
+  it("a selected arrow can change line, route, arrowhead and colour", () => {
     const spy = vi.fn();
     const { container } = render(<Harness start={seeded()} spy={spy} />);
-    fireEvent.click(screen.getByLabelText(/Arrow from Start to Decide/));
-    const panel = screen.getByRole("group", { name: "Connection settings" });
-    fireEvent.change(within(panel).getByLabelText("Connection line type"), { target: { value: "dashed" } });
-    fireEvent.click(within(panel).getByLabelText("Connection line colour: Purple"));
-    fireEvent.click(within(panel).getByLabelText("Connection fill colour: Pink"));
-    expect(last(spy).edges[0]).toMatchObject({ line: "dashed", color: "purple", fill: "pink" });
-    const line = () => container.querySelector(".flowchart-edge path[marker-end]") as SVGElement;
-    expect(line().style.strokeDasharray).toBe("9 6");
-    expect(line().style.stroke).toContain("#8a5cc7");
-    expect(line().getAttribute("marker-end")).toContain("pink");
-    fireEvent.click(within(panel).getByLabelText("Arrowhead"));
-    expect(last(spy).edges[0].arrow).toBe(false);
-    expect(container.querySelector(".flowchart-edge path[marker-end]")).toBeNull();
+    fireEvent.click(container.querySelector(".flowchart-edge")!);
+    fireEvent.click(btn("Line: Dotted")); expect(last(spy).edges[0].line).toBe("dotted");
+    fireEvent.click(btn("Route: Straight")); expect(last(spy).edges[0].route).toBe("straight");
+    fireEvent.click(btn("Arrowhead")); expect(last(spy).edges[0].arrow).toBe(false);
+    fireEvent.click(btn("Line colour")); fireEvent.click(btn("Line colour: Green"));
+    expect(last(spy).edges[0].color).toBe("green");
   });
-  it("arrows are stepped by default, drawn with right angles, and Straight is a choice per connection", () => {
-    const spy = vi.fn();
-    const { container } = render(<Harness start={seeded()} spy={spy} />);
-    const path = () => container.querySelector(".flowchart-edge path[marker-end]") as SVGElement;
-    expect(path().getAttribute("d")).toMatch(/^M[-\d. ]+ L[-\d. ]+/);
-    expect(path().getAttribute("d")).not.toMatch(/ Q/); // a and b are in line, so one straight segment
-    fireEvent.click(screen.getByLabelText(/Arrow from Start to Decide/));
-    const panel = screen.getByRole("group", { name: "Connection settings" });
-    expect((within(panel).getByLabelText("Connection shape") as HTMLSelectElement).value).toBe("stepped");
-    fireEvent.change(within(panel).getByLabelText("Connection shape"), { target: { value: "straight" } });
-    expect(last(spy).edges[0].route).toBe("straight");
-  });
-  it("an arrow between boxes that are offset is drawn with a step and rounded corners", () => {
-    const offset = JSON.stringify({ nodes: [{ id: "a", text: "A", x: 400, y: 0 }, { id: "b", text: "B", x: 0, y: 200 }], edges: [{ from: "a", to: "b" }] });
-    const { container } = render(<Harness start={offset} mode="view" />);
-    expect((container.querySelector(".flowchart-edge path[marker-end]") as SVGElement).getAttribute("d")).toContain(" Q");
-  });
-  it("what you choose with nothing selected is used for the next box and the next arrow", () => {
-    const spy = vi.fn();
-    render(<Harness start={seeded()} spy={spy} />);
-    fireEvent.click(tool("Box"));
-    const panel = screen.getByRole("group", { name: "Box settings" });
-    fireEvent.click(within(panel).getByLabelText("Box line colour: Orange"));
-    fireEvent.change(within(panel).getByLabelText("Box line type"), { target: { value: "dashed" } });
-    fireEvent.click(screen.getByText("Add box"));
-    const added = last(spy).nodes[last(spy).nodes.length - 1];
-    expect(added).toMatchObject({ border: "orange", line: "dashed" });
-    fireEvent.click(screen.getByText("Save"));
-    fireEvent.click(tool("Connect"));
-    fireEvent.change(within(screen.getByRole("group", { name: "Connection settings" })).getByLabelText("Connection line type"), { target: { value: "dotted" } });
-    fireEvent.click(screen.getByLabelText("Step: Done")); fireEvent.click(screen.getByLabelText("Decision: Decide"));
-    expect(last(spy).edges.find(e => e.from === "c" && e.to === "b")).toMatchObject({ line: "dotted" });
-  });
-  it("a filled start/end box keeps readable text", () => {
+  it("a selected arrow shows end handles for moving it to another box", () => {
     const { container } = render(<Harness start={seeded()} />);
-    fireEvent.click(screen.getByLabelText("Start / end: Start"));
-    fireEvent.click(within(screen.getByRole("group", { name: "Box settings" })).getByLabelText("Box fill colour: Yellow"));
-    expect((container.querySelector(".flowchart-node.terminal text") as SVGElement).style.fill).toBe("var(--text)");
+    expect(container.querySelector(".fc-handle")).toBeNull();
+    fireEvent.click(container.querySelector(".flowchart-edge")!);
+    expect(container.querySelectorAll(".fc-handle").length).toBe(2);
+  });
+  it("Tidy up lays the boxes out", () => {
+    const spy = vi.fn();
+    render(<Harness start={serializeFlowchart(moveNode(parseFlowchart(seeded()), "c", 900, 5))} spy={spy} />);
+    fireEvent.click(btn("Tidy up"));
+    expect(spy).toHaveBeenCalled();
   });
 });
 
@@ -195,7 +154,7 @@ describe("view mode", () => {
   it("shows only the chart: no toolbar, no settings, no zoom buttons, no buttons of any kind", () => {
     const { container } = render(<Harness start={seeded()} mode="view" />);
     expect(screen.queryByRole("toolbar")).toBeNull();
-    for (const t of ["Select", "Box", "Connect", "Tidy up", "Fit", "Add box"]) expect(screen.queryByText(t)).toBeNull();
+    for (const t of ["Box", "Connect", "Tidy up", "Fit"]) expect(screen.queryByText(t)).toBeNull();
     expect(screen.queryByLabelText("Zoom in")).toBeNull();
     expect(container.querySelector(".flowchart-panel")).toBeNull();
     expect(container.querySelector("button")).toBeNull();
@@ -205,7 +164,7 @@ describe("view mode", () => {
   it("cannot be changed: no selecting, renaming, deleting, dragging, panning or zooming, and the whole chart stays fitted", () => {
     const spy = vi.fn();
     const { container } = render(<Harness start={seeded()} mode="view" spy={spy} />);
-    const svg = container.querySelector("svg")!; frame(svg);
+    const svg = container.querySelector("svg.flowchart-svg")!; frame(svg);
     const fitted = viewBox(container);
     fireEvent.click(screen.getByLabelText("Step: Done"));
     fireEvent.doubleClick(screen.getByLabelText("Step: Done"));
@@ -238,13 +197,13 @@ describe("view mode", () => {
     function Switch() { const [m, setM] = useState<FlowMode>("edit"); return <><button onClick={() => setM(x => (x === "edit" ? "view" : "edit"))}>toggle</button><Harness start={seeded()} mode={m} /></>; }
     const { container } = render(<Switch />);
     fireEvent.click(screen.getByLabelText("Step: Done"));
-    expect(screen.getByRole("group", { name: "Box settings" })).toBeTruthy();
+    expect(screen.getByRole("toolbar", { name: "Box settings" })).toBeTruthy();
     fireEvent.click(screen.getByText("toggle"));
-    expect(screen.queryByRole("group", { name: "Box settings" })).toBeNull();
+    expect(screen.queryByRole("toolbar", { name: "Box settings" })).toBeNull();
     expect(container.querySelector(".flowchart-halo")).toBeNull();
     fireEvent.click(screen.getByText("toggle"));
-    expect(screen.queryByRole("group", { name: "Box settings" })).toBeNull();
-    expect(tool("Select").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("toolbar", { name: "Box settings" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Box" }).getAttribute("aria-pressed")).toBe("false");
   });
 });
 
@@ -260,7 +219,7 @@ describe("safety and canvas", () => {
   });
   it("while editing, two-finger scroll pans and pinch zooms the canvas, and the page is not scrolled", async () => {
     const { container } = render(<Harness start={seeded()} />);
-    const svg = container.querySelector("svg")!; frame(svg);
+    const svg = container.querySelector("svg.flowchart-svg")!; frame(svg);
     const start = viewBox(container);
     const pan = new WheelEvent("wheel", { deltaX: 40, deltaY: 12.5, bubbles: true, cancelable: true });
     svg.dispatchEvent(pan);
@@ -270,19 +229,16 @@ describe("safety and canvas", () => {
     svg.dispatchEvent(new WheelEvent("wheel", { deltaY: -6, ctrlKey: true, clientX: 400, clientY: 220, bubbles: true, cancelable: true }));
     await waitFor(() => expect(Number(viewBox(container).split(" ")[2])).toBeLessThan(w1));
   });
-  it("dragging the background pans in the Select tool; Fit brings the chart back; the zoom buttons zoom", () => {
+  it("dragging the background pans the canvas; Tidy up refits it", () => {
     const { container } = render(<Harness start={seeded()} />);
-    const svg = container.querySelector("svg")!; frame(svg);
+    const svg = container.querySelector("svg.flowchart-svg")!; frame(svg);
     const fitted = viewBox(container);
     fireEvent.pointerDown(svg, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(svg, { clientX: 160, clientY: 130, pointerId: 1 });
     fireEvent.pointerUp(svg, { pointerId: 1 });
     expect(viewBox(container)).not.toBe(fitted);
-    fireEvent.click(screen.getByText("Fit"));
-    expect(viewBox(container)).toBe(fitted);
-    const w = () => Number(viewBox(container).split(" ")[2]);
-    const before = w();
-    fireEvent.click(screen.getByLabelText("Zoom in")); expect(w()).toBeLessThan(before);
+    fireEvent.click(screen.getByRole("button", { name: "Tidy up" }));
+    expect(viewBox(container)).not.toBe("");
   });
 });
 

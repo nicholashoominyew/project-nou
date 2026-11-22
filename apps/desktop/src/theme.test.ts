@@ -94,17 +94,18 @@ describe("chrome rules from the brief", () => {
   });
   it("Home: one 3-column auto-fit grid with 16px gaps, cards are 10px panels, and state is a 7px dot with a soft ring when live", () => {
     expect(theme).toMatch(/\.home-grid\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(280px,1fr\)\);gap:16px;align-items:stretch\}/);
-    expect(theme).toMatch(/\.home-row\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(280px,1fr\)\);gap:16px;align-items:stretch\}/);
+    expect(theme).toMatch(/\.home-row\{display:flex;flex-wrap:wrap;gap:16px;align-items:stretch\}/);  // rows of cards wrap and stretch, so an odd card never leaves a hole
     expect(theme).toMatch(/\.home-card\{[^}]*padding:18px 20px;background:var\(--panel\);border:1px solid var\(--line\);border-radius:10px/);
     expect(theme).toMatch(/\.home\{max-width:1120px;padding:32px 48px 112px/);
     expect(theme).toMatch(/\.state-dot\{[^}]*width:7px;height:7px;border-radius:50%/);
     expect(theme).toMatch(/\.state-dot\.live\{background:var\(--accent\);box-shadow:0 0 0 3px var\(--accent-soft\)\}/);
   });
-  it("Home follows the width of its own area: three columns when wide, the calendar column full width with the clocks column in two when medium, one column when narrow", () => {
+  it("Home follows the width of its own area: three columns when wide, one column when medium with the right-hand cards wrapping to fill each row, one column when narrow", () => {
     expect(theme).toMatch(/\.home\{container:home\/inline-size;/);
     expect(theme).toMatch(/@container home \(max-width: 880px\)\{[^@]*\.home-grid\{grid-template-columns:1fr\}[^@]*\.home-col\.span2\{grid-column:auto\}/);
-    expect(theme).toMatch(/@container home \(max-width: 600px\)\{[^@]*\.home-grid>\.home-col:last-child\{grid-template-columns:1fr\}/);
-    expect(theme).toMatch(/\.home-row\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(280px,1fr\)\)/);
+    expect(theme).toMatch(/@container home \(max-width: 880px\)\{[^@]*\.home-grid>\.home-col:last-child\{display:flex;flex-direction:row;flex-wrap:wrap;align-items:stretch;gap:16px\}[^@]*>\*\{flex:1 1 280px;min-width:0\}[^@]*\.w-weather\{flex-basis:100%\}/);
+    expect(theme).toMatch(/@container home \(max-width: 600px\)\{[^@]*\.home-grid>\.home-col:last-child\{flex-direction:column;flex-wrap:nowrap\}/);
+    expect(theme).toMatch(/\.home-row\{display:flex;flex-wrap:wrap;gap:16px;align-items:stretch\}\.home-row>\*\{flex:1 1 280px;min-width:0\}/);
   });
   it("Home animations only run when reduced motion is not asked for, and the flip tile has the brief's flip", () => {
     expect(theme).toMatch(/@media \(prefers-reduced-motion:no-preference\)\{\.flip\.go\{animation:nouFlip \.45s/);
@@ -171,5 +172,14 @@ describe("Bots Hub styles", () => {
     const dot = (cls: string) => rules.find(r => r.selector === ".hub-dot" + cls || r.selector.split(",").includes(".hub-dot" + cls))!.body;
     expect(dot(".live")).toMatch(/background:var\(--accent\)/); expect(dot(".ask")).toMatch(/box-shadow:0 0 0 3px var\(--accent-soft\)/); expect(dot(".hollow")).toMatch(/background:transparent;border:1px solid var\(--muted\)/);
     expect(rules.find(r => r.selector === ".hub-dot")!.body).toMatch(/background:var\(--muted\)/);
+  });
+});
+
+describe("custom title bar", () => {
+  it("the top bar is the window's drag area and has its own window buttons that sit flush with the right edge", () => {
+    expect(theme).toMatch(/\.workspace-topbar\{padding-right:0;/);
+    expect(theme).toMatch(/\.win-controls\{display:flex;align-self:stretch/);
+    expect(theme).toMatch(/\.win-controls button\.close:hover\{background:var\(--danger\)/);
+    expect(theme).toMatch(/\.win-controls button:focus-visible\{outline:2px solid var\(--accent\)/);
   });
 });

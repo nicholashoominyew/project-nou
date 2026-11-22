@@ -218,7 +218,7 @@ button:not(:disabled):active,.sb-item:active,.tree-row:active{transform:scale(.9
 .home-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:stretch}
 .home-col{display:flex;flex-direction:column;gap:16px;min-width:0}.home-col.span2{grid-column:span 2}
 .home-col>.w-tasks{flex:1 1 auto}
-.home-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:stretch}
+.home-row{display:flex;flex-wrap:wrap;gap:16px;align-items:stretch}.home-row>*{flex:1 1 280px;min-width:0}
 .home-card{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0;padding:18px 20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;transition:transform .25s ease,box-shadow .25s ease}
 .home-card:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(0,0,0,.08)}
 .home-card.strip{flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px 20px;padding:10px 16px}
@@ -329,7 +329,7 @@ button:not(:disabled):active,.sb-item:active,.tree-row:active{transform:scale(.9
 .key{flex:none;width:8px;height:8px;border-radius:50%;background:var(--accent)}.key-year{opacity:.4}.key-quarter{opacity:.62}.key-month{opacity:.82}
 .countdowns{display:flex;flex-direction:column;gap:12px}
 .countdown-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}.countdown-list li{display:flex;align-items:center;gap:12px}
-.cd-ring{flex:none;width:46px;height:46px}.cd-days{font:600 28px var(--font-body);fill:var(--text)}
+.cd-num{flex:none;min-width:34px;text-align:center;font:600 26px/1 var(--font-body);color:var(--text);font-variant-numeric:tabular-nums}
 .cd-text{display:flex;flex-direction:column;min-width:0;flex:1;line-height:1.3}.cd-text strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.cd-text .hint{font-size:12px}
 .countdown-add{display:flex;flex-wrap:wrap;gap:8px}.countdown-add input:not([type]){flex:1;min-width:160px}
 
@@ -394,11 +394,14 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 @container home (max-width: 880px){
   .home-grid{grid-template-columns:1fr}
   .home-col.span2{grid-column:auto}
-  .home-grid>.home-col:last-child{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:stretch;gap:16px}
-  .home-grid>.home-col:last-child>.w-weather{grid-column:1/-1}
+  /* The clocks, tasks and weather cards share the full width: they wrap and stretch to fill each row, so no row ends with an empty gap. */
+  .home-grid>.home-col:last-child{display:flex;flex-direction:row;flex-wrap:wrap;align-items:stretch;gap:16px}
+  .home-grid>.home-col:last-child>*{flex:1 1 280px;min-width:0}
+  .home-grid>.home-col:last-child>.w-weather{flex-basis:100%}
 }
 @container home (max-width: 600px){
-  .home-grid>.home-col:last-child{grid-template-columns:1fr}
+  .home-grid>.home-col:last-child{flex-direction:column;flex-wrap:nowrap}
+  .home-grid>.home-col:last-child>*{flex:none}
   .home-card.strip{flex-direction:column;align-items:flex-start}
   .mcal-day{height:42px;padding:4px 6px}
   .mcal-dow{padding:2px 4px 4px}
@@ -707,3 +710,42 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .hub-fullqueue{margin-top:16px}
 .sb-badge{background:transparent;color:var(--accent);font:10px var(--font-mono);letter-spacing:.1em;font-style:normal;padding:0;border:0}
 @media (max-width:760px){.hub-page{padding:24px 16px 48px}.hub-title{font-size:30px}.hub-room{height:640px}}
+
+/* ---------- Custom title bar: the tab bar is the window's top bar, with its own window buttons ---------- */
+.workspace-topbar{padding-right:0;-webkit-user-select:none;user-select:none}
+.workspace-topbar .window-tools{padding-right:6px}
+.sb-header .mark,.sb-header .sb-name{pointer-events:none}
+.win-controls{display:flex;align-self:stretch;flex:none}
+.win-controls button{width:46px;height:auto;min-height:0;padding:0;display:grid;place-items:center;border:0;border-radius:0;background:transparent;color:var(--muted);cursor:default}
+.win-controls button:hover{background:var(--hover);color:var(--text)}
+.win-controls button.close:hover{background:var(--danger);color:#ffffff}
+.win-controls button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+/* ---- Flowchart editor: three icon tools, one compact bar for the selection, text edited on the canvas ---- */
+.flowchart{position:relative}
+.fc-tools,.fc-inspector{display:flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.fc-tools{position:absolute;top:14px;left:14px;z-index:2}
+.fc-inspector{position:absolute;top:14px;right:14px;z-index:2;flex-wrap:wrap;max-width:calc(100% - 100px);gap:2px 6px}
+.fc-group{display:inline-flex;gap:1px;padding-right:6px;border-right:1px solid var(--line)}
+.fc-btn{display:inline-grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer}
+.fc-btn:hover:not(:disabled){background:var(--hover);color:var(--text)}
+.fc-btn[aria-pressed=true]{background:var(--accent);color:var(--accent-ink,var(--bg))}
+.fc-btn:disabled{opacity:.35;cursor:default}
+.fc-btn.danger:hover{background:var(--danger);color:#fff}
+.fc-btn:focus-visible,.fc-dot:focus-visible,.fc-swatch:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.fc-colour{position:relative;display:inline-grid;place-items:center}
+.fc-dot{width:18px;height:18px;margin:0 6px;padding:0;border-radius:50%;border:2px solid var(--line);background:var(--panel);cursor:pointer}
+.fc-dot.plain{background:linear-gradient(135deg,var(--panel) 45%,var(--muted) 46%,var(--muted) 54%,var(--panel) 55%)}
+.fc-palette{position:absolute;top:100%;right:0;margin-top:6px;z-index:3;display:flex;gap:4px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.fc-swatch{width:18px;height:18px;padding:0;border-radius:50%;border:1px solid rgba(0,0,0,.25);cursor:pointer}
+.fc-swatch.plain{background:linear-gradient(135deg,var(--bg) 45%,var(--muted) 46%,var(--muted) 54%,var(--bg) 55%)}
+.fc-swatch[aria-pressed=true]{outline:2px solid var(--accent);outline-offset:1px}
+.fc-hint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:2;margin:0;padding:4px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--muted);font-size:12px;pointer-events:none}
+.fc-editing .flowchart-svg{cursor:default}
+.fc-editing .flowchart-svg.placing{cursor:crosshair}
+.fc-editing .flowchart-node{cursor:grab}
+.flowchart-node.target polygon,.flowchart-node.target rect{stroke:var(--accent);stroke-width:3}
+.fc-handle{fill:var(--bg);stroke:var(--accent);stroke-width:2;cursor:crosshair}
+.fc-preview{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:5 4;pointer-events:none}
+.fc-input{width:100%;height:100%;box-sizing:border-box;padding:0 8px;border:2px solid var(--accent);border-radius:8px;background:var(--bg);color:var(--text);font:13px var(--font-body);text-align:center;outline:none}
+.fc-input.small{height:24px;font-size:12px}

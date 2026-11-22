@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "Project NOU",
+        "decorations": false,
         "width": 1240,
         "height": 820,
         "minWidth": 780,

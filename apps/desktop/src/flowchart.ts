@@ -110,6 +110,24 @@ export function connect(c: Flowchart, from: string, to: string): Flowchart {
   if (from === to || !ids.has(from) || !ids.has(to) || c.edges.length >= MAX_EDGES || c.edges.some(e => e.from === from && e.to === to)) return c;
   return { ...c, edges: [...c.edges, { from, to, label: "" }] };
 }
+/**
+ * Moves one end of an arrow onto another box (drag an arrow's end handle onto a box). The arrow keeps its look and label. Nothing changes when the
+ * new ends are the same box, when that link already exists, or when a box is unknown.
+ */
+export function reconnectEdge(c: Flowchart, from: string, to: string, newFrom: string, newTo: string): Flowchart {
+  const ids = new Set(c.nodes.map(n => n.id));
+  if (newFrom === newTo || !ids.has(newFrom) || !ids.has(newTo) || (newFrom === from && newTo === to) || c.edges.some(e => e.from === newFrom && e.to === newTo)) return c;
+  return { ...c, edges: c.edges.map(e => (e.from === from && e.to === to ? { ...e, from: newFrom, to: newTo } : e)) };
+}
+/** The box under a point of the chart, if any (the topmost one when boxes overlap). */
+export function nodeAt(c: Flowchart, x: number, y: number): FNode | undefined {
+  for (let i = c.nodes.length - 1; i >= 0; i--) {
+    const n = c.nodes[i];
+    const dx = Math.abs(x - n.x), dy = Math.abs(y - n.y), w = NODE_W / 2, h = nodeHeight(n.shape) / 2;
+    if (n.shape === "decision" ? dx / w + dy / h <= 1 : dx <= w && dy <= h) return n;
+  }
+  return undefined;
+}
 export const removeEdge = (c: Flowchart, from: string, to: string): Flowchart => ({ ...c, edges: c.edges.filter(e => !(e.from === from && e.to === to)) });
 export const labelEdge = (c: Flowchart, from: string, to: string, label: string): Flowchart => ({ ...c, edges: c.edges.map(e => (e.from === from && e.to === to ? { ...e, label: tidy(label, MAX_LABEL) } : e)) });
 
