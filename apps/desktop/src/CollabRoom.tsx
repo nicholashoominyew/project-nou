@@ -22,7 +22,8 @@ export default function CollabRoom({ room, rooms, onRoom, participants, messages
     const text = draft.trim();
     if (!text || sending || disabled) return;
     setSending(true);
-    try { await onSend(text); setDraft(""); stick.current = true; } finally { setSending(false); }
+    // onSend rethrows so the draft is kept; the parent already shows the error, so it must not escape as an unhandled rejection.
+    try { await onSend(text); setDraft(""); stick.current = true; } catch { /* error is shown by the hub; keep the draft */ } finally { setSending(false); }
   }
   async function approve(m: HubMessage) { setDeciding(m.id); try { await onApprove(m); } finally { setDeciding(null); } }
   const slug = room?.slug ?? "general";
