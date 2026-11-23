@@ -80,13 +80,13 @@ fn get_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     } else {
         let version: i64 = conn.query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version != 1 && version != 2 && version != 3 && version != 4 && version != 5 && version != 6 && version != 7 && version != 8 && version != 9 && version != 10 && version != 11 && version != 12 { return Err(format!("Unsupported Notes database version: {version}")); }
+        if version != 1 && version != 2 && version != 3 && version != 4 && version != 5 && version != 6 && version != 7 && version != 8 && version != 9 && version != 10 && version != 11 && version != 12 && version != 13 { return Err(format!("Unsupported Notes database version: {version}")); }
         // Databases made before 11 Nov 2026 have an older db_properties table; rebuild it (after taking a copy) so the schema check accepts the database.
         legacy_repair::run(&conn, &folder)?;
     }
     conn.execute("INSERT OR IGNORE INTO workspaces (id,title) VALUES ('personal','Personal')", [])
         .map_err(|e| e.to_string())?;
-    if conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get::<_,i64>(0)).map_err(|e| e.to_string())? < 12 {
+    if conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |r| r.get::<_,i64>(0)).map_err(|e| e.to_string())? < 13 {
         recovery::create(&conn, &folder.join("schema-rollback"))?;
         editor::upgrade(&conn)?;
     }

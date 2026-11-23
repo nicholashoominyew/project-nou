@@ -12,7 +12,7 @@ import {namedPastes,pastedImages} from "./pasteImages";
 import {blockAttachmentIds,documentAttachmentIds,documentLinkedTodoIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
-import { editorOwnership, undoRequest, wantsExistingDatabases, wantsExistingTodos, hasHighlight, highlightToApply, isHighlightShortcut, readHighlight, rememberHighlight, shouldTrapTab, writeHighlight, type Highlight } from "./editorKeys";
+import { DATABASE_VIEW_COMMANDS, editorOwnership, undoRequest, wantsExistingDatabases, wantsExistingTodos, hasHighlight, highlightToApply, isHighlightShortcut, readHighlight, rememberHighlight, shouldTrapTab, writeHighlight, type Highlight } from "./editorKeys";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { withCollaboration } from "@blocknote/core/yjs";
@@ -54,7 +54,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
       if(empty&&anchor)editor.removeBlocks([anchor.id]);
     }catch(error){context.onError(error)}finally{setPending(false)}
   }
-  async function create(kind:"page"|"database"|"image"|"pdf"|"file"){
+  async function create(kind:"page"|"database"|"image"|"pdf"|"file",view?:string){
     const anchor=editor.getTextCursorPosition().block.id;setPending(true);
     try{
       if(kind==="page"){
@@ -62,7 +62,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
         if(!editor.getBlock(anchor))throw Error("Insertion point changed; the new page is available in the sidebar.");
         editor.setTextCursorPosition(anchor,"end");insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium",style:"line"}});
       }else if(kind==="database"){
-        const database=await invoke<{id:string}>("create_database",{parentId:pageId,title:"Untitled database",initialUpdate:await newRichUpdate()});
+        const database=await invoke<{id:string}>("create_database",{parentId:pageId,title:"Untitled database",initialUpdate:await newRichUpdate(),initialView:view});
         if(!editor.getBlock(anchor))throw Error("Insertion point changed. Choose Database again to insert it.");
         editor.setTextCursorPosition(anchor,"end");insertOrUpdateBlockForSlashMenu(editor,{type:"nouDatabase",props:{databaseId:database.id}} as never);
       }else{
@@ -126,7 +126,8 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
   const pageItems=(query:string)=>filterSuggestionItems(context.pages.map(page=>({title:page.title,icon:<Icon name="mention" size={18}/>,aliases:[],group:"Pages",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium",style:"line"}} as never)})),query).slice(0,12);
   const items=()=>[...getDefaultReactSlashMenuItems(editor),
     {title:"Page",icon:<Icon name="subpage" size={18}/>,aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
-    {title:"Database",icon:<Icon name="database" size={18}/>,aliases:["database","table","board","calendar","timeline","gallery","list"],group:"NOU",onItemClick:()=>void create("database")},
+    {title:"Database",icon:<Icon name="database" size={18}/>,aliases:["database","table","board","calendar","timeline","gallery","list","chart","map"],group:"NOU",onItemClick:()=>void create("database")},
+    ...DATABASE_VIEW_COMMANDS.map(v=>({title:v.title,icon:<Icon name="database" size={18}/>,aliases:v.aliases,group:"Database views",onItemClick:()=>void create("database",v.type)})),
     {title:"2 columns",icon:<Icon name="columns" size={18}/>,aliases:["columns","column","side by side","split","2 column"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouColumns",children:[{type:"paragraph"},{type:"paragraph"}]} as never)},
     {title:"3 columns",icon:<Icon name="columns" size={18}/>,aliases:["columns","column","side by side","3 column"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouColumns",children:[{type:"paragraph"},{type:"paragraph"},{type:"paragraph"}]} as never)},
     {title:"Flowchart",icon:<Icon name="flowchart" size={18}/>,aliases:["flowchart","diagram","chart","flow","process"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouFlowchart",props:{data:""}} as never)},

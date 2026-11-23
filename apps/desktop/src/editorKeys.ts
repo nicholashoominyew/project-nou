@@ -87,3 +87,9 @@ export class EditorOwnership {
   get size() { return this.stack.length; }
 }
 export const editorOwnership = new EditorOwnership();
+
+/** One slash command per database view, so "/table view", "/board", "/chart" and so on each insert a new database that opens in that view. */
+export const DATABASE_VIEW_COMMANDS: { type: string; title: string; aliases: string[] }[] = [
+  ["table", "Table", ["spreadsheet", "grid"]], ["board", "Board", ["kanban", "columns"]], ["list", "List", []], ["gallery", "Gallery", ["cards", "images"]],
+  ["calendar", "Calendar", ["dates", "month"]], ["timeline", "Timeline", ["gantt", "schedule"]], ["map", "Map", ["places", "locations"]], ["chart", "Chart", ["graph", "bar", "line", "donut", "pie"]],
+].map(([type, label, extra]) => ({ type: type as string, title: `${label} view database`, aliases: [`${type} view`, type as string, `${type} database`, "database", "view", "database view", ...(extra as string[])] }));

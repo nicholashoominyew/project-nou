@@ -5,9 +5,13 @@ export type Kind = "text" | "number" | "select" | "multi_select" | "status" | "d
 export type PropertyConfig = { target?: string; reverse?: string | null; relation?: string; property?: string; fn?: string };
 export type Property = { id: string; name: string; type: Kind; options: Option[]; config?: PropertyConfig };
 export type Row = { id: string; title: string; values: Record<string, unknown> };
-export type ViewType = "table" | "board" | "list" | "gallery" | "calendar" | "timeline" | "map";
+export type ViewType = "table" | "board" | "list" | "gallery" | "calendar" | "timeline" | "map" | "chart";
+export type ChartType = "vbar" | "hbar" | "line" | "donut";
 import type { CalcFn, Filter, Sort } from "./dbLogic";
 export type ViewConfig = {
+  chartType?: ChartType; xBy?: string; yBy?: string; colorBy?: string; yFn?: "count" | "sum" | "average" | "min" | "max" | "median"; barStyle?: "grouped" | "stacked" | "percent";
+  xSort?: "none" | "x_asc" | "x_desc" | "y_asc" | "y_desc"; xGroup?: "day" | "week" | "month" | "year"; height?: "small" | "medium" | "large" | "xlarge"; donutCenter?: "none" | "total";
+  hideZero?: boolean; hideEmpty?: boolean; grid?: boolean; axisNames?: boolean; dataLabels?: boolean; legend?: boolean; smooth?: boolean; cumulative?: boolean; refLine?: number;
   groupBy?: string; dateBy?: string; endBy?: string; placeBy?: string; frozen?: string; filterMode?: "and" | "or"; widths?: Record<string, number>;
   sorts?: Sort[]; filters?: Filter[]; hidden?: string[]; wrap?: string[]; calc?: Record<string, CalcFn>;
 };
@@ -25,7 +29,7 @@ export type ViewContext = {
 
 export const VIEW_TYPES: { type: ViewType; label: string }[] = [
   { type: "table", label: "Table" }, { type: "board", label: "Board" }, { type: "list", label: "List" },
-  { type: "gallery", label: "Gallery" }, { type: "calendar", label: "Calendar" }, { type: "timeline", label: "Timeline" }, { type: "map", label: "Map" },
+  { type: "gallery", label: "Gallery" }, { type: "calendar", label: "Calendar" }, { type: "timeline", label: "Timeline" }, { type: "map", label: "Map" }, { type: "chart", label: "Chart" },
 ];
 /** Properties that hold a date a calendar or timeline can use. */
 export const isDateLike = (kind: Kind) => kind === "date" || kind === "created_time" || kind === "last_edited_time";
@@ -68,6 +72,7 @@ export function cardProperties(ctx: ViewContext, row: Row, skip: (string | undef
 export function defaultConfig(type: ViewType, properties: Property[]): ViewConfig {
   if (type === "board") { const p = properties.find(x => x.type === "status") ?? properties.find(x => x.type === "select"); return p ? { groupBy: p.id } : {}; }
   if (type === "calendar" || type === "timeline") { const p = properties.find(x => x.type === "date") ?? properties.find(x => isDateLike(x.type)); return p ? { dateBy: p.id } : {}; }
+  if (type === "chart") { const p = properties.find(x => x.type === "status") ?? properties.find(x => x.type === "select") ?? properties.find(x => x.type === "checkbox"); return { chartType: "vbar", ...(p ? { xBy: p.id } : {}) }; }
   if (type === "map") { const p = properties.find(x => x.type === "place"); return p ? { placeBy: p.id } : {}; }
   return {};
 }

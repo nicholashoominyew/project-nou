@@ -749,3 +749,28 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .fc-preview{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:5 4;pointer-events:none}
 .fc-input{width:100%;height:100%;box-sizing:border-box;padding:0 8px;border:2px solid var(--accent);border-radius:8px;background:var(--bg);color:var(--text);font:13px var(--font-body);text-align:center;outline:none}
 .fc-input.small{height:24px;font-size:12px}
+
+/* ---- Database chart view ---- */
+.db-chart{padding:8px 0}
+.db-chart-svg{display:block;width:100%;max-width:100%}
+.db-chart-grid{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4}
+.db-chart-axis{stroke:var(--muted);stroke-width:1;opacity:.6}
+.db-chart-ref{stroke:var(--danger);stroke-width:1.5;stroke-dasharray:6 4}
+.db-chart-tick{fill:var(--muted);font-size:11px;font-family:var(--font-body)}
+.db-chart-axisname{fill:var(--muted);font-size:11px;font-weight:600;letter-spacing:.02em}
+.db-chart-datalabel{fill:var(--text);font-size:11px;font-weight:600;pointer-events:none}
+.db-chart-datalabel.on-mark{fill:#fff;paint-order:stroke;stroke:rgba(0,0,0,.35);stroke-width:2px}
+.db-chart-mark{transition:opacity .12s}
+.db-chart-mark:hover{opacity:.82}
+.db-chart-center{fill:var(--text);font:600 34px var(--font-body)}
+.db-chart-center-sub{fill:var(--muted);font-size:12px}
+.db-chart-legend{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:center;margin:6px 0 0;padding:0;list-style:none;font-size:12px;color:var(--muted)}
+.db-chart-legend li{display:inline-flex;align-items:center;gap:6px}
+.db-chart-legend .swatch{width:10px;height:10px;border-radius:3px}
+.db-chart-settings{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 14px}
+.db-chart-types{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.db-chart-types button{border:0;border-radius:0;background:transparent;padding:6px 12px;color:var(--muted);cursor:pointer;font:inherit;font-size:13px}
+.db-chart-types button+button{border-left:1px solid var(--line)}
+.db-chart-types button.active{background:var(--hover);color:var(--text);box-shadow:inset 0 -2px 0 var(--accent)}
+.db-chart-flags{display:flex;flex-wrap:wrap;gap:6px 14px;flex-basis:100%}
+.db-setting.db-check{display:inline-flex;flex-direction:row;align-items:center;gap:6px;font-size:13px}

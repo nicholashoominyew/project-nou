@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useDismiss } from "./Dismissible";
@@ -6,6 +6,7 @@ import { PlaceResults } from "./PlaceSearch";
 import { useEditorFeatures } from "./EditorContext";
 import { newRichUpdate } from "./richUpdate";
 import { BoardView, CalendarView, GalleryView, ListView, MapView, TimelineView } from "./DatabaseViews";
+import { ChartView } from "./ChartView";
 import { CALC_LABELS, OPS, calcOptions, computeCalc, groupRows, groupable, needsValue, visibleRows, type CalcFn, type Filter, type FilterOp, type Sort } from "./dbLogic";
 import * as Y from "yjs";
 import { Chip, KIND_ICON, VIEW_TYPES, defaultConfig, formatPlace, formatStamp, isComputedKind, isDateLike, isSelectLike, parsePlace, type Act, type DatabaseData, type Kind, type Property, type Row, type View, type ViewConfig, type ViewContext, type ViewType } from "./dbShared";
@@ -26,10 +27,12 @@ type Patch = (change: Partial<ViewConfig>) => Promise<void>;
  * A disclosure whose menu is positioned against the window (not the table), so the table's own scrolling
  * can never clip it. Closes on outside click, Escape or scroll.
  */
-function Popover({ className, summary, summaryLabel, menuClass, lazy, children }: { className?: string; summary: ReactNode; summaryLabel: string; menuClass?: string; lazy?: boolean; children: ReactNode }) {
+export function Popover({ className, summary, summaryLabel, menuClass, lazy, children }: { className?: string; summary: ReactNode; summaryLabel: string; menuClass?: string; lazy?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
   const [at, setAt] = useState({ left: 0, top: 0 });
+  const [shift, setShift] = useState({ x: 0, y: 0 });
+  const menuRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => { if (ref.current) ref.current.open = false; }, []);
   useDismiss(open, close, ref);
   useEffect(() => {
@@ -44,12 +47,22 @@ function Popover({ className, summary, summaryLabel, menuClass, lazy, children }
     if (details.open) {
       const rect = details.getBoundingClientRect();
       const below = window.innerHeight - rect.bottom;
+      setShift({ x: 0, y: 0 });
       setAt({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 268)), top: below > 300 ? rect.bottom + 4 : Math.max(8, rect.top - 304) });
     }
   }
+  // A fixed menu is placed against the window only when no ancestor has a transform (a finished entrance animation leaves one).
+  // Measure where it really landed and move it by the difference, so it always opens beside the button.
+  useLayoutEffect(() => {
+    if (!open || !menuRef.current) return;
+    const r = menuRef.current.getBoundingClientRect();
+    if (!r.width && !r.height) return; // no layout (not shown yet)
+    const x = at.left - r.left, y = at.top - r.top;
+    if (Math.abs(x) > 0.5 || Math.abs(y) > 0.5) setShift({ x, y });
+  }, [open, at]);
   return <details ref={ref} className={className} onToggle={toggled}>
     <summary aria-label={summaryLabel}>{summary}</summary>
-    <div className={"db-menu " + (menuClass ?? "")} style={{ left: at.left, top: at.top }}>{(!lazy || open) && children}</div>
+    <div ref={menuRef} className={"db-menu " + (menuClass ?? "")} style={{ left: at.left + shift.x, top: at.top + shift.y }}>{(!lazy || open) && children}</div>
   </details>;
 }
 const closeOf = (event: React.SyntheticEvent) => { const details = (event.currentTarget as HTMLElement).closest("details"); if (details) details.open = false; };
@@ -106,7 +119,8 @@ export default function Database({ databaseId, readOnly, onError }: { databaseId
     {view.type === "calendar" && <CalendarView ctx={ctx} />}
     {view.type === "timeline" && <TimelineView ctx={ctx} />}
     {view.type === "map" && <MapView ctx={ctx} />}
-    {view.type !== "board" && view.type !== "calendar" && <button className="db-new-row" disabled={readOnly} onClick={() => void addRow()}>+ New row</button>}
+    {view.type === "chart" && <ChartView ctx={ctx} />}
+    {view.type !== "board" && view.type !== "calendar" && view.type !== "chart" && <button className="db-new-row" disabled={readOnly} onClick={() => void addRow()}>+ New row</button>}
     {peekId && <RowPage rowId={peekId} data={data} readOnly={readOnly} act={act} onClose={() => { setPeekId(null); void load().catch(() => undefined); }} />}
   </div>;
 }
@@ -167,6 +181,37 @@ function ViewTabs({ data, active, select, readOnly, act, databaseId }: { data: D
   </div>;
 }
 
+const CHART_TYPES: { id: NonNullable<ViewConfig["chartType"]>; label: string }[] = [{ id: "vbar", label: "Vertical bar" }, { id: "hbar", label: "Horizontal bar" }, { id: "line", label: "Line" }, { id: "donut", label: "Donut" }];
+/** Notion-style chart settings: what to plot (X, Y, colour groups) and how it looks. */
+function ChartSettings({ data, view, readOnly, patch }: { data: DatabaseData; view: View; readOnly: boolean; patch: Patch }) {
+  const c = view.config, type = c.chartType ?? "vbar";
+  const grouping = data.properties.filter(p => p.type !== "place" && p.type !== "rollup");
+  const colourable = data.properties.filter(p => ["select", "status", "multi_select", "checkbox"].includes(p.type) && p.id !== c.xBy);
+  const numbers = data.properties.filter(p => p.type === "number");
+  const x = data.properties.find(p => p.id === c.xBy);
+  const select = <T extends string>(label: string, value: T | undefined, options: { id: string; label: string }[], set: (v: string) => void, blank?: string) =>
+    <label className="db-setting">{label}<select value={value ?? ""} disabled={readOnly} onChange={e => set(e.target.value)}>{blank !== undefined && <option value="">{blank}</option>}{options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}</select></label>;
+  const flag = (label: string, key: "grid" | "axisNames" | "dataLabels" | "legend" | "smooth" | "cumulative" | "hideZero" | "hideEmpty", fallback: boolean) =>
+    <label className="db-setting db-check"><input type="checkbox" disabled={readOnly} checked={c[key] ?? fallback} onChange={e => void patch({ [key]: e.target.checked })} />{label}</label>;
+  return <div className="db-settings db-chart-settings" role="group" aria-label="Chart settings">
+    <div className="db-chart-types" role="radiogroup" aria-label="Chart type">{CHART_TYPES.map(t => <button key={t.id} role="radio" aria-checked={type === t.id} className={type === t.id ? "active" : ""} disabled={readOnly} onClick={() => void patch({ chartType: t.id })}>{t.label}</button>)}</div>
+    {select(type === "donut" ? "Slices" : "X axis", c.xBy, grouping.map(p => ({ id: p.id, label: p.name })), v => void patch({ xBy: v || undefined }), "Choose…")}
+    {x && (x.type === "date" || x.type === "created_time" || x.type === "last_edited_time") && select("Group dates by", c.xGroup ?? "month", [{ id: "day", label: "Day" }, { id: "week", label: "Week" }, { id: "month", label: "Month" }, { id: "year", label: "Year" }], v => void patch({ xGroup: v as ViewConfig["xGroup"] }))}
+    {select(type === "donut" ? "Size by" : "Y axis", c.yFn ?? "count", [{ id: "count", label: "Count of rows" }, ...(numbers.length ? [{ id: "sum", label: "Sum" }, { id: "average", label: "Average" }, { id: "median", label: "Median" }, { id: "min", label: "Min" }, { id: "max", label: "Max" }] : [])], v => void patch({ yFn: v as ViewConfig["yFn"] }))}
+    {(c.yFn ?? "count") !== "count" && select("of property", c.yBy, numbers.map(p => ({ id: p.id, label: p.name })), v => void patch({ yBy: v || undefined }), "Choose…")}
+    {type !== "donut" && select("Group by colour", c.colorBy, colourable.map(p => ({ id: p.id, label: p.name })), v => void patch({ colorBy: v || undefined }), "None")}
+    {type !== "donut" && c.colorBy && type !== "line" && select("Style", c.barStyle ?? "grouped", [{ id: "grouped", label: "Grouped" }, { id: "stacked", label: "Stacked" }, { id: "percent", label: "100% stacked" }], v => void patch({ barStyle: v as ViewConfig["barStyle"] }))}
+    {select("Sort", c.xSort ?? "none", [{ id: "x_asc", label: "X axis A → Z" }, { id: "x_desc", label: "X axis Z → A" }, { id: "y_asc", label: "Value low → high" }, { id: "y_desc", label: "Value high → low" }], v => void patch({ xSort: v as ViewConfig["xSort"] }), "As in the database")}
+    {select("Height", c.height ?? "medium", [{ id: "small", label: "Small" }, { id: "medium", label: "Medium" }, { id: "large", label: "Large" }, { id: "xlarge", label: "Extra large" }], v => void patch({ height: v as ViewConfig["height"] }))}
+    {type !== "donut" && <label className="db-setting">Reference line<input type="number" aria-label="Reference line value" disabled={readOnly} defaultValue={c.refLine ?? ""} key={String(c.refLine ?? "")} placeholder="None" onBlur={e => { const n = e.target.value.trim() === "" ? undefined : Number(e.target.value); if (n === undefined || Number.isFinite(n)) void patch({ refLine: n }); }} onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} /></label>}
+    {type === "donut" && select("Centre", c.donutCenter ?? "total", [{ id: "total", label: "Show total" }, { id: "none", label: "Empty" }], v => void patch({ donutCenter: v as ViewConfig["donutCenter"] }))}
+    <div className="db-chart-flags">
+      {type !== "donut" && flag("Gridlines", "grid", true)}{type !== "donut" && flag("Axis names", "axisNames", false)}{flag("Data labels", "dataLabels", false)}{flag("Legend", "legend", true)}
+      {type === "line" && flag("Smooth line", "smooth", false)}{type !== "donut" && flag("Cumulative", "cumulative", false)}{flag("Hide empty", "hideEmpty", false)}{flag("Hide zero", "hideZero", false)}
+    </div>
+  </div>;
+}
+
 function ViewSettings({ data, view, readOnly, patch }: { data: DatabaseData; view: View; readOnly: boolean; patch: Patch }) {
   const pick = (key: "groupBy" | "dateBy" | "endBy" | "placeBy", kinds: Kind[], label: string, optional = false) => {
     const choices = data.properties.filter(p => kinds.includes(p.type));
@@ -175,6 +220,7 @@ function ViewSettings({ data, view, readOnly, patch }: { data: DatabaseData; vie
         <option value="">{optional ? "None" : "Choose…"}</option>{choices.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select></label>;
   };
+  if (view.type === "chart") return <ChartSettings data={data} view={view} readOnly={readOnly} patch={patch} />;
   if (view.type === "board") return <div className="db-settings">{pick("groupBy", ["select", "status"], "Group by")}</div>;
   if (view.type === "calendar") return <div className="db-settings">{pick("dateBy", ["date", "created_time", "last_edited_time"], "Show by")}</div>;
   if (view.type === "map") return <div className="db-settings">{pick("placeBy", ["place"], "Place")}</div>;

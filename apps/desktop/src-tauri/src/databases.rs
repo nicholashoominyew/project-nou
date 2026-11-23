@@ -31,7 +31,7 @@ pub struct DatabaseView { title: String, properties: Vec<Prop>, rows: Vec<Row>, 
 #[derive(Serialize)]
 pub struct Brief { id: String, title: String }
 
-const VIEW_TYPES: [&str; 7] = ["table", "board", "list", "gallery", "calendar", "timeline", "map"];
+const VIEW_TYPES: [&str; 8] = ["table", "board", "list", "gallery", "calendar", "timeline", "map", "chart"];
 const FILTER_OPS: [&str; 14] = ["contains", "not_contains", "is", "is_not", "empty", "not_empty", "gt", "lt", "gte", "lte", "before", "after", "checked", "unchecked"];
 const CALC_FNS: [&str; 17] = ["count", "count_values", "count_empty", "count_not_empty", "percent_empty", "percent_not_empty", "sum", "average", "min", "max", "median", "range", "earliest", "latest", "checked", "unchecked", "percent_checked"];
 
@@ -48,7 +48,7 @@ fn clean_config(c: &Connection, database: &str, config: &Value) -> Result<String
     for (key, value) in map {
         if value.is_null() { continue; }
         match key.as_str() {
-            "groupBy" | "dateBy" | "endBy" | "placeBy" | "frozen" => { out.insert(key.clone(), Value::String(known(value)?)); }
+            "groupBy" | "dateBy" | "endBy" | "placeBy" | "frozen" | "xBy" | "yBy" | "colorBy" => { out.insert(key.clone(), Value::String(known(value)?)); }
             "filterMode" => { if !matches!(value.as_str(), Some("and" | "or")) { return Err("Invalid filter mode".into()); } out.insert(key.clone(), value.clone()); }
             "widths" => {
                 let Value::Object(m) = value else { return Err("Invalid column widths".into()) };
@@ -103,6 +103,27 @@ fn clean_config(c: &Connection, database: &str, config: &Value) -> Result<String
                     calc.insert(known(&Value::String(property.clone()))?, Value::String(f.into()));
                 }
                 out.insert(key.clone(), Value::Object(calc));
+            }
+            "chartType" | "barStyle" | "xSort" | "yFn" | "xGroup" | "height" | "donutCenter" => {
+                let allowed: &[&str] = match key.as_str() {
+                    "chartType" => &["vbar", "hbar", "line", "donut"],
+                    "barStyle" => &["grouped", "stacked", "percent"],
+                    "xSort" => &["none", "x_asc", "x_desc", "y_asc", "y_desc"],
+                    "yFn" => &["count", "sum", "average", "min", "max", "median"],
+                    "xGroup" => &["day", "week", "month", "year"],
+                    "height" => &["small", "medium", "large", "xlarge"],
+                    _ => &["none", "total"],
+                };
+                if !value.as_str().is_some_and(|v| allowed.contains(&v)) { return Err("Invalid chart setting".into()); }
+                out.insert(key.clone(), value.clone());
+            }
+            "hideZero" | "hideEmpty" | "grid" | "axisNames" | "dataLabels" | "legend" | "smooth" | "cumulative" => {
+                if !value.is_boolean() { return Err("Invalid chart setting".into()); }
+                out.insert(key.clone(), value.clone());
+            }
+            "refLine" => {
+                if !value.as_f64().is_some_and(f64::is_finite) { return Err("Invalid reference line".into()); }
+                out.insert(key.clone(), value.clone());
             }
             _ => return Err("Unknown view setting".into()),
         }
@@ -160,15 +181,27 @@ fn insert_property_at(tx: &Transaction<'_>, database: &str, name: &str, kind: &s
 }
 
 #[tauri::command]
-pub fn create_database(db: State<'_, Db>, parent_id: Option<String>, title: String, initial_update: Vec<u8>) -> Result<Page, String> {
+pub fn create_database(db: State<'_, Db>, parent_id: Option<String>, title: String, initial_update: Vec<u8>, initial_view: Option<String>) -> Result<Page, String> {
     let mut conn = db.0.lock().map_err(|_| "Database lock poisoned")?;
     db.writable()?;
+    let kind = initial_view.as_deref().unwrap_or("table");
+    if !VIEW_TYPES.contains(&kind) { return Err("Unsupported view type".into()); }
     let tx = conn.transaction().map_err(e)?;
     let title = if title.trim().is_empty() { "Untitled database" } else { title.trim() };
     let page = insert_page(&tx, parent_id, title, &initial_update)?;
     tx.execute("INSERT INTO databases(page_id) VALUES(?1)", [&page.id]).map_err(e)?;
-    insert_property(&tx, &page.id, "Status", "status")?;
-    insert_view(&tx, &page.id, "Table", "table", "{}")?;
+    let status = insert_property(&tx, &page.id, "Status", "status")?;
+    // The first view is the kind asked for. Views that need a Date or Place column get one, and board and chart start on Status.
+    let (name, config) = match kind {
+        "board" => ("Board", serde_json::json!({ "groupBy": status.id })),
+        "chart" => ("Chart", serde_json::json!({ "chartType": "vbar", "xBy": status.id })),
+        "calendar" | "timeline" => { let date = insert_property(&tx, &page.id, "Date", "date")?; (if kind == "calendar" { "Calendar" } else { "Timeline" }, serde_json::json!({ "dateBy": date.id })) }
+        "map" => { let place = insert_property(&tx, &page.id, "Place", "place")?; ("Map", serde_json::json!({ "placeBy": place.id })) }
+        "list" => ("List", serde_json::json!({})),
+        "gallery" => ("Gallery", serde_json::json!({})),
+        _ => ("Table", serde_json::json!({})),
+    };
+    insert_view(&tx, &page.id, name, kind, &config.to_string())?;
     tx.commit().map_err(e)?;
     Ok(page)
 }
