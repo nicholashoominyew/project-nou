@@ -75,12 +75,23 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
     requestAnimationFrame(() => { if (el && el.isConnected) el.focus(); else addButton.current?.focus(); });
   };
   const openEdit = (state: EditorState, from?: HTMLElement | null) => { opener.current = from ?? (document.activeElement as HTMLElement | null); setEditorError(""); setEditor(state); };
-  const editBlock = (b: Block, d: number, el: HTMLElement) => openEdit({ isNew: false, days: [d], start: b.first, end: b.first + b.count, acts: [...b.ids] }, el);
+  // A gap (nothing planned) opens as a new block over exactly that gap; a real block opens as an edit that remembers what it covered.
+  const editBlock = (b: Block, d: number, el: HTMLElement) => b.ids.length === 0
+    ? openEdit({ isNew: true, days: [d], start: b.first, end: b.first + b.count, acts: [] }, el)
+    : openEdit({ isNew: false, days: [d], start: b.first, end: b.first + b.count, acts: [...b.ids], from: { day: d, start: b.first, end: b.first + b.count, ids: [...b.ids] } }, el);
 
   async function commit(s: EditorState, acts: string[]) {
     try {
       let before: Cell[] = [];
-      await run(async () => { before = await saveRange(variant, s.days, s.start, s.end, acts); });
+      await run(async () => {
+        before = await saveRange(variant, s.days, s.start, s.end, acts);
+        const o = s.from;
+        if (o) { // slots the block used to cover and no longer does become a gap; Undo puts them back with the rest
+          const gone: Cell[] = [];
+          for (let i = o.start; i < o.end; i++) if (!s.days.includes(o.day) || i < s.start || i >= s.end) gone.push({ weekday: o.day, slot_index: i, activity_ids: [] });
+          if (gone.length) { await restoreCells(variant, gone); before = [...before, ...gone.map(c => ({ ...c, activity_ids: o.ids }))]; }
+        }
+      });
       setUndo({ variant, cells: before });
       closeEditor();
     } catch (e) { setEditorError(String(e)); }

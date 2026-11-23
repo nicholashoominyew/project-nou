@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { colours } from "./palette";
 import { CATEGORIES, hm, type Activity, type Variant } from "./schedule";
 
-export interface EditorState { isNew: boolean; days: number[]; start: number; end: number; acts: string[] }
+/** `from` is the block being edited as it stood: slots it covered that the saved block no longer covers are emptied, so shrinking or moving a block really does that. */
+export interface EditorState { isNew: boolean; days: number[]; start: number; end: number; acts: string[]; from?: { day: number; start: number; end: number; ids: string[] } }
 const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const startOptions = Array.from({ length: 48 }, (_, i) => i);
 const endOptions = Array.from({ length: 48 }, (_, i) => i + 1);

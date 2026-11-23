@@ -330,6 +330,45 @@ describe("block editor", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Clear to free time" }));
     await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 18, end: 26, activityIds: ["f"] }));
   });
+  it("shortening a block empties the slots it no longer covers, and Undo puts them back", async () => {
+    const { dialog } = await open();
+    const end = within(dialog).getAllByRole("combobox")[1] as HTMLSelectElement;
+    fireEvent.change(end, { target: { value: "24" } }); // 09:00-12:00, so 12:00-13:00 is left behind
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 18, end: 24, activityIds: ["w"] }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1]).toEqual({ variant: "A", cells: [{ weekday: 0, slot_index: 24, activity_ids: [] }, { weekday: 0, slot_index: 25, activity_ids: [] }] }));
+    calls.length = 0;
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1].cells).toEqual([
+      { weekday: 0, slot_index: 18, activity_ids: ["w"] }, { weekday: 0, slot_index: 24, activity_ids: ["w"] }, { weekday: 0, slot_index: 25, activity_ids: ["w"] },
+    ]));
+  });
+  it("moving a block to another day empties its old place", async () => {
+    const { dialog } = await open();
+    fireEvent.click(within(dialog).getByRole("button", { name: "MON" })); fireEvent.click(within(dialog).getByRole("button", { name: "TUE" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [1], start: 18, end: 26, activityIds: ["w"] }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1].cells).toHaveLength(8));
+  });
+  it("a block saved over the same range writes nothing extra", async () => {
+    const { dialog } = await open();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some(c => c[0] === "timetable_save_range")).toBe(true));
+    expect(calls.some(c => c[0] === "timetable_restore_cells")).toBe(false);
+  });
+  it("a gap opens as a new block over exactly that gap, with nothing to clear", async () => {
+    slots = slots.filter(x => !(x.weekday === 0 && x.slot_index >= 34 && x.slot_index < 38)); // Monday 17:00-19:00 planned for nothing
+    render(<LifeTimetable />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Empty · 17:00–19:00" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add block · Week A" });
+    const [start, end] = within(dialog).getAllByRole("combobox") as HTMLSelectElement[];
+    expect([start.value, end.value]).toEqual(["34", "38"]);
+    expect(within(dialog).queryByRole("button", { name: "Clear to free time" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Meal" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 34, end: 38, activityIds: ["m"] }));
+    expect(calls.some(c => c[0] === "timetable_restore_cells")).toBe(false);
+  });
   it("keeps the editor open and shows the reason when the save is refused", async () => {
     failSave = true;
     const { dialog } = await open();
