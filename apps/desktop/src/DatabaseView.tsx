@@ -220,7 +220,7 @@ function ViewSettings({ data, view, readOnly, patch }: { data: DatabaseData; vie
         <option value="">{optional ? "None" : "Choose…"}</option>{choices.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select></label>;
   };
-  if (view.type === "chart") return <ChartSettings data={data} view={view} readOnly={readOnly} patch={patch} />;
+  if (view.type === "chart") return null; // the chart's settings live behind the gear in the toolbar
   if (view.type === "board") return <div className="db-settings">{pick("groupBy", ["select", "status"], "Group by")}</div>;
   if (view.type === "calendar") return <div className="db-settings">{pick("dateBy", ["date", "created_time", "last_edited_time"], "Show by")}</div>;
   if (view.type === "map") return <div className="db-settings">{pick("placeBy", ["place"], "Place")}</div>;
@@ -245,6 +245,9 @@ function ViewToolbar({ data, view, readOnly, patch, shown, search, setSearch }: 
       <Popover className="db-tool" summaryLabel="Add a sort" summary="Sort" menuClass="db-options">
         {sortable.map(p => <button key={p.id} disabled={readOnly || sorts.length >= 5} onClick={e => { closeOf(e); void patch({ sorts: [...sorts.filter(s => s.p !== p.id), { p: p.id, dir: "asc" }] }); }}>{p.name}</button>)}
       </Popover>
+      {view.type === "chart" && <Popover className="db-tool db-chart-gear" summaryLabel="Chart settings" summary={<span title="Chart settings">⚙ Settings</span>} menuClass="db-chart-menu">
+        <ChartSettings data={data} view={view} readOnly={readOnly} patch={patch} />
+      </Popover>}
       {(filters.length > 0 || sorts.length > 0 || search.trim()) && <span className="db-count-note">{shown} row{shown === 1 ? "" : "s"} shown</span>}
       <input className="db-search" type="search" aria-label="Search rows" placeholder="Search" value={search} onChange={e => setSearch(e.target.value)} />
     </div>
