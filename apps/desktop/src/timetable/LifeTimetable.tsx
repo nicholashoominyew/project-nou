@@ -14,7 +14,17 @@ const DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satur
 const WEEK_PX = 48, DAY_PX = 64; // pixels per hour
 type Status = { state: "saved" | "saving" | "error"; message?: string };
 
-function BlockButton({ block, day, today, px, detailed, activities, live, nowMin, onEdit }: { block: Block; day: number; today: number; px: number; detailed: boolean; activities: Activity[]; live: boolean; nowMin: number; onEdit: (el: HTMLElement) => void }) {
+type Zone = "top" | "bottom" | "move";
+/** Which part of a block the pointer is on: the thin top and bottom edges stretch it, the rest moves it. */
+function zoneOf(e: { clientY: number; currentTarget: HTMLElement }): Zone {
+  const r = e.currentTarget.getBoundingClientRect(), y = e.clientY - r.top, edge = Math.min(8, r.height / 3);
+  return y < edge ? "top" : r.height - y < edge ? "bottom" : "move";
+}
+interface Drag { day: number; start: number; end: number; from: Block; fromDay: number }
+interface BlockActions { onEdit: (el: HTMLElement) => void; onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => void; onMenu: (e: React.MouseEvent<HTMLButtonElement>) => void; onKey: (e: React.KeyboardEvent<HTMLButtonElement>) => void }
+
+function BlockButton({ block, day, today, px, detailed, activities, live, nowMin, dragging, actions }: { block: Block; day: number; today: number; px: number; detailed: boolean; activities: Activity[]; live: boolean; nowMin: number; dragging: boolean; actions: BlockActions }) {
+  const { onEdit } = actions;
   const acts = block.ids.map(id => activities.find(a => a.id === id)).filter((a): a is Activity => !!a);
   const n = acts.length, sp = px / 2, h = block.count * sp - 6;
   const isBed = n === 1 && acts[0].name.toLowerCase() === "bed time";
@@ -30,7 +40,13 @@ function BlockButton({ block, day, today, px, detailed, activities, live, nowMin
     color: quiet ? "var(--muted)" : n > 1 ? "var(--text)" : single!.ink,
   };
   const title = `Edit ${label} · ${range}${n > 1 ? " · split equally" : ""}`;
-  return <button type="button" className={"tt-block" + (detailed ? " day" : "") + (isCur ? " current" : "")} data-day={day} data-first={block.first} aria-current={isCur ? "time" : undefined} style={style} title={title} aria-label={title} onClick={e => onEdit(e.currentTarget)}>
+  const real = n > 0; // a gap is not a block: it can be filled by clicking it, but not dragged, stretched or deleted
+  return <button type="button" className={"tt-block" + (detailed ? " day" : "") + (isCur ? " current" : "") + (dragging ? " dragging" : "")} data-day={day} data-first={block.first} aria-current={isCur ? "time" : undefined} style={style} title={real ? title + " · drag to move, drag an edge to stretch, right-click for more" : title} aria-label={title}
+    onClick={e => onEdit(e.currentTarget)}
+    onPointerDown={real ? actions.onPointerDown : undefined}
+    onPointerMove={real ? e => { if (e.buttons === 0) e.currentTarget.style.cursor = zoneOf(e) === "move" ? "grab" : "ns-resize"; } : undefined}
+    onContextMenu={real ? actions.onMenu : undefined}
+    onKeyDown={real ? actions.onKey : undefined}>
     <span className={"tt-block-name" + (h >= 40 ? " wrap" : "")}>{label}</span>
     {h >= (detailed ? 44 : 52) && <span className="tt-block-range">{range}{detailed ? " · " + fmtDuration(mins) : ""}</span>}
     {detailed && n > 1 && h >= 66 && <span className="tt-block-share">{n} activities · {fmtDuration(mins / n)} each</span>}
@@ -47,7 +63,10 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   const [showActs, setShowActs] = useState(false);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [editorError, setEditorError] = useState("");
-  const [undo, setUndo] = useState<{ variant: Variant; cells: Cell[] } | null>(null);
+  const [undo, setUndo] = useState<{ variant: Variant; cells: Cell[]; label: string } | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; block: Block; day: number; el: HTMLElement } | null>(null);
+  const moved = useRef(false); // true from the first real movement of a drag until just after it ends, so the click that follows a drag is ignored
   const [status, setStatus] = useState<Status>({ state: "saved" });
   const opener = useRef<HTMLElement | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -80,9 +99,10 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
     ? openEdit({ isNew: true, days: [d], start: b.first, end: b.first + b.count, acts: [] }, el)
     : openEdit({ isNew: false, days: [d], start: b.first, end: b.first + b.count, acts: [...b.ids], from: { day: d, start: b.first, end: b.first + b.count, ids: [...b.ids] } }, el);
 
-  async function commit(s: EditorState, acts: string[]) {
-    try {
-      let before: Cell[] = [];
+  /** Save a block's new place. Slots the block used to cover and no longer does become a gap; Undo puts everything back in one step. */
+  async function write(s: EditorState, acts: string[], label = "saved") {
+    let before: Cell[] = [];
+    {
       await run(async () => {
         before = await saveRange(variant, s.days, s.start, s.end, acts);
         const o = s.from;
@@ -92,9 +112,58 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
           if (gone.length) { await restoreCells(variant, gone); before = [...before, ...gone.map(c => ({ ...c, activity_ids: o.ids }))]; }
         }
       });
-      setUndo({ variant, cells: before });
-      closeEditor();
-    } catch (e) { setEditorError(String(e)); }
+      setUndo({ variant, cells: before, label });
+    }
+  }
+  async function commit(s: EditorState, acts: string[]) {
+    try { await write(s, acts); closeEditor(); } catch (e) { setEditorError(String(e)); }
+  }
+  /** Move or stretch a block to a new day and half-hour range. */
+  const place = (b: Block, fromDay: number, to: { day: number; start: number; end: number }, label: string) => {
+    if (disabled || (to.day === fromDay && to.start === b.first && to.end === b.first + b.count)) return;
+    void write({ isNew: false, days: [to.day], start: to.start, end: to.end, acts: [...b.ids], from: { day: fromDay, start: b.first, end: b.first + b.count, ids: [...b.ids] } }, b.ids, label).catch(() => undefined);
+  };
+  /** Delete a block: its half-hours become a gap. Undo brings it back. */
+  const remove = (b: Block, d: number) => {
+    if (disabled) return;
+    const cells = (ids: string[]): Cell[] => Array.from({ length: b.count }, (_, i) => ({ weekday: d, slot_index: b.first + i, activity_ids: ids }));
+    void run(async () => { await restoreCells(variant, cells([])); setUndo({ variant, cells: cells([...b.ids]), label: "deleted" }); }).catch(() => undefined);
+  };
+  const columnAt = (x: number, y: number): number | null => {
+    const col = (document.elementsFromPoint?.(x, y) ?? []).find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.col !== undefined);
+    return col ? Number(col.dataset.col) : null;
+  };
+  /** Press on a block: a short press is a click (opens the editor); moving the pointer drags it, or stretches it from its top or bottom edge. Esc cancels. */
+  function beginDrag(e: React.PointerEvent<HTMLButtonElement>, b: Block, d: number, px: number) {
+    if (disabled || e.button !== 0 || e.pointerType === "touch") return;
+    const zone = zoneOf(e), sp = px / 2, x0 = e.clientX, y0 = e.clientY, end0 = b.first + b.count;
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    let cur = { day: d, start: b.first, end: end0 }, active = false, cancelled = false;
+    const stop = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", abort); window.removeEventListener("keydown", key, true); };
+    const move = (ev: PointerEvent) => {
+      if (!active && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+      active = true; moved.current = true;
+      const ds = Math.round((ev.clientY - y0) / sp);
+      if (zone === "top") cur = { day: d, start: clamp(b.first + ds, 0, end0 - 1), end: end0 };
+      else if (zone === "bottom") cur = { day: d, start: b.first, end: clamp(end0 + ds, b.first + 1, 48) };
+      else { const st = clamp(b.first + ds, 0, 48 - b.count); cur = { day: columnAt(ev.clientX, ev.clientY) ?? d, start: st, end: st + b.count }; }
+      setDrag({ ...cur, from: b, fromDay: d });
+    };
+    const finish = () => { stop(); setDrag(null); if (active) setTimeout(() => { moved.current = false; }, 0); };
+    const up = () => { finish(); if (active && !cancelled) place(b, d, cur, zone === "move" ? "moved" : "resized"); };
+    const abort = () => { cancelled = true; finish(); };
+    const key = (ev: KeyboardEvent) => { if (ev.key === "Escape") { ev.stopPropagation(); abort(); } };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", abort); window.addEventListener("keydown", key, true);
+  }
+  /** Keyboard: Delete removes the block, Alt+Up/Down moves it by half an hour, Alt+Shift+Up/Down stretches its end. */
+  function blockKey(e: React.KeyboardEvent<HTMLButtonElement>, b: Block, d: number) {
+    if (disabled) return;
+    if (e.key === "Delete") { e.preventDefault(); remove(b, d); return; }
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+    e.preventDefault();
+    const dir = e.key === "ArrowUp" ? -1 : 1, end = b.first + b.count;
+    if (e.shiftKey) { const ne = Math.max(b.first + 1, Math.min(48, end + dir)); place(b, d, { day: d, start: b.first, end: ne }, "resized"); }
+    else { const st = Math.max(0, Math.min(48 - b.count, b.first + dir)); place(b, d, { day: d, start: st, end: st + b.count }, "moved"); }
   }
   async function clearToFree(s: EditorState) {
     try {
@@ -118,6 +187,13 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   const hours = Array.from({ length: 24 }, (_, h) => h);
   const nowLine = (px: number) => <div className="tt-nowline" data-testid="now-line" style={{ top: (nowMin / 60) * px }} aria-hidden="true"><span /></div>;
 
+  const actionsFor = (b: Block, d: number, px: number): BlockActions => ({
+    onEdit: el => { if (moved.current) { moved.current = false; return; } editBlock(b, d, el); },
+    onPointerDown: e => beginDrag(e, b, d, px),
+    onMenu: e => { if (disabled) return; e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, block: b, day: d, el: e.currentTarget }); },
+    onKey: e => blockKey(e, b, d),
+  });
+  const ghost = (g: Drag, px: number) => <div className="tt-ghost" aria-hidden="true" style={{ top: g.start * (px / 2) + 3, height: (g.end - g.start) * (px / 2) - 6 }}><span>{hm(g.start * 30)}–{hm(g.end * 30)}</span></div>;
   return <div className="document tt-screen" aria-label="Life Timetable">
     <header className="tt-head">
       <div className="tt-head-title">
@@ -165,8 +241,9 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
         {DAY_SHORT.map((d, i) => <button key={d} type="button" className={"tt-colhead" + (i % 2 === 0 ? " band" : "") + (i === today ? " today" : "")} aria-pressed={i === day} onClick={() => setSelDay(i)}>
           <span>{d}</span><span className={"tt-mark" + (i === day ? " on" : "")} /></button>)}
         <div className="tt-gutter" style={{ ...hourLines(WEEK_PX), height: 24 * WEEK_PX }}>{hours.map(h => <span key={h} style={{ top: h * WEEK_PX + 6 }}>{String(h).padStart(2, "0")}:00</span>)}</div>
-        {DAY_SHORT.map((d, i) => <div key={d} className={"tt-col" + (i % 2 === 0 ? " band" : "")} style={{ ...hourLines(WEEK_PX), height: 24 * WEEK_PX }}>
-          {dayBlocks(grid, i).map(b => <BlockButton key={b.first} block={b} day={i} today={today} px={WEEK_PX} detailed={false} activities={activities} live={live} nowMin={nowMin} onEdit={el => editBlock(b, i, el)} />)}
+        {DAY_SHORT.map((d, i) => <div key={d} data-col={i} className={"tt-col" + (i % 2 === 0 ? " band" : "")} style={{ ...hourLines(WEEK_PX), height: 24 * WEEK_PX }}>
+          {dayBlocks(grid, i).map(b => <BlockButton key={b.first} block={b} day={i} today={today} px={WEEK_PX} detailed={false} activities={activities} live={live} nowMin={nowMin} dragging={drag?.from === b} actions={actionsFor(b, i, WEEK_PX)} />)}
+          {drag?.day === i && ghost(drag, WEEK_PX)}
           {live && i === today && nowLine(WEEK_PX)}
         </div>)}
       </div></div>
@@ -174,14 +251,41 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
         <div className="tt-headcell" />
         <div className="tt-dayhead">{DAY_LONG[day].toUpperCase()}</div>
         <div className="tt-gutter" style={{ ...hourLines(DAY_PX), height: 24 * DAY_PX }}>{hours.map(h => <span key={h} style={{ top: h * DAY_PX + 8 }}>{String(h).padStart(2, "0")}:00</span>)}</div>
-        <div className="tt-col band" style={{ ...hourLines(DAY_PX), height: 24 * DAY_PX }}>
-          {dayBlocks(grid, day).map(b => <BlockButton key={b.first} block={b} day={day} today={today} px={DAY_PX} detailed activities={activities} live={live} nowMin={nowMin} onEdit={el => editBlock(b, day, el)} />)}
+        <div data-col={day} className="tt-col band" style={{ ...hourLines(DAY_PX), height: 24 * DAY_PX }}>
+          {dayBlocks(grid, day).map(b => <BlockButton key={b.first} block={b} day={day} today={today} px={DAY_PX} detailed activities={activities} live={live} nowMin={nowMin} dragging={drag?.from === b} actions={actionsFor(b, day, DAY_PX)} />)}
+          {drag?.day === day && ghost(drag, DAY_PX)}
           {live && day === today && nowLine(DAY_PX)}
         </div>
       </div>}
     </section>
 
-    {undo && createPortal(<div className="tt-undo" role="status"><span>Block saved</span><button type="button" onClick={undoLast}>Undo</button></div>, document.body)}
+    {menu && <BlockMenu at={menu} onClose={() => setMenu(null)} onEdit={() => { const m = menu; setMenu(null); editBlock(m.block, m.day, m.el); }} onDelete={() => { const m = menu; setMenu(null); remove(m.block, m.day); }} />}
+    {undo && createPortal(<div className="tt-undo" role="status"><span>Block {undo.label}</span><button type="button" onClick={undoLast}>Undo</button></div>, document.body)}
     {editor && <BlockEditor initial={editor} variant={variant} activities={activities} serverError={editorError} onSave={s => void commit(s, s.acts)} onClear={s => void clearToFree(s)} onCancel={closeEditor} />}
   </div>;
+}
+
+/** The right-click menu of a block: Edit or Delete. Closes on Esc, a click elsewhere, scrolling or resizing. Arrow keys move between the items. */
+function BlockMenu({ at, onClose, onEdit, onDelete }: { at: { x: number; y: number }; onClose: () => void; onEdit: () => void; onDelete: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: at.x, top: at.y });
+  useEffect(() => {
+    const r = box.current?.getBoundingClientRect();
+    if (r) setPos({ left: Math.max(4, Math.min(at.x, window.innerWidth - r.width - 4)), top: Math.max(4, Math.min(at.y, window.innerHeight - r.height - 4)) });
+    box.current?.querySelector<HTMLElement>("button")?.focus();
+    const away = (e: Event) => { if (!(e.target instanceof Node && box.current?.contains(e.target))) onClose(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    window.addEventListener("pointerdown", away, true); window.addEventListener("scroll", onClose, true); window.addEventListener("resize", onClose); window.addEventListener("keydown", esc, true); window.addEventListener("blur", onClose);
+    return () => { window.removeEventListener("pointerdown", away, true); window.removeEventListener("scroll", onClose, true); window.removeEventListener("resize", onClose); window.removeEventListener("keydown", esc, true); window.removeEventListener("blur", onClose); };
+  }, [at.x, at.y, onClose]);
+  const arrows = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const items = [...(box.current?.querySelectorAll<HTMLElement>("button") ?? [])], i = items.indexOf(document.activeElement as HTMLElement);
+    items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+  };
+  return createPortal(<div ref={box} className="tt-menu" role="menu" aria-label="Block" style={pos} onKeyDown={arrows} onContextMenu={e => e.preventDefault()}>
+    <button type="button" role="menuitem" onClick={onEdit}>Edit block…</button>
+    <button type="button" role="menuitem" className="danger" onClick={onDelete}>Delete block</button>
+  </div>, document.body);
 }

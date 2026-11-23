@@ -5,6 +5,10 @@ import NowCard from "./NowCard";
 import NowPanel from "./NowPanel";
 import { LAST_KEY, SETTINGS_KEY, ReminderToast, useReminders } from "./reminders";
 
+// jsdom has no PointerEvent: a MouseEvent with a pointerType carries the coordinates and button the drag code reads.
+if (typeof (window as any).PointerEvent === "undefined") {
+  (window as any).PointerEvent = class extends MouseEvent { pointerType: string; constructor(type: string, init: any = {}) { super(type, init); this.pointerType = init.pointerType ?? "mouse"; } };
+}
 const calls: [string, any][] = [];
 let slots: { variant: string; weekday: number; slot_index: number; activity_id: string }[] = [];
 let edited = { a: false, b: false };
@@ -368,6 +372,81 @@ describe("block editor", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 34, end: 38, activityIds: ["m"] }));
     expect(calls.some(c => c[0] === "timetable_restore_cells")).toBe(false);
+  });
+  const restores = () => calls.filter(c => c[0] === "timetable_restore_cells").map(c => c[1]);
+  it("right-click opens a menu; Delete block empties the block's half-hours, and Undo brings it back", async () => {
+    render(<LifeTimetable />);
+    const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
+    fireEvent.contextMenu(b, { clientX: 100, clientY: 100 });
+    const menu = await screen.findByRole("menu", { name: "Block" });
+    expect(within(menu).getByRole("menuitem", { name: "Edit block…" })).toBeTruthy();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete block" }));
+    await waitFor(() => expect(restores()[0]).toEqual({ variant: "A", cells: Array.from({ length: 8 }, (_, i) => ({ weekday: 0, slot_index: 18 + i, activity_ids: [] })) }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect((await screen.findByRole("status", { name: "" }).catch(() => null)) ?? true).toBeTruthy();
+    expect(screen.getByText("Block deleted")).toBeTruthy();
+    calls.length = 0;
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(restores()[0]).toEqual({ variant: "A", cells: Array.from({ length: 8 }, (_, i) => ({ weekday: 0, slot_index: 18 + i, activity_ids: ["w"] })) }));
+  });
+  it("the right-click menu closes with Esc, and Edit block opens the editor; a gap has no menu", async () => {
+    slots = slots.filter(x => !(x.weekday === 0 && x.slot_index >= 34 && x.slot_index < 38));
+    render(<LifeTimetable />);
+    fireEvent.contextMenu(await screen.findByRole("button", { name: "Edit Empty · 17:00–19:00" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.contextMenu(await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" }));
+    await screen.findByRole("menu", { name: "Block" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Edit Work · 09:00–13:00" }));
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Edit block…" }));
+    expect(await screen.findByRole("dialog", { name: "Edit block · Week A" })).toBeTruthy();
+    expect(restores()).toHaveLength(0);
+  });
+  it("Delete on a focused block deletes it", async () => {
+    render(<LifeTimetable />);
+    const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
+    fireEvent.keyDown(b, { key: "Delete" });
+    await waitFor(() => expect(restores()[0].cells).toHaveLength(8));
+  });
+  it("Alt+Down moves a block by half an hour and Alt+Shift+Up stretches its end back; the freed half-hour becomes a gap", async () => {
+    render(<LifeTimetable />);
+    const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
+    fireEvent.keyDown(b, { key: "ArrowDown", altKey: true });
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 19, end: 27, activityIds: ["w"] }));
+    await waitFor(() => expect(restores()[0].cells).toEqual([{ weekday: 0, slot_index: 18, activity_ids: [] }]));
+    calls.length = 0;
+    fireEvent.keyDown(await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" }), { key: "ArrowUp", altKey: true, shiftKey: true });
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 18, end: 25, activityIds: ["w"] }));
+    await waitFor(() => expect(restores()[0].cells).toEqual([{ weekday: 0, slot_index: 25, activity_ids: [] }]));
+  });
+  it("dragging a block moves it by half-hours (and it is not treated as a click); an Esc cancels the drag", async () => {
+    render(<LifeTimetable />);
+    const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
+    const press = (el: Element) => fireEvent.pointerDown(el, { button: 0, pointerType: "mouse", clientX: 0, clientY: 0 });
+    press(b);
+    fireEvent.pointerMove(window, { clientX: 0, clientY: 48 }); // 48px at 24px per half-hour: two half-hours down
+    expect(document.querySelector(".tt-ghost")?.textContent).toBe("10:00–14:00");
+    fireEvent.pointerUp(window, { clientX: 0, clientY: 48 });
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 20, end: 28, activityIds: ["w"] }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(document.querySelector(".tt-ghost")).toBeNull());
+    calls.length = 0;
+    press(await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" }));
+    fireEvent.pointerMove(window, { clientX: 0, clientY: 96 });
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.pointerUp(window, { clientX: 0, clientY: 96 });
+    expect(document.querySelector(".tt-ghost")).toBeNull();
+    expect(calls.some(c => c[0] === "timetable_save_range")).toBe(false);
+  });
+  it("a press without movement is still a click that opens the editor", async () => {
+    render(<LifeTimetable />);
+    const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
+    fireEvent.pointerDown(b, { button: 0, pointerType: "mouse", clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(window, { clientX: 5, clientY: 5 });
+    fireEvent.click(b);
+    expect(await screen.findByRole("dialog", { name: "Edit block · Week A" })).toBeTruthy();
+    expect(calls.some(c => c[0] === "timetable_save_range")).toBe(false);
   });
   it("keeps the editor open and shows the reason when the save is refused", async () => {
     failSave = true;

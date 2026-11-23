@@ -793,3 +793,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .db-chart-types button.active{background:var(--hover);color:var(--text);box-shadow:inset 0 -2px 0 var(--accent)}
 .db-chart-flags{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;padding-top:6px;border-top:1px solid var(--line)}
 .db-setting.db-check{display:inline-flex;flex-direction:row;align-items:center;gap:6px;font-size:13px}
+
+/* Life timetable: dragging, stretching and the right-click menu */
+.tt-block{user-select:none;-webkit-user-select:none}
+.tt-block.dragging{opacity:.35}
+.tt-ghost{position:absolute;left:8px;right:8px;z-index:5;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:2px dashed var(--accent);border-radius:14px;background:var(--accent-soft,rgba(255,255,144,.14));pointer-events:none}
+.tt-ghost span{font:600 11px var(--font-mono);color:var(--text);background:var(--bg);border-radius:6px;padding:2px 6px}
+.tt-menu{position:fixed;z-index:95;min-width:170px;display:flex;flex-direction:column;gap:2px;padding:6px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.3);font-size:13px}
+.tt-menu button{border:0;background:transparent;text-align:left;padding:7px 10px;border-radius:7px;font:inherit;color:inherit;cursor:pointer}
+.tt-menu button:hover,.tt-menu button:focus-visible{background:var(--hover);outline:none}
+.tt-menu button.danger{color:var(--danger)}
