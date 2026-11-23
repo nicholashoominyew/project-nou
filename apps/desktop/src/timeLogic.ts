@@ -85,18 +85,21 @@ function monthsBetween(from: Date, to: Date): { months: number; days: number } {
   months = Math.max(0, months);
   return { months, days: Math.max(0, dayNo(to) - dayNo(at(months))) };
 }
-export function countdownState(c: Countdown, now: Date): { fraction: number; daysLeft: number; text: string; done: boolean } {
+export type CountdownPart = { n: number; word: string };
+/** The time left as the big number or numbers shown on a countdown, each with its unit word after it (Notion's format: 17 days, 2 weeks 3 days, 3 months 5 days). */
+export function countdownState(c: Countdown, now: Date): { fraction: number; daysLeft: number; text: string; done: boolean; parts: CountdownPart[] } {
   const start = parseDay(c.start)!, end = parseDay(c.end)!, today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const daysLeft = dayNo(end) - dayNo(today), total = dayNo(end) - dayNo(start), passed = dayNo(today) - dayNo(start);
   const fraction = total <= 0 ? (daysLeft <= 0 ? 1 : 0) : Math.min(1, Math.max(0, passed / total));
-  if (daysLeft < 0) return { fraction: 1, daysLeft, text: "Finished " + -daysLeft + (daysLeft === -1 ? " day ago" : " days ago"), done: true };
-  if (daysLeft === 0) return { fraction: 1, daysLeft, text: "Today", done: true };
+  if (daysLeft < 0) return { fraction: 1, daysLeft, text: "Finished " + -daysLeft + (daysLeft === -1 ? " day ago" : " days ago"), done: true, parts: [{ n: -daysLeft, word: (daysLeft === -1 ? "day" : "days") + " ago" }] };
+  if (daysLeft === 0) return { fraction: 1, daysLeft, text: "Today", done: true, parts: [] };
   const s = (n: number, word: string) => n + " " + word + (n === 1 ? "" : "s");
-  let text: string;
-  if (c.unit === "week") { const w = Math.floor(daysLeft / 7), d = daysLeft % 7; text = [w ? s(w, "week") : "", d ? s(d, "day") : ""].filter(Boolean).join(" ") + " left"; }
-  else if (c.unit === "month") { const { months, days } = monthsBetween(today, end); text = [months ? s(months, "month") : "", days ? s(days, "day") : ""].filter(Boolean).join(" ") + " left"; }
-  else text = s(daysLeft, "day") + " left";
-  return { fraction, daysLeft, text, done: false };
+  const w = (n: number, word: string): CountdownPart => ({ n, word: word + (n === 1 ? "" : "s") });
+  let text: string, parts: CountdownPart[];
+  if (c.unit === "week") { const wk = Math.floor(daysLeft / 7), d = daysLeft % 7; parts = [wk ? w(wk, "week") : null, d ? w(d, "day") : null].filter((x): x is CountdownPart => !!x); text = [wk ? s(wk, "week") : "", d ? s(d, "day") : ""].filter(Boolean).join(" ") + " left"; }
+  else if (c.unit === "month") { const { months, days } = monthsBetween(today, end); parts = [months ? w(months, "month") : null, days ? w(days, "day") : null].filter((x): x is CountdownPart => !!x); text = [months ? s(months, "month") : "", days ? s(days, "day") : ""].filter(Boolean).join(" ") + " left"; }
+  else { parts = [w(daysLeft, "day")]; text = s(daysLeft, "day") + " left"; }
+  return { fraction, daysLeft, text, done: false, parts };
 }
 
 // ---- calendar -----------------------------------------------------------------------------------------------------

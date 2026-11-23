@@ -107,7 +107,7 @@ describe("countdowns", () => {
     fireEvent.click(screen.getByText("Add"));
     expect(screen.getByText("2 weeks 3 days left")).toBeTruthy();
     expect(document.querySelector(".cd-ring")).toBeNull(); // no ring or progress bar, just the day count
-    expect(document.querySelector(".cd-num")!.textContent).toBe("17");
+    expect(document.querySelector(".cd-num")!.textContent).toBe("2weeks3days"); // the unit word follows each number
     fireEvent.click(screen.getByRole("button", { name: "Settings for Exam" })); // the unit and Remove sit behind one settings button
     fireEvent.change(screen.getByLabelText("Show Exam in"), { target: { value: "day" } });
     expect(screen.getByText("17 days left")).toBeTruthy();

@@ -257,7 +257,7 @@ function CountdownRow({ c, s, setUnit, remove }: { c: Countdown; s: ReturnType<t
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [open]);
   return <li ref={box} title={`${s.text} · Ends ${c.end}`}>
-    <span className="cd-num" aria-hidden="true">{s.done ? "✓" : s.daysLeft}</span>
+    <span className="cd-num" aria-hidden="true">{s.done && !s.parts.length ? <><b>✓</b><small>Today</small></> : s.parts.map((p, i) => <span key={i} className={"cd-part" + (i ? " minor" : "")}><b>{p.n}</b><small>{p.word}</small></span>)}</span>
     <div className="cd-text"><strong>{c.label}</strong><span className="sr-only">{s.text}</span><span className="sr-only">Ends {c.end}</span></div>
     <button type="button" className="icon-tool cd-gear" aria-label={"Settings for " + c.label} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(v => !v)}><Icon name="settings" size={14} /></button>
     {open && <div className="cd-menu" role="group" aria-label={"Settings for " + c.label}>

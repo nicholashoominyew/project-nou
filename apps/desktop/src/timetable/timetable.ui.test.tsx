@@ -83,13 +83,58 @@ describe("focus mode", () => {
     const dialog = await screen.findByRole("dialog", { name: "Focus mode" });
     await waitFor(() => expect(dialog.querySelector(".tt-focus-name")!.textContent).toBe("Work"));
     expect(within(dialog).getByRole("timer").getAttribute("aria-label")).toMatch(/^2h 4[78]m/);
-    expect(within(dialog).getAllByRole("button").map(b => b.getAttribute("aria-label"))).toEqual(["Exit focus mode"]);
+    expect(within(dialog).getAllByRole("button").map(b => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["Exit focus mode", "30-minute burst"]);
     await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Exit focus mode" })));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Focus mode" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Enter focus mode" }));
     fireEvent.click(await screen.findByRole("button", { name: "Exit focus mode" }));
     expect(screen.queryByRole("dialog", { name: "Focus mode" })).toBeNull();
+  });
+});
+
+describe("30-minute burst", () => {
+  it("starts a 30:00 timer in the middle and moves the block timer into the corner; End burst brings it back", async () => {
+    render(<NowPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Enter focus mode" }));
+    const dialog = await screen.findByRole("dialog", { name: "Focus mode" });
+    expect(dialog.className).not.toContain("bursting");
+    fireEvent.click(within(dialog).getByRole("button", { name: "30-minute burst" }));
+    expect(dialog.className).toContain("bursting");
+    expect(dialog.querySelector(".tt-focus-name")!.textContent).toBe("30-minute burst");
+    const burst = within(dialog).getByRole("group", { name: "30-minute burst" });
+    expect(within(burst).getByRole("timer").getAttribute("aria-label")).toMatch(/^(29m 5\ds|30m 0s) left$/);
+    expect(dialog.querySelector(".tt-block-ring")).not.toBeNull(); // the block timer is still there, now small in the corner
+    expect(within(dialog).queryByRole("button", { name: "30-minute burst" })).toBeNull(); // faded out while a burst runs
+    fireEvent.click(within(dialog).getByRole("button", { name: "End burst" }));
+    expect(dialog.className).not.toContain("bursting");
+    expect(within(dialog).getByRole("button", { name: "30-minute burst" })).toBeTruthy();
+  });
+  it("the burst ends by itself after 30 minutes", async () => {
+    render(<NowPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Enter focus mode" }));
+    const dialog = await screen.findByRole("dialog", { name: "Focus mode" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "30-minute burst" }));
+    await act(async () => { vi.setSystemTime(monday(10, 43)); await vi.advanceTimersByTimeAsync(1100); });
+    expect(dialog.className).not.toContain("bursting");
+  });
+  it("fades the button out (and takes it out of reach) when less than 30 minutes of the block is left", async () => {
+    vi.setSystemTime(monday(12, 40)); // Work ends at 13:00: 20 minutes left
+    render(<NowPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Enter focus mode" }));
+    const dialog = await screen.findByRole("dialog", { name: "Focus mode" });
+    const btn = dialog.querySelector(".tt-burst-btn") as HTMLButtonElement;
+    expect(btn.className).toContain("away"); expect(btn.disabled).toBe(true); expect(btn.getAttribute("aria-hidden")).toBe("true");
+    expect(within(dialog).queryByRole("button", { name: "30-minute burst" })).toBeNull();
+  });
+  it("the burst button fades as the block drops under 30 minutes", async () => {
+    vi.setSystemTime(monday(12, 29, 50)); // 30m 10s left
+    render(<NowPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Enter focus mode" }));
+    const dialog = await screen.findByRole("dialog", { name: "Focus mode" });
+    expect(dialog.querySelector(".tt-burst-btn")!.className).not.toContain("away");
+    await act(async () => { vi.setSystemTime(monday(12, 30, 5)); await vi.advanceTimersByTimeAsync(1100); });
+    expect(dialog.querySelector(".tt-burst-btn")!.className).toContain("away");
   });
 });
 
