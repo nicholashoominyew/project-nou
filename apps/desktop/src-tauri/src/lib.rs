@@ -421,7 +421,7 @@ pub fn run() {
             let folder = crate::data_dir(app.path())?;
             fs::create_dir_all(&folder)?;
             let lock = fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(folder.join("nou.lock"))?;
-            lock.try_lock_exclusive().map_err(|_| std::io::Error::other("Project NOU is already running. Close the other instance first."))?;
+            lock.try_lock_exclusive().map_err(|_| std::io::Error::other("NOU is already running. Close the other instance first."))?;
             app.manage(InstanceLock(lock));
             let interrupted = !recovery::unresolved(&folder).map_err(std::io::Error::other)?.is_empty();
             attachments::open(&folder).map_err(std::io::Error::other)?;
@@ -461,7 +461,7 @@ pub fn run() {
             databases::create_database,databases::get_database,databases::add_property,databases::rename_property,databases::delete_property,databases::change_property_type,databases::duplicate_property,databases::update_select_option,databases::delete_select_option,databases::list_databases,links::set_page_links,links::list_backlinks,links::list_link_edges,file_tracker::list_files,search::search_lines,chat::chat_list,chat::chat_post,chat::chat_clear,locks::list_locked_pages,locks::lock_state,locks::lock_set,locks::lock_unlock,locks::lock_relock,locks::lock_change_password,locks::lock_remove,todos::linked_todo_create,todos::linked_todo_get,todos::linked_todo_set,todos::linked_todo_list,todos::linked_todo_pages,todos::set_page_todo_links,tags::set_page_tags,tags::get_page_tags,tags::list_tags,tags::find_pages_by_tag,home::list_recent_pages,home::list_resurfaced_pages,gateway::gateway_create_token,gateway::gateway_list_tokens,gateway::gateway_revoke_token,gateway::gateway_list_proposals,gateway::gateway_decide,gateway::gateway_mark_applied,gateway::gateway_audit,gateway_http::gateway_api_status,gateway_http::gateway_api_set_enabled,databases::list_rows,databases::add_relation,databases::add_rollup,databases::add_select_option,databases::add_view,databases::update_view,databases::delete_view,databases::add_row,databases::set_value,
             background_task::background_backup_task,portability::write_note_export,portability::read_note_import,portability::import_note])
         .run(tauri::generate_context!())
-        .expect("error running Project NOU");
+        .expect("error running NOU");
 }
 
 /// Task Scheduler uses the same profile lock as the GUI. Never create a fresh database here.

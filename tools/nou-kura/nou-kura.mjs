@@ -15,7 +15,7 @@
 // Run it with:  node tools/nou-kura/nou-kura.mjs
 import { pathToFileURL } from "node:url";
 
-export const SYSTEM = "You are Kura, a small assistant that runs on the user's own computer inside Project NOU. You are private to the user. Answer briefly and plainly in British English. You cannot read or change the user's notes; if asked to, say that you cannot and suggest the user opens the note. Never claim to have done something you cannot do.";
+export const SYSTEM = "You are Kura, a small assistant that runs on the user's own computer inside NOU. You are private to the user. Answer briefly and plainly in British English. You cannot read or change the user's notes; if asked to, say that you cannot and suggest the user opens the note. Never claim to have done something you cannot do.";
 const MAX_REPLY = 3900;
 const LOOPBACK = (u) => { try { const h = new URL(u).hostname; return h === "127.0.0.1" || h === "localhost" || h === "[::1]"; } catch { return false; } };
 

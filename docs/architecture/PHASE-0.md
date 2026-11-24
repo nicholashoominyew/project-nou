@@ -1,4 +1,4 @@
-# Project NOU (脳) — Phase 0 Architecture
+# NOU (脳) — Phase 0 Architecture
 
 Status: Phase 0 / Architecture baseline — 19 October 2026
 

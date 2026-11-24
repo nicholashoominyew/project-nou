@@ -7,7 +7,7 @@ import { useTick, useTimetable } from "./useTimetable";
 
 const FocusMode = lazy(() => import("./FocusMode"));
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
-export const kickerOf = (d: Date) => `PROJECT NOU · 脳 · ${DAYS[weekdayOf(d)]} · ${clock(d)}`;
+export const kickerOf = (d: Date) => `NOU · 脳 · ${DAYS[weekdayOf(d)]} · ${clock(d)}`;
 
 /** The current event: kicker, time range, category chips, name, and the circular timer. Always live; the next event only shows in the reminder. */
 export default function NowPanel() {

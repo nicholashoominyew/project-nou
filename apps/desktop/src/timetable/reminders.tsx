@@ -32,7 +32,7 @@ export async function notifyNative(body: string): Promise<boolean> {
     let granted = await n.isPermissionGranted();
     if (!granted && !permissionAsked) { permissionAsked = true; granted = (await n.requestPermission()) === "granted"; }
     if (!granted) return false;
-    n.sendNotification({ title: "Project NOU", body });
+    n.sendNotification({ title: "NOU", body });
     return true;
   } catch { return false; }
 }

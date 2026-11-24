@@ -76,7 +76,7 @@ Add a new stylesheet `src/theme.css`, imported last, that re-points the existing
 
 ## 3. Sidebar (`App.tsx` ~lines 219–242, `.sb-*` in `styles.css`)
 
-- **Header:** the 脳 mark becomes a 26×26 rounded (6px) square, `background: var(--accent)`, glyph `var(--accent-ink)`. "Project NOU" is 15px/600. Keep the collapse and new-page buttons.
+- **Header:** the 脳 mark becomes a 26×26 rounded (6px) square, `background: var(--accent)`, glyph `var(--accent-ink)`. "NOU" is 15px/600. Keep the collapse and new-page buttons.
 - **Order:** the search box (`<SidebarSearchBox>`) moves **above** Home. The order becomes: search, Home, Graph, Files.
 - **Remove the Quick capture row**, including its `<kbd>Ctrl+Shift+A</kbd>`. See §4.
 - **Compact rows:** min-height 28px, padding 2px 10px, 13px text, gap 0, radius 5px, 16px icons. **No numbering.**

@@ -46,7 +46,7 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
     setPreview(p); setRetention(undefined);
   }
   return <main className="recovery-screen">
-    <header><div><small>Project NOU / Notes</small><h1>Backups & restore</h1></div>
+    <header><div><small>NOU / Notes</small><h1>Backups & restore</h1></div>
       <button disabled={busy} onClick={onClose}>Back to notes</button></header>
     {error && <p className="error" role="alert">{error}</p>}
     {message && <p className="notice" role="status">{message}</p>}

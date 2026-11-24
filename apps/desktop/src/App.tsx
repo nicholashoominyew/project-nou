@@ -239,7 +239,7 @@ export default function App(){
  return <EditorFeatures.Provider value={{pages,theme,canNavigate:!guard,open:openPage,create:createChild,upload,uploadFile,onError:e=>setError(String(e)),setPeekBusy:reportPeekBusy}}>
  <main className={"shell"+(focus?" focus":"")+(typing?" typing":"")}>
   {sidebarOpen&&<aside className="sidebar" style={{width:sidebarWidth}} aria-label="Sidebar">
-   <div className="sb-header" data-tauri-drag-region><span className="mark">脳</span><strong className="sb-name">Project NOU</strong>
+   <div className="sb-header" data-tauri-drag-region><span className="mark">脳</span><strong className="sb-name">NOU</strong>
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>
      <button aria-label="New page" title="New page (Ctrl+N)" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="compose" size={16}/></button></div></div>
    <SidebarSearchBox query={sbQuery} onQuery={setSbQuery} disabled={guard}/>

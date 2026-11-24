@@ -18,7 +18,7 @@ $hourly = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -Repetitio
 $logon = New-ScheduledTaskTrigger -AtLogOn -User $sid
 $principal = New-ScheduledTaskPrincipal -UserId $sid -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-Register-ScheduledTask -TaskName $name -Action $action -Trigger @($hourly,$logon) -Principal $principal -Settings $settings -Description 'Project NOU: check the opted-in weekly backup schedule while this user is signed in.' -Force | Out-Null
+Register-ScheduledTask -TaskName $name -Action $action -Trigger @($hourly,$logon) -Principal $principal -Settings $settings -Description 'NOU: check the opted-in weekly backup schedule while this user is signed in.' -Force | Out-Null
 "#),
             Some(false) => "if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName $name -Confirm:$false }".into(),
             None => String::new(),

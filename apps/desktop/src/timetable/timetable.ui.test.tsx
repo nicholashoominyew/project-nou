@@ -200,7 +200,7 @@ describe("Life Timetable page", () => {
     render(<LifeTimetable />);
     await screen.findByRole("button", { name: "Jump to now" });
     expect(screen.getByRole("heading", { name: "Life Timetable", level: 1 })).toBeTruthy();
-    expect(document.querySelector(".tt-kicker-mono")!.textContent).toBe("PROJECT NOU · 脳 · MONDAY · 10:12");
+    expect(document.querySelector(".tt-kicker-mono")!.textContent).toBe("NOU · 脳 · MONDAY · 10:12");
     expect(screen.getByRole("button", { name: "Jump to now" })).toBeTruthy(); expect(screen.getByRole("button", { name: "Activities" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /dark mode|light mode/i })).toBeNull();
     expect(document.querySelector(".tt-head .hint")).toBeNull();

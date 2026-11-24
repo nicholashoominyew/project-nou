@@ -1,4 +1,4 @@
-# Project NOU (脳)
+# NOU (脳)
 
 A Windows-first, local-first knowledge workspace with independent Notes and future Files systems.
 
