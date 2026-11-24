@@ -1,0 +1,5 @@
+{
+  "bots": [
+    { "name": "Claude", "tokenEnv": "NOU_TOKEN", "type": "claude", "allowFrom": [] }
+  ]
+}
