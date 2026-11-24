@@ -8,7 +8,7 @@ import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidg
 import NowCard from "./timetable/NowCard";
 import { editsPerDay, staleFraction } from "./homeLogic";
 import { localDate, readSnoozed, reasonText, snooze, visible, SNOOZE_KEY, SNOOZE_DAYS, type Resurfaced } from "./resurface";
-import { DEFAULT_LAYOUT_KEY, normalizeLayout, setWidgetHidden, type HomeLayout } from "./homeLayout";
+import { DEFAULT_LAYOUT_KEY, HOME_LAYOUT_EVENT, normalizeLayout, setWidgetHidden, type HomeLayout } from "./homeLayout";
 
 /** What every widget may use. Widgets never reach into the app directly; later features plug in by adding an entry to HOME_WIDGETS with a render function over this context. */
 export type HomeContext = { pages: PageInfo[]; open: (id: string) => void; today: string; openDaily: () => void; disabled: boolean; refresh: () => Promise<void>; weather?: WeatherStore };
@@ -110,6 +110,8 @@ export default function Home({ pages, open, openDaily, newPage, disabled, refres
   const [layout, setLayout] = useState<HomeLayout>(() => normalizeLayout(readLayout(), ids));
   const [editing, setEditing] = useState(false);
   const update = (next: HomeLayout) => { setLayout(next); writeLayout(next); };
+  // An approved request to show or hide sections changes the stored layout from outside; pick it up straight away.
+  useEffect(() => { const reload = () => setLayout(normalizeLayout(readLayout(), ids)); window.addEventListener(HOME_LAYOUT_EVENT, reload); return () => window.removeEventListener(HOME_LAYOUT_EVENT, reload); }, [ids]);
   const weather = useWeatherStore();
   const byId = new Map(widgets.map(w => [w.id, w]));
   // The arrangement is fixed, so sections follow the order they are declared in; only what is hidden is remembered.

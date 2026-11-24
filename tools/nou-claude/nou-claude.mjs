@@ -121,9 +121,10 @@ export function buildPrompt(cfg, bot, m) {
     `3. Reply in the same room with nou_chat_post (type "message"). Keep it short and plain, in British English.`,
     "4. If the request needs a change to NOU, use the nou_propose_* tools. Each proposal waits for Nick to approve it in NOU. Say so in your reply: write \"proposed, waiting for your approval in NOU\", never \"done\" or \"created\". Do not propose the same thing twice.",
     "5. For a new top-level page, call nou_propose_create_page with only title and summary and leave out the parent field. Set parent only to an id returned by nou_search. Never invent an id.",
-    "6. If you cannot do it, or the request is unclear, say so in the room in one or two lines. Do not guess.",
+    "6. For the Life Timetable, read it first with nou_timetable_read, then ask with nou_propose_timetable_set_block (week A and/or B, the days, a half-hour start and end, and activity names exactly as listed; no activities empties the stretch). If an activity is missing, ask for it first with nou_propose_timetable_add_activity. To show or hide sections of the Home page use nou_propose_home_widgets (it can never hide \"Waiting for approval\"). These are requests too: say \"proposed, waiting for your approval in NOU\".",
+    "7. If you cannot do it, or the request is unclear, say so in the room in one or two lines. Do not guess.",
     ...(others.length
-      ? [`7. To hand work to another bot (${others.join(", ")}), post with nou_chat_post type "handoff", set "to" to its name, and put @ followed by its name in the body so it is tagged. Say what you need. Do this only when Nick asked for it or the task clearly belongs to that bot. Never tag a bot just to reply to it.`]
+      ? [`8. To hand work to another bot (${others.join(", ")}), post with nou_chat_post type "handoff", set "to" to its name, and put @ followed by its name in the body so it is tagged. Say what you need. Do this only when Nick asked for it or the task clearly belongs to that bot. Never tag a bot just to reply to it.`]
       : []),
   ].join("\n");
 }

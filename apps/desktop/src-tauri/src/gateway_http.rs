@@ -42,6 +42,11 @@ pub fn handle(c: &Connection, req: &ApiRequest, port: u16) -> ApiResponse {
     let segments: Vec<&str> = req.path.trim_matches('/').split('/').collect();
     match (req.method.as_str(), segments.as_slice()) {
         ("GET", ["v1", "status"]) => reply(200, json!({ "ok": true, "scopes": who.scopes })),
+        // A read-only picture of the Life Timetable (activity names and, per week and day, the blocks), so an assistant can propose changes in the names it sees.
+        ("GET", ["v1", "timetable"]) => {
+            if let Err(r) = needs(&who, "timetable:read") { return r; }
+            match crate::timetable::summary(c) { Ok(v) => data(v), Err(_) => fail(500, "The timetable could not be read") }
+        }
         ("GET", ["v1", "search"]) => {
             if let Err(r) = needs(&who, "notes:read") { return r; }
             let q = req.query.get("q").map(|s| s.trim()).unwrap_or("");
@@ -621,5 +626,16 @@ mod hub_tests {
         let reply = call(&c, "POST", "/v1/inhouse/reply", &kura, Some(json!({ "body": "answer", "chat": second.id }))); assert_eq!((reply.status, reply.body["chat"].clone()), (201, json!(second.id)));
         assert_eq!(crate::hub::inhouse_list(&c, Some(second.id), None, 50).unwrap().len(), 2); assert_eq!(crate::hub::inhouse_list(&c, Some(1), None, 50).unwrap().len(), 1);
         assert_eq!(call(&c, "POST", "/v1/inhouse/reply", &kura, Some(json!({ "body": "x", "chat": 999 }))).status, 404);
+    }
+
+    #[test]
+    fn the_timetable_can_be_read_only_with_its_scope_and_the_listing_has_no_ids() {
+        let c = fresh(); let reader = secret(&c, "Claude", &["timetable:read"]); let other = secret(&c, "Other", &ALL);
+        assert_eq!(call(&c, "GET", "/v1/timetable", &other, None).status, 403, "no other scope opens it");
+        let r = call(&c, "GET", "/v1/timetable", &reader, None);
+        assert_eq!(r.status, 200); assert_eq!(r.body["content_is_untrusted_data"], json!(true));
+        let data = &r.body["data"]; assert!(data["activities"].as_array().unwrap().len() > 3 && data["weeks"]["A"]["mon"].is_array() && data["weeks"]["B"]["sun"].is_array());
+        assert!(!data.to_string().contains("\"id\""), "no ids in the listing");
+        assert_eq!(call(&c, "POST", "/v1/timetable", &reader, Some(json!({}))).status, 404, "it can only be read");
     }
 }

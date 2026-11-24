@@ -23,6 +23,16 @@ describe("Approvals", () => {
     expect(within(card).getByText(/not verified/)).toBeTruthy();
     expect(within(card).getByText("Totally harmless page")).toBeTruthy();
   });
+  it("says in one sentence what approving a timetable or Home request would do, above the exact fields", async () => {
+    state.list = [proposal({ id: "t1", op: "timetable_set_block", payload: { weeks: ["A"], days: ["Mon"], start: "09:00", end: "10:30", activities: ["Work"] }, summary: "Move my work earlier" }),
+      proposal({ id: "h1", op: "home_set_widgets", payload: { show: ["weather"] }, summary: "Weather please" })];
+    render(<Approvals disabled={false} refresh={async () => {}} />);
+    const tt = await screen.findByLabelText("Change the Life Timetable");
+    expect(within(tt).getByText(/will be set to Work, replacing what is there now/)).toBeTruthy(); expect(within(tt).getByText("weeks")).toBeTruthy();
+    expect(within(tt).getByText(/Their description \(not verified\)/)).toBeTruthy();
+    expect(within(screen.getByLabelText("Show or hide Home sections")).getByText(/Show: Weather\. Nothing else on the Home page changes/)).toBeTruthy();
+    expect(screen.queryByLabelText("Create a page")).toBeNull();
+  });
   it("renders hostile text as plain text, never as markup", async () => {
     state.list = [proposal({ payload: { title: "<img src=x onerror=alert(1)>" }, summary: "<script>alert(1)</script>" })];
     const { container } = render(<Approvals disabled={false} refresh={async () => {}} />);

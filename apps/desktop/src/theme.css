@@ -853,3 +853,5 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .runner-dot.warn{border-color:var(--danger)}
 .runner-bots{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:4px}
 .runner-log{max-height:220px;overflow:auto;margin:8px 0 0;padding:10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg);font:11px/1.5 var(--font-mono);white-space:pre-wrap;word-break:break-word}
+
+.approval-what{margin:6px 0;padding:8px 10px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--radius-sm);background:var(--bg);font-size:13px}

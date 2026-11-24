@@ -160,6 +160,40 @@ pub fn get(c: &Connection) -> Result<Timetable, String> {
     Ok(Timetable { system_page_id, swap_ab: swap_ab(c)?, activities, slots, edited: Edited { a: edited(c, &file, "A")?, b: edited(c, &file, "B")? } })
 }
 
+/// A compact, read-only picture of the timetable for an assistant: the activities (name and category) and, for each week and day, the blocks (a run of half-hours
+/// with the same activities, listed by name). Gaps are left out. It carries no ids and changes nothing.
+pub fn summary(c: &Connection) -> Result<serde_json::Value, String> {
+    use serde_json::json;
+    let tt = get(c)?;
+    let names: HashMap<&str, &str> = tt.activities.iter().map(|a| (a.id.as_str(), a.name.as_str())).collect();
+    let hm = |slot: i64| format!("{:02}:{:02}", slot / 2, slot % 2 * 30);
+    let mut weeks = serde_json::Map::new();
+    for variant in ["A", "B"] {
+        let mut days = serde_json::Map::new();
+        for (d, day) in DAYS.iter().enumerate() {
+            let mut cells: Vec<Vec<&str>> = vec![Vec::new(); 48];
+            for s in tt.slots.iter().filter(|s| s.variant == variant && s.weekday == d as i64 && (0..48).contains(&s.slot_index)) {
+                if let Some(n) = names.get(s.activity_id.as_str()) { cells[s.slot_index as usize].push(n); }
+            }
+            for cell in cells.iter_mut() { cell.sort_unstable(); }
+            let mut blocks = Vec::new(); let mut i = 0usize;
+            while i < 48 {
+                if cells[i].is_empty() { i += 1; continue; }
+                let mut j = i + 1; while j < 48 && cells[j] == cells[i] { j += 1; }
+                blocks.push(json!({ "start": hm(i as i64), "end": hm(j as i64), "activities": cells[i] }));
+                i = j;
+            }
+            days.insert(day.to_string(), serde_json::Value::Array(blocks));
+        }
+        weeks.insert(variant.to_string(), serde_json::Value::Object(days));
+    }
+    Ok(json!({
+        "activities": tt.activities.iter().map(|a| json!({ "name": a.name, "category": a.category })).collect::<Vec<_>>(),
+        "swap_ab": tt.swap_ab, "weeks": weeks,
+        "note": "Times are local, in half-hour steps; 'end' is exclusive. Weeks A and B alternate by ISO week number (odd is A) unless swap_ab is true. Empty stretches are not listed.",
+    }))
+}
+
 fn read_cell(tx: &rusqlite::Transaction<'_>, variant: &str, weekday: i64, slot: i64) -> Result<Cell, String> {
     let mut s = tx.prepare("SELECT activity_id FROM timetable_slots WHERE variant=?1 AND weekday=?2 AND slot_index=?3 ORDER BY activity_id").map_err(e)?;
     let activity_ids = s.query_map(params![variant, weekday, slot], |r| r.get::<_, String>(0)).map_err(e)?.collect::<rusqlite::Result<Vec<_>>>().map_err(e)?;
@@ -331,7 +365,7 @@ mod tests {
     #[test]
     fn a_new_database_gets_the_tables_the_system_page_and_both_weeks() {
         let c = fresh();
-        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 14);
+        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 15);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM pages WHERE system_key='life_timetable' AND title='Life Timetable' AND parent_id IS NULL"), 1);
         assert!(count(&c, "SELECT COUNT(*) FROM timetable_activities") >= 30);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM timetable_activities WHERE name LIKE '%alternating%'"), 0, "the old combined activity is not seeded");
@@ -378,7 +412,7 @@ mod tests {
     fn the_upgrade_copies_existing_slots_into_both_weeks_and_splits_the_saturday() {
         let c = v10(false);
         crate::editor::upgrade(&c).unwrap();
-        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 14);
+        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 15);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM timetable_slots WHERE variant='A' AND weekday=0 AND slot_index=18 AND activity_id='w'"), 1);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM timetable_slots WHERE variant='B' AND weekday=0 AND slot_index=18 AND activity_id='w'"), 1, "both weeks keep the edit");
         assert_eq!(names_at(&c, "A", 5, 25), vec!["Dark Sphere"]); assert_eq!(names_at(&c, "B", 5, 25), vec!["Deep learning (library)"]);
@@ -531,5 +565,24 @@ mod tests {
         delete_activity(&mut c, &other, Some(&other)).unwrap_err();
         c.execute("DELETE FROM timetable_slots WHERE activity_id=?1", [&other]).unwrap();
         delete_activity(&mut c, &other, None).unwrap();
+    }
+
+    #[test]
+    fn the_read_only_summary_lists_activities_and_merged_blocks_by_name_with_no_ids_and_leaves_gaps_out() {
+        use serde_json::json;
+        let c = fresh();
+        let s = summary(&c).unwrap();
+        let names: Vec<&str> = s["activities"].as_array().unwrap().iter().map(|a| a["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"Work") && names.contains(&"Bed time"));
+        assert!(s["activities"][0].get("id").is_none(), "no ids leave the app");
+        let mon = s["weeks"]["A"]["mon"].as_array().unwrap();
+        assert!(mon.iter().any(|b| b["activities"] == json!(["Work"]) && b["start"] == "09:00" && b["end"] == "13:00"), "{mon:?}");
+        assert!(mon.windows(2).all(|w| w[0]["end"].as_str().unwrap() <= w[1]["start"].as_str().unwrap()), "blocks are in order and do not overlap");
+        // A gap is not listed, and a block is cut where the set of activities changes.
+        c.execute("DELETE FROM timetable_slots WHERE variant='A' AND weekday=0 AND slot_index BETWEEN 18 AND 19", []).unwrap();
+        let mon = summary(&c).unwrap()["weeks"]["A"]["mon"].clone();
+        let starts: Vec<&str> = mon.as_array().unwrap().iter().map(|b| b["start"].as_str().unwrap()).collect();
+        assert!(!starts.contains(&"09:00") && starts.contains(&"10:00"), "09:00-10:00 is now a gap: {starts:?}");
+        assert!(summary(&c).unwrap()["weeks"]["B"]["sat"].is_array() && s["swap_ab"] == json!(false));
     }
 }

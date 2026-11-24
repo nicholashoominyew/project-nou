@@ -90,6 +90,16 @@ describe("Home", () => {
     show();
     expect(screen.getByText(/All widgets are hidden/)).toBeTruthy();
   });
+  it("an approved request to hide or show sections updates an open Home page at once", async () => {
+    show();
+    expect(screen.getByLabelText("Favorites")).toBeTruthy();
+    localStorage.setItem("nou-home-layout", JSON.stringify({ order: HOME_WIDGETS.map(w => w.id), hidden: ["favorites"] }));
+    window.dispatchEvent(new Event("nou:home-layout-changed"));
+    await waitFor(() => expect(screen.queryByLabelText("Favorites")).toBeNull());
+    localStorage.setItem("nou-home-layout", JSON.stringify({ order: HOME_WIDGETS.map(w => w.id), hidden: [] }));
+    window.dispatchEvent(new Event("nou:home-layout-changed"));
+    expect(await screen.findByLabelText("Favorites")).toBeTruthy();
+  });
   it("a later feature can plug in a widget through the registry", async () => {
     const extra: HomeWidget = { id: "inbox", title: "Inbox", render: () => <p>captured thought</p> };
     show({ widgets: [extra] });

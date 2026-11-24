@@ -26,7 +26,7 @@ const MCP_JS: &str = include_str!("../../../../tools/nou-mcp/nou-mcp.mjs");
 
 const CLAUDE_TOKEN: &str = "Claude";
 const RELAY_TOKEN: &str = "NOU relay";
-const CLAUDE_SCOPES: [&str; 8] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write"];
+const CLAUDE_SCOPES: [&str; 11] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write", "timetable:read", "timetable:write", "home:write"];
 const RELAY_SCOPES: [&str; 4] = ["chat:read", "chat:write", "queue:read", "queue:write"];
 
 const LOG_CAP: u64 = 1_000_000;

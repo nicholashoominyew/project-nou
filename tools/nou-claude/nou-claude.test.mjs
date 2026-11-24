@@ -130,6 +130,13 @@ test("the prompt names the other bots and treats the message as data", () => {
   assert.doesNotMatch(solo, /handoff/);
 });
 
+test("the prompt tells Claude how to ask for timetable and Home changes, as requests", () => {
+  const cfg = cfgFor({ url: "http://127.0.0.1:1" }, {}, [{ name: "Claude" }, { name: "Kura", type: "external" }]);
+  const p = buildPrompt(cfg, cfg.bots[0], msg(9, "Nick", "owner", "move work earlier @Claude"));
+  assert.match(p, /nou_timetable_read/); assert.match(p, /nou_propose_timetable_set_block/); assert.match(p, /nou_propose_timetable_add_activity/); assert.match(p, /nou_propose_home_widgets/);
+  assert.match(p, /never hide "Waiting for approval"/); assert.match(p, /\n7\. If you cannot do it/); assert.match(p, /\n8\. To hand work to another bot/);
+});
+
 test("a command bot gets the prompt on stdin and its own token, and the token is not written to a file", async () => {
   const dir = tmp(); const script = join(dir, "bot.mjs"); const outFile = join(dir, "out.json");
   writeFileSync(script, `import {readFileSync,writeFileSync} from "node:fs"; let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{writeFileSync(${JSON.stringify(outFile)},JSON.stringify({s,t:process.env.NOU_TOKEN,id:process.env.NOU_MESSAGE_ID,n:process.env.NOU_BOT_NAME}));});`);

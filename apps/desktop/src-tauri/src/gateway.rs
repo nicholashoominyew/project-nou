@@ -8,8 +8,8 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 use uuid::Uuid;
 
-pub const SCOPES: [&str; 10] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write", "inhouse:read", "inhouse:write"];
-pub const OPS: [&str; 6] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item"];
+pub const SCOPES: [&str; 13] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write", "inhouse:read", "inhouse:write", "timetable:read", "timetable:write", "home:write"];
+pub const OPS: [&str; 9] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets"];
 const MAX_PENDING_PER_TOKEN: i64 = 50;
 const MAX_PAYLOAD: usize = 60_000;
 const EXPIRY: &str = "-7 days";
@@ -89,7 +89,7 @@ pub fn verify_token(c: &Connection, secret: &str) -> Result<Verified, String> {
     }
 }
 
-fn scope_for(op: &str) -> &'static str { match op { "create_row" | "set_value" => "databases:write", _ => "notes:write" } }
+fn scope_for(op: &str) -> &'static str { match op { "create_row" | "set_value" => "databases:write", "timetable_set_block" | "timetable_add_activity" => "timetable:write", "home_set_widgets" => "home:write", _ => "notes:write" } }
 
 /// A client asks for a change. This only queues it; it never touches notes.
 pub fn propose(c: &Connection, secret: &str, op: &str, payload: &Value, summary: &str) -> Result<Proposed, String> {
@@ -301,4 +301,46 @@ mod tests {
         propose(&c, &w.secret, "create_page", &json!({"title":"a"}), "p").unwrap();
         assert!(c.execute("DELETE FROM api_tokens WHERE id=?1", [&w.info.id]).is_err());
     }
+
+    #[test]
+    fn timetable_and_home_requests_need_their_own_scopes_and_are_only_requests() {
+        let c = fresh();
+        let notes = token(&c, &["notes:write"]); let tt = token(&c, &["timetable:write"]); let home = token(&c, &["home:write"]); let read = token(&c, &["timetable:read"]);
+        let block = json!({ "weeks": ["A"], "days": ["Mon"], "start": "09:00", "end": "10:00", "activities": ["Work"] });
+        let widgets = json!({ "show": ["weather"] });
+        assert!(propose(&c, &notes.secret, "timetable_set_block", &block, "x").unwrap_err().contains("timetable:write"));
+        assert!(propose(&c, &notes.secret, "home_set_widgets", &widgets, "x").unwrap_err().contains("home:write"));
+        assert!(propose(&c, &read.secret, "timetable_add_activity", &json!({ "name": "Reading", "category": "Leisure" }), "x").unwrap_err().contains("timetable:write"), "reading is not writing");
+        assert!(propose(&c, &tt.secret, "home_set_widgets", &widgets, "x").is_err() && propose(&c, &home.secret, "timetable_set_block", &block, "x").is_err(), "each scope covers only its own operations");
+        let a = propose(&c, &tt.secret, "timetable_set_block", &block, "Put Work on Monday morning").unwrap();
+        assert!(!propose(&c, &tt.secret, "timetable_set_block", &block, "Put Work on Monday morning").map(|p| !p.existing).unwrap(), "the same request is not queued twice");
+        assert!(propose(&c, &tt.secret, "timetable_add_activity", &json!({ "name": "Reading", "category": "Leisure" }), "Add Reading").is_ok() && propose(&c, &home.secret, "home_set_widgets", &widgets, "Show the weather").is_ok());
+        assert_eq!(get_proposal(&c, &a.id).unwrap().status, "pending", "it only waits for the owner");
+        assert_eq!(SCOPES.len(), 13); assert!(create_token(&c, "x", &["timetable:read".to_string(), "timetable:write".to_string(), "home:write".to_string()]).is_ok());
+    }
+
+    #[test]
+    fn the_schema_15_step_keeps_every_existing_proposal_and_then_accepts_the_new_operations() {
+        let c = Connection::open_in_memory().unwrap();
+        c.pragma_update(None, "foreign_keys", "ON").unwrap();
+        c.execute_batch(include_str!("../../../../db/notes/001_initial.sql")).unwrap();
+        for sql in [include_str!("../../../../db/notes/002_editor_formats.sql"), include_str!("../../../../db/notes/003_page_icons.sql"), include_str!("../../../../db/notes/004_databases.sql"),
+            include_str!("../../../../db/notes/005_page_links.sql"), include_str!("../../../../db/notes/006_gateway.sql"), include_str!("../../../../db/notes/007_linked_todos.sql"),
+            include_str!("../../../../db/notes/008_page_locks.sql"), include_str!("../../../../db/notes/009_bot_chat.sql"), include_str!("../../../../db/notes/010_life_timetable.sql"),
+            include_str!("../../../../db/notes/011_timetable_variants.sql"), include_str!("../../../../db/notes/012_bots_hub.sql"), include_str!("../../../../db/notes/013_chart_views.sql"),
+            include_str!("../../../../db/notes/014_inhouse_chats.sql")] { c.execute_batch(sql).unwrap(); }
+        assert_eq!(c.query_row::<i64, _, _>("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).unwrap(), 14);
+        let t = token(&c, &["notes:write"]);
+        let p = propose(&c, &t.secret, "create_page", &json!({ "title": "Old request" }), "Create Old request").unwrap();
+        gateway_decide_for_test(&c, &p.id);
+        assert!(c.execute("INSERT INTO proposals(id,token_id,op,payload,summary,dedupe_key) VALUES('x',?1,'home_set_widgets','{}','s',?2)", params![t.info.id, "0".repeat(64)]).is_err(), "schema 14 refuses the new operation");
+        c.execute_batch(include_str!("../../../../db/notes/015_proposal_ops.sql")).unwrap();
+        let old = get_proposal(&c, &p.id).unwrap();
+        assert_eq!((old.op.as_str(), old.status.as_str(), old.summary.as_str(), old.payload["title"].as_str()), ("create_page", "approved", "Create Old request", Some("Old request")), "the old proposal is unchanged");
+        c.execute("INSERT INTO proposals(id,token_id,op,payload,summary,dedupe_key) VALUES('y',?1,'home_set_widgets','{}','s',?2)", params![t.info.id, "1".repeat(64)]).unwrap();
+        assert!(c.execute("INSERT INTO proposals(id,token_id,op,payload,summary,dedupe_key) VALUES('z',?1,'drop_everything','{}','s',?2)", params![t.info.id, "2".repeat(64)]).is_err(), "an unknown operation is still refused by the table");
+        let indexes: i64 = c.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='proposals' AND name IN ('proposals_status','proposals_dedupe')", [], |r| r.get(0)).unwrap();
+        assert_eq!(indexes, 2); assert!(c.prepare("PRAGMA foreign_key_check").unwrap().exists([]).map(|b| !b).unwrap());
+    }
+    fn gateway_decide_for_test(c: &Connection, id: &str) { decide(c, id, true).unwrap(); }
 }
