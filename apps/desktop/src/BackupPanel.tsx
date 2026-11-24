@@ -1,6 +1,7 @@
 import EncryptedBackup from "./EncryptedBackup";
 import BackupSchedule from "./BackupSchedule";
-import { useEffect, useState } from "react";
+import OneDriveSync from "./OneDriveSync";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -24,6 +25,8 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
   const [retention, setRetention] = useState<Retention>();
   const [keep, setKeep] = useState(10);
   const [keepCurrent, setKeepCurrent] = useState("");
+  // Set when the review below was opened by the OneDrive sync: run after a successful restore so the sync remembers it is up to date.
+  const afterRestore = useRef<(() => Promise<void>) | undefined>(undefined);
 
   async function refresh() {
     const s = await invoke<Status>("backup_status"); setStatus(s);
@@ -41,7 +44,7 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
     finally { markBusy(false); }
   }
   async function prepare(path: string) {
-    setPreview(undefined); setConfirmation("");
+    setPreview(undefined); setConfirmation(""); afterRestore.current = undefined;
     const p = await invoke<Preview>("prepare_restore", { path });
     setPreview(p); setRetention(undefined);
   }
@@ -61,6 +64,7 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
           await invoke("review_restore", { confirmation: keepCurrent }); setKeepCurrent(""); setMessage("Current database verified and preserved. Editing is enabled.");
         })}>Keep the current database</button>
       </section>}
+      <OneDriveSync disabled={busy} onBusyChange={markBusy} onPrepared={(p, after) => { setPreview(p); setConfirmation(""); setRetention(undefined); afterRestore.current = after; }} />
       <section className="recovery-card">
         <h2>1. Choose where copies are stored</h2>
         <p>A different folder or drive letter does not prove independent protection. Another partition on this PC can fail with the same disk. A connected drive can still be affected by ransomware. Cloud folders are only off-device once their provider confirms upload and version history.</p>
@@ -81,7 +85,7 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
         <p>Includes the complete Notes database: pages, hierarchy, Trash, tags, Yjs content and search. Uploaded images and PDFs are included in new packages. External link targets are not included. Weekly backups are available below; destination independence still needs your verification.</p>
       </section>
       <BackupSchedule hasDestination={!!status?.destination} onBusyChange={markBusy} />
-      <EncryptedBackup onBusyChange={markBusy} onReviewStart={() => { setPreview(undefined); setConfirmation(""); setRetention(undefined); }} onPrepared={p => { setPreview(p); setConfirmation(""); setRetention(undefined); }} />
+      <EncryptedBackup onBusyChange={markBusy} onReviewStart={() => { setPreview(undefined); setConfirmation(""); setRetention(undefined); afterRestore.current = undefined; }} onPrepared={p => { setPreview(p); setConfirmation(""); setRetention(undefined); afterRestore.current = undefined; }} />
       <section className="recovery-card">
         <h2>2. Verify and restore a version</h2>
         <p>Restore replaces <strong>all current notes and Trash</strong>. A verified rollback copy is kept locally first. The selected package is copied into staging and checked again before replacement.</p>
@@ -92,7 +96,7 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
         <button onClick={() => void run(async () => {
           const path = await open({ directory: false, multiple: false, title: "Import an old standalone NOU snapshot", filters: [{ name: "SQLite snapshot", extensions: ["sqlite3"] }] });
           if (typeof path === "string") {
-            setPreview(undefined); setConfirmation(""); setRetention(undefined);
+            setPreview(undefined); setConfirmation(""); setRetention(undefined); afterRestore.current = undefined;
             setPreview(await invoke<Preview>("prepare_legacy_restore", { path }));
             setMessage(`Imported a separate copy of ${path}. The review date is the import time, not the original snapshot date. Original file unchanged.`);
           }
@@ -106,8 +110,10 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
           <label>Type RESTORE to replace all notes<input aria-label="Restore confirmation" value={confirmation} onChange={e => setConfirmation(e.target.value)} /></label>
           <button className="danger" disabled={confirmation !== "RESTORE"} onClick={() => void run(async () => {
             const r = await invoke<Record>("execute_restore", { token: preview.token, confirmation });
-            setPreview(undefined); setConfirmation(""); setMessage(`Restore completed and verified. Return to notes to inspect it. Rollback preserved at ${r.rollback}`);
-          })}>Restore all notes</button><button onClick={() => { setPreview(undefined); setConfirmation(""); }}>Cancel</button>
+            setPreview(undefined); setConfirmation("");
+            try { await afterRestore.current?.(); } catch { /* the restore itself succeeded; the sync state is refreshed next time */ } finally { afterRestore.current = undefined; }
+            setMessage(`Restore completed and verified. Return to notes to inspect it. Rollback preserved at ${r.rollback}`);
+          })}>Restore all notes</button><button onClick={() => { setPreview(undefined); setConfirmation(""); afterRestore.current = undefined; }}>Cancel</button>
         </div>}
       </section>
       <section className="recovery-card"><h2>Local rollback and migration recovery</h2><p>These copies stay on this PC, are excluded from retention cleanup, and do not provide independent backup protection. Use the same review flow to undo a restore or recover the database before a migration.</p>

@@ -14,7 +14,13 @@ struct Plans {
 #[derive(Serialize)]
 pub struct Status { destination: Option<Destination>, interrupted: Vec<RestoreRecord>, rollback: Vec<Verified> }
 #[derive(Serialize)]
-pub struct Preview { token: String, backup: Verified }
+pub struct Preview { pub(crate) token: String, pub(crate) backup: Verified }
+/// Stage an already verified backup for the normal review-and-restore screen, and return what that screen shows. Used by the OneDrive sync.
+pub(crate) fn stage_preview(app: &tauri::AppHandle, backup: Verified) -> Result<Preview, String> {
+    let token = uuid::Uuid::new_v4().to_string();
+    app.state::<RecoveryState>().0.lock().map_err(|_| "Recovery lock poisoned")?.staged = Some((token.clone(), backup.clone()));
+    Ok(Preview { token, backup })
+}
 fn folder(app: &tauri::AppHandle) -> Result<PathBuf, String> { crate::data_dir(app.path()).map_err(|e| e.to_string()) }
 fn settings(app: &tauri::AppHandle) -> Result<Option<Destination>, String> {
     crate::schedule::destination(&folder(app)?)
