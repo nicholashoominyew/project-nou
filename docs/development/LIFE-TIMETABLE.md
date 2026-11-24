@@ -70,3 +70,6 @@ Use a disposable profile (`NOU_PROFILE_DIR=<empty folder>`), never real data.
 - Vitest: `schedule.test.ts` (ISO week → variant with swap and year ends, current event and countdown parts, Sunday → Monday crossing into the other variant, BST/GMT change days, sleep/resume, equal split totals 24 h / 168 h, reminder once, never stale, `remind` skip, lead time, this week's variant) and `timetable.ui.test.tsx` (panel, focus mode, reminder, A/B and swap, Week/Day and the ring, Reset, the editor: validation, focus trap, Esc, save, undo, clear, refused save; activities).
 
 The simulate-time control exists only in development builds (`import.meta.env.DEV`) or a build made with `VITE_NOU_SIM_TIME=1`; it does not appear in release builds.
+
+## Check-ins
+Blocks can carry habit check-ins (pop-up at the start of the block). See [HABITS.md](HABITS.md).

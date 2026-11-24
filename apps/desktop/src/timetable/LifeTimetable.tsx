@@ -8,6 +8,8 @@ import NowPanel, { kickerOf } from "./NowPanel";
 import { colours } from "./palette";
 import { dayBlocks, fmtDuration, hm, names, otherVariant, weekdayOf, type Activity, type Block, type Variant } from "./schedule";
 import { addActivity, resetVariant, restoreCells, saveRange, setSwap, useTick, useTimetable, type Cell } from "./useTimetable";
+import { announceCheckins, habitsApi } from "../habitsApi";
+import { useCheckinData } from "../useHabits";
 
 const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -23,7 +25,7 @@ function zoneOf(e: { clientY: number; currentTarget: HTMLElement }): Zone {
 interface Drag { day: number; start: number; end: number; from: Block; fromDay: number }
 interface BlockActions { onEdit: (el: HTMLElement) => void; onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => void; onMenu: (e: React.MouseEvent<HTMLButtonElement>) => void; onKey: (e: React.KeyboardEvent<HTMLButtonElement>) => void }
 
-function BlockButton({ block, day, today, px, detailed, activities, live, nowMin, dragging, actions }: { block: Block; day: number; today: number; px: number; detailed: boolean; activities: Activity[]; live: boolean; nowMin: number; dragging: boolean; actions: BlockActions }) {
+function BlockButton({ block, day, today, px, detailed, activities, live, nowMin, dragging, actions, checkins = [] }: { block: Block; day: number; today: number; px: number; detailed: boolean; activities: Activity[]; live: boolean; nowMin: number; dragging: boolean; actions: BlockActions; checkins?: string[] }) {
   const { onEdit } = actions;
   const acts = block.ids.map(id => activities.find(a => a.id === id)).filter((a): a is Activity => !!a);
   const n = acts.length, sp = px / 2, h = block.count * sp - 6;
@@ -40,8 +42,9 @@ function BlockButton({ block, day, today, px, detailed, activities, live, nowMin
     color: quiet ? "var(--muted)" : n > 1 ? "var(--text)" : single!.ink,
   };
   const title = `Edit ${label} · ${range}${n > 1 ? " · split equally" : ""}`;
+  const bell = checkins.length ? ` · check-in: ${checkins.join(", ")}` : "";
   const real = n > 0; // a gap is not a block: it can be filled by clicking it, but not dragged, stretched or deleted
-  return <button type="button" className={"tt-block" + (detailed ? " day" : "") + (isCur ? " current" : "") + (dragging ? " dragging" : "")} data-day={day} data-first={block.first} aria-current={isCur ? "time" : undefined} style={style} title={real ? title + " · drag to move, drag an edge to stretch, right-click for more" : title} aria-label={title}
+  return <button type="button" className={"tt-block" + (detailed ? " day" : "") + (isCur ? " current" : "") + (dragging ? " dragging" : "")} data-day={day} data-first={block.first} aria-current={isCur ? "time" : undefined} style={style} title={real ? title + bell + " · drag to move, drag an edge to stretch, right-click for more" : title} aria-label={title}
     onClick={e => onEdit(e.currentTarget)}
     onPointerDown={real ? actions.onPointerDown : undefined}
     onPointerMove={real ? e => { if (e.buttons === 0) e.currentTarget.style.cursor = zoneOf(e) === "move" ? "grab" : "ns-resize"; } : undefined}
@@ -51,6 +54,7 @@ function BlockButton({ block, day, today, px, detailed, activities, live, nowMin
     {h >= (detailed ? 44 : 52) && <span className="tt-block-range">{range}{detailed ? " · " + fmtDuration(mins) : ""}</span>}
     {detailed && n > 1 && h >= 66 && <span className="tt-block-share">{n} activities · {fmtDuration(mins / n)} each</span>}
     {!quiet && n > 1 && <span className="tt-block-stripe" style={{ background: stripe }} />}
+    {real && checkins.length > 0 && <svg className="tt-block-bell" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label={`Check-in: ${checkins.join(", ")}`}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>}
   </button>;
 }
 
@@ -65,6 +69,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   const [editorError, setEditorError] = useState("");
   const [undo, setUndo] = useState<{ variant: Variant; cells: Cell[]; label: string } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  const { habits, habitsAt } = useCheckinData();
   const [menu, setMenu] = useState<{ x: number; y: number; block: Block; day: number; el: HTMLElement } | null>(null);
   const moved = useRef(false); // true from the first real movement of a drag until just after it ends, so the click that follows a drag is ignored
   const [status, setStatus] = useState<Status>({ state: "saved" });
@@ -96,8 +101,8 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   const openEdit = (state: EditorState, from?: HTMLElement | null) => { opener.current = from ?? (document.activeElement as HTMLElement | null); setEditorError(""); setEditor(state); };
   // A gap (nothing planned) opens as a new block over exactly that gap; a real block opens as an edit that remembers what it covered.
   const editBlock = (b: Block, d: number, el: HTMLElement) => b.ids.length === 0
-    ? openEdit({ isNew: true, days: [d], start: b.first, end: b.first + b.count, acts: [] }, el)
-    : openEdit({ isNew: false, days: [d], start: b.first, end: b.first + b.count, acts: [...b.ids], from: { day: d, start: b.first, end: b.first + b.count, ids: [...b.ids] } }, el);
+    ? openEdit({ isNew: true, days: [d], start: b.first, end: b.first + b.count, acts: [], habitIds: [] }, el)
+    : openEdit({ isNew: false, days: [d], start: b.first, end: b.first + b.count, acts: [...b.ids], habitIds: habitsAt(variant, d, b.first, b.first + b.count), from: { day: d, start: b.first, end: b.first + b.count, ids: [...b.ids] } }, el);
 
   /** Save a block's new place. Slots the block used to cover and no longer does become a gap; Undo puts everything back in one step. */
   async function write(s: EditorState, acts: string[], label = "saved") {
@@ -115,19 +120,27 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
       setUndo({ variant, cells: before, label });
     }
   }
+  /** Save which habits check in for the block, wherever it now is. A failure here does not undo the timetable change; it is reported. */
+  async function saveCheckins(s: EditorState) {
+    try { await habitsApi.setBlock(variant, s.from ? { day: s.from.day, start: s.from.start, end: s.from.end } : null, s.days, s.start, s.end, s.habitIds ?? []); announceCheckins(); }
+    catch (e) { setStatus({ state: "error", message: "The block was saved, but its check-in setting was not: " + String(e instanceof Error ? e.message : e) }); }
+  }
   async function commit(s: EditorState, acts: string[]) {
-    try { await write(s, acts); closeEditor(); } catch (e) { setEditorError(String(e)); }
+    try { await write(s, acts); await saveCheckins(s); closeEditor(); } catch (e) { setEditorError(String(e)); }
   }
   /** Move or stretch a block to a new day and half-hour range. */
   const place = (b: Block, fromDay: number, to: { day: number; start: number; end: number }, label: string) => {
     if (disabled || (to.day === fromDay && to.start === b.first && to.end === b.first + b.count)) return;
-    void write({ isNew: false, days: [to.day], start: to.start, end: to.end, acts: [...b.ids], from: { day: fromDay, start: b.first, end: b.first + b.count, ids: [...b.ids] } }, b.ids, label).catch(() => undefined);
+    const mine = habitsAt(variant, fromDay, b.first, b.first + b.count); // its check-ins go with it
+    const state: EditorState = { isNew: false, days: [to.day], start: to.start, end: to.end, acts: [...b.ids], habitIds: mine, from: { day: fromDay, start: b.first, end: b.first + b.count, ids: [...b.ids] } };
+    void write(state, b.ids, label).then(() => { if (mine.length || habitsAt(variant, to.day, to.start, to.end).length) return saveCheckins(state); }).catch(() => undefined);
   };
   /** Delete a block: its half-hours become a gap. Undo brings it back. */
   const remove = (b: Block, d: number) => {
     if (disabled) return;
     const cells = (ids: string[]): Cell[] => Array.from({ length: b.count }, (_, i) => ({ weekday: d, slot_index: b.first + i, activity_ids: ids }));
-    void run(async () => { await restoreCells(variant, cells([])); setUndo({ variant, cells: cells([...b.ids]), label: "deleted" }); }).catch(() => undefined);
+    void run(async () => { await restoreCells(variant, cells([])); setUndo({ variant, cells: cells([...b.ids]), label: "deleted" }); })
+      .then(() => { if (habitsAt(variant, d, b.first, b.first + b.count).length) return saveCheckins({ isNew: false, days: [], start: 0, end: 0, acts: [], habitIds: [], from: { day: d, start: b.first, end: b.first + b.count, ids: [] } }); }).catch(() => undefined);
   };
   const columnAt = (x: number, y: number): number | null => {
     const col = (document.elementsFromPoint?.(x, y) ?? []).find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.col !== undefined);
@@ -193,6 +206,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
     onMenu: e => { if (disabled) return; e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, block: b, day: d, el: e.currentTarget }); },
     onKey: e => blockKey(e, b, d),
   });
+  const checkinNames = (d: number, b: Block) => habitsAt(variant, d, b.first, b.first + b.count).map(id => habits.find(h => h.id === id)?.name).filter((n): n is string => !!n);
   const ghost = (g: Drag, px: number) => <div className="tt-ghost" aria-hidden="true" style={{ top: g.start * (px / 2) + 3, height: (g.end - g.start) * (px / 2) - 6 }}><span>{hm(g.start * 30)}–{hm(g.end * 30)}</span></div>;
   return <div className="document tt-screen" aria-label="Life Timetable">
     <header className="tt-head">
@@ -242,7 +256,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
           <span>{d}</span><span className={"tt-mark" + (i === day ? " on" : "")} /></button>)}
         <div className="tt-gutter" style={{ ...hourLines(WEEK_PX), height: 24 * WEEK_PX }}>{hours.map(h => <span key={h} style={{ top: h * WEEK_PX + 6 }}>{String(h).padStart(2, "0")}:00</span>)}</div>
         {DAY_SHORT.map((d, i) => <div key={d} data-col={i} className={"tt-col" + (i % 2 === 0 ? " band" : "")} style={{ ...hourLines(WEEK_PX), height: 24 * WEEK_PX }}>
-          {dayBlocks(grid, i).map(b => <BlockButton key={b.first} block={b} day={i} today={today} px={WEEK_PX} detailed={false} activities={activities} live={live} nowMin={nowMin} dragging={drag?.from === b} actions={actionsFor(b, i, WEEK_PX)} />)}
+          {dayBlocks(grid, i).map(b => <BlockButton key={b.first} block={b} day={i} today={today} px={WEEK_PX} detailed={false} activities={activities} live={live} nowMin={nowMin} dragging={drag?.from === b} actions={actionsFor(b, i, WEEK_PX)} checkins={checkinNames(i, b)} />)}
           {drag?.day === i && ghost(drag, WEEK_PX)}
           {live && i === today && nowLine(WEEK_PX)}
         </div>)}
@@ -252,7 +266,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
         <div className="tt-dayhead">{DAY_LONG[day].toUpperCase()}</div>
         <div className="tt-gutter" style={{ ...hourLines(DAY_PX), height: 24 * DAY_PX }}>{hours.map(h => <span key={h} style={{ top: h * DAY_PX + 8 }}>{String(h).padStart(2, "0")}:00</span>)}</div>
         <div data-col={day} className="tt-col band" style={{ ...hourLines(DAY_PX), height: 24 * DAY_PX }}>
-          {dayBlocks(grid, day).map(b => <BlockButton key={b.first} block={b} day={day} today={today} px={DAY_PX} detailed activities={activities} live={live} nowMin={nowMin} dragging={drag?.from === b} actions={actionsFor(b, day, DAY_PX)} />)}
+          {dayBlocks(grid, day).map(b => <BlockButton key={b.first} block={b} day={day} today={today} px={DAY_PX} detailed activities={activities} live={live} nowMin={nowMin} dragging={drag?.from === b} actions={actionsFor(b, day, DAY_PX)} checkins={checkinNames(day, b)} />)}
           {drag?.day === day && ghost(drag, DAY_PX)}
           {live && day === today && nowLine(DAY_PX)}
         </div>
@@ -261,7 +275,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
 
     {menu && <BlockMenu at={menu} onClose={() => setMenu(null)} onEdit={() => { const m = menu; setMenu(null); editBlock(m.block, m.day, m.el); }} onDelete={() => { const m = menu; setMenu(null); remove(m.block, m.day); }} />}
     {undo && createPortal(<div className="tt-undo" role="status"><span>Block {undo.label}</span><button type="button" onClick={undoLast}>Undo</button></div>, document.body)}
-    {editor && <BlockEditor initial={editor} variant={variant} activities={activities} serverError={editorError} onSave={s => void commit(s, s.acts)} onClear={s => void clearToFree(s)} onCancel={closeEditor} />}
+    {editor && <BlockEditor initial={editor} variant={variant} activities={activities} habits={habits} serverError={editorError} onSave={s => void commit(s, s.acts)} onClear={s => void clearToFree(s)} onCancel={closeEditor} />}
   </div>;
 }
 
