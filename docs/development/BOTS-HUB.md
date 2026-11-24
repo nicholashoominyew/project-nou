@@ -52,6 +52,10 @@ It polls every few seconds, answers the chat that has been waiting longest using
 - **Harnesses.** A harness is a named block of extra instructions (up to 4,000 characters; up to 30 harnesses), written for NOU, for example how NOU's pages, databases, Life Timetable and Bots Hub work, or a style such as "brief answers". Tick the harnesses a chat should use, or mark one **Use in every chat**. The model gets them after its usual instructions, always-on ones first, up to 8,000 characters in all. The panel offers templates (*NOU helper*, *Timetable coach*, *Brief answers*); choosing one only fills in the form, and nothing is saved until you save it.
 - **What a harness cannot do.** It only changes what Kura is told. The runner still has no access to your notes, and its usual instructions say that no harness changes what it can do or lets it claim to have changed a note.
 
+## The bot runner
+
+Tags in the room can start bots by themselves: **AI access, Bot runners, Start bots when tagged**. Claude is started with Claude Code; Kura polls NOU itself and is never started by the runner; xGrok and GrokBots cannot be started, so a tag of one posts an approval card "Ready to paste into <Name>" for you to copy across (approving it means you pasted it). Requirements: the Local API on, Node.js 18 or newer, and the Claude Code CLI signed in for Claude. It runs only while NOU is open. Full details, tokens and limits are in `GATEWAY.md` (Bot runner).
+
 ## Privacy and safety
 
 - The in-house channel is a separate set of tables (`inhouse_messages`, `inhouse_chats`, `inhouse_harnesses`, `inhouse_chat_harnesses`; schema 14, `db/notes/014_inhouse_chats.sql`). `/v1/chat`, `/v1/queue` and the mention filter never read it, and a token needs the in-house scopes to touch it (tested, including a token with every other scope).
@@ -85,11 +89,11 @@ In a development build only, **Load sample data** (page header) loads the mockup
 
 - Rust: rooms, hand-offs, mentions, approval cards and decisions (including a failure leaving no queue item), the queue (own items only, a bot cannot close a waiting item, ordering, rate limit, pruning), the in-house channel and its status, participants, the sample data, the migration of old messages, a backup and restore at schema 12, and 5 API tests.
 - Vitest: `botsHub.test.tsx` (panels, feed items, rooms, composer, approve flow, queue filters, in-house chat, header buttons, helpers), the sidebar count in `App.test.tsx`, and the style rules in `theme.test.ts`.
-- Node: the MCP bridge tools for rooms, hand-offs, approvals and the queue, and the Kura runner.
+- Node: the MCP bridge tools for rooms, hand-offs, approvals and the queue, the Kura runner (`npm run test:kura`) and the bot runner (`npm run test:runner`: relay cards, external bots, loop protection, exit with the parent).
 
 ## Not verified
 
-A real bot posting through the API from outside the app, the Kura runner against a real Ollama, the page inside the real Tauri window, a hand walk-through of Tab order and focus rings, and contrast ratios measured in the running app (the colours are the existing theme tokens).
+A real bot posting through the API from outside the app, the Kura runner against a real Ollama, the bot runner starting the real `claude` CLI (and on Windows: the hidden window and stopping the process tree), the page inside the real Tauri window, a hand walk-through of Tab order and focus rings, and contrast ratios measured in the running app (the colours are the existing theme tokens).
 
 ## Not built
 

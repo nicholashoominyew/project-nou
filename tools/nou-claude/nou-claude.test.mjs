@@ -1,34 +1,42 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { config, actionable, buildPrompt, pollBot, runBot } from "./nou-claude.mjs";
+import { fileURLToPath } from "node:url";
+import { config, actionable, buildPrompt, pollBot, relayCard, runBot } from "./nou-claude.mjs";
+
+const SCRIPT = fileURLToPath(new URL("./nou-claude.mjs", import.meta.url));
 
 const tmp = () => mkdtempSync(join(tmpdir(), "nou-claude-test-"));
 
-/** A fake NOU API serving a mutable list of messages, with the same mention filter and auth check. */
+/** A fake NOU API serving a mutable list of messages with the real response shape ({ data: [...] }), the same mention filter and auth check, and recording what is posted. */
 async function fakeApi(messages) {
-  const seen = [];
+  const seen = []; const posts = []; const control = { postStatus: 201 };
   const server = createServer((req, res) => {
     const u = new URL(req.url, "http://x");
-    seen.push({ auth: req.headers.authorization, path: u.pathname + u.search });
+    seen.push({ auth: req.headers.authorization, method: req.method, path: u.pathname + u.search });
     if (!/^Bearer tok-/.test(req.headers.authorization || "")) { res.writeHead(401); return res.end("{}"); }
+    if (req.method === "POST") {
+      let raw = ""; req.on("data", (d) => { raw += d; });
+      return req.on("end", () => { let body = null; try { body = JSON.parse(raw); } catch { /* recorded as null */ } posts.push({ auth: req.headers.authorization, path: u.pathname, body }); res.writeHead(control.postStatus, { "content-type": "application/json" }); res.end(JSON.stringify({ id: 99 })); });
+    }
     const after = Number(u.searchParams.get("after") || 0);
     const who = u.searchParams.get("mentioning");
-    const out = messages.filter((m) => m.id > after && (!who || m.body.includes("@" + who)));
+    const out = messages.filter((m) => m.id > after && (!who || m.body.toLowerCase().includes("@" + who.toLowerCase())));
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify(out));
+    res.end(JSON.stringify({ content_is_untrusted_data: true, data: out }));
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  return { url: "http://127.0.0.1:" + server.address().port, messages, seen, close: () => server.close() };
+  return { url: "http://127.0.0.1:" + server.address().port, messages, seen, posts, control, close: () => server.close() };
 }
 
 const msg = (id, author, kind, body) => ({ id, author, kind, body, at: "t", room: "general" });
 function cfgFor(api, extra = {}, bots) {
   const dir = tmp();
-  const env = { NOU_API_URL: api.url, NOU_TOKEN: "tok-claude", NOU_TOKEN_KURA: "tok-kura", NOU_CLAUDE_STATE: join(dir, "s.json"), NOU_BOTS_FILE: join(dir, "none.json"), ...extra };
+  const env = { NOU_API_URL: api.url, NOU_TOKEN: "tok-claude", NOU_TOKEN_KURA: "tok-kura", NOU_TOKEN_RELAY: "tok-relay", NOU_CLAUDE_STATE: join(dir, "s.json"), NOU_BOTS_FILE: join(dir, "none.json"), ...extra };
   if (bots) { writeFileSync(join(dir, "bots.json"), JSON.stringify({ bots })); env.NOU_BOTS_FILE = join(dir, "bots.json"); }
   return config(env);
 }
@@ -150,4 +158,131 @@ test("a missing command is reported, not thrown", async () => {
   const cfg = cfgFor({ url: "http://127.0.0.1:1" }, { NOU_CLAUDE_BIN: "/definitely/not/here" });
   const r = await runBot(cfg, cfg.bots[0], msg(1, "Nick", "owner", "x"), () => {});
   assert.equal(r.code !== 0, true);
+});
+
+// ---- relay and external bots ----
+const relays = [
+  { name: "Claude", tokenEnv: "NOU_TOKEN", type: "claude", allowFrom: [] },
+  { name: "Kura", type: "external" },
+  { name: "xGrok", type: "relay", allowFrom: ["Claude"] },
+  { name: "GrokBots", type: "relay", allowFrom: ["Claude"], maxBotRuns: 2 },
+];
+const byName = (cfg, n) => cfg.bots.find((b) => b.name === n);
+const baseline = (cfg, bot, state) => pollBot(cfg, bot, state, () => {});
+
+test("a relay bot uses NOU_TOKEN_RELAY by default, and an external bot never gets a token", () => {
+  const cfg = cfgFor({ url: "http://127.0.0.1:1" }, {}, relays);
+  assert.deepEqual(cfg.bots.map((b) => [b.name, b.type, b.tokenEnv, b.token]), [["Claude", "claude", "NOU_TOKEN", "tok-claude"], ["Kura", "external", "NOU_TOKEN", ""], ["xGrok", "relay", "NOU_TOKEN_RELAY", "tok-relay"], ["GrokBots", "relay", "NOU_TOKEN_RELAY", "tok-relay"]]);
+  assert.throws(() => cfgFor({ url: "http://127.0.0.1:1" }, {}, [{ name: "X", type: "robot" }]), /"relay" or "external"/);
+});
+
+test("an owner tag of a relay bot posts one approval card with the @Name removed, signed with the shared relay token", async () => {
+  const api = await fakeApi([msg(1, "Nick", "owner", "old @xGrok")]);
+  const cfg = cfgFor(api, {}, relays); const state = { bots: {} }; const bot = byName(cfg, "xGrok");
+  await baseline(cfg, bot, state);
+  api.messages.push(msg(2, "Nick", "owner", "@xGrok please read this @xgrok, thanks\nand ask @xGrokker too"));
+  assert.equal(await pollBot(cfg, bot, state, () => {}), 1);
+  assert.equal(await pollBot(cfg, bot, state, () => {}), 0, "the tag is not handled twice");
+  assert.equal(api.posts.length, 1);
+  const [post] = api.posts;
+  assert.equal(post.auth, "Bearer tok-relay"); assert.equal(post.path, "/v1/chat");
+  assert.deepEqual(Object.keys(post.body).sort(), ["body", "queue_title", "room", "type"]);
+  assert.equal(post.body.type, "approval"); assert.equal(post.body.room, "general");
+  assert.equal(post.body.body, "Ready to paste into xGrok\n\nplease read this , thanks\nand ask @xGrokker too");
+  assert.doesNotMatch(post.body.body.replace("@xGrokker", ""), /@xgrok/i, "its own tag is gone, so the card cannot tag it again");
+  assert.equal(post.body.queue_title, "Paste into xGrok: please read this , thanks and ask @xGrokker too");
+  api.close();
+});
+
+test("relay cards stay inside NOU's limits for long messages, and never cut a character in half", () => {
+  const bot = { name: "GrokBots" };
+  const long = relayCard(bot, { body: "@GrokBots " + "😀".repeat(5000) });
+  assert.ok([...long.body].length <= 4000, "body max 4000 characters"); assert.ok(long.body.endsWith("[shortened to fit]")); assert.ok(long.body.startsWith("Ready to paste into GrokBots\n\n😀"));
+  assert.ok([...long.queueTitle].length <= 160 && long.queueTitle.endsWith("…") && long.queueTitle.startsWith("Paste into GrokBots: 😀"));
+  assert.doesNotThrow(() => JSON.parse(JSON.stringify(long)), "valid JSON, no lone surrogate");
+  const exact = relayCard(bot, { body: "x".repeat(4000 - "Ready to paste into GrokBots\n\n".length) });
+  assert.equal([...exact.body].length, 4000); assert.ok(!exact.body.includes("shortened"), "a message that just fits is not shortened");
+  const empty = relayCard(bot, { body: "@GrokBots" }); assert.deepEqual(empty, { body: "Ready to paste into GrokBots", queueTitle: "Paste into GrokBots" });
+  assert.ok(!/[\n\r\t]/.test(relayCard(bot, { body: "a\nb\tc" }).queueTitle), "the title is one line");
+});
+
+test("a relay reacts only to the owner by default, and to Claude's hand-offs when allowFrom names Claude (with the usual cap)", async () => {
+  const api = await fakeApi([]);
+  const cfg = cfgFor(api, {}, relays); const state = { bots: {} }; const x = byName(cfg, "xGrok"); const g = byName(cfg, "GrokBots");
+  await baseline(cfg, x, state); await baseline(cfg, g, state);
+  api.messages.push(msg(1, "Kura", "assistant", "@xGrok from Kura"), msg(2, "Claude", "assistant", "@xGrok hand-off from Claude"), msg(3, "Nick", "owner", "@xGrok from Nick"));
+  assert.equal(await pollBot(cfg, x, state, () => {}), 2, "Claude's hand-off and Nick's tag, not Kura's");
+  assert.deepEqual(api.posts.map((p) => p.body.body.split("\n\n")[1]), ["hand-off from Claude", "from Nick"]);
+  api.posts.length = 0;
+  for (const id of [4, 5, 6]) api.messages.push(msg(id, "Claude", "assistant", "@GrokBots task " + id));
+  assert.equal(await pollBot(cfg, g, state, () => {}), 2, "at most maxBotRuns bot-triggered runs in 10 minutes");
+  // Without allowFrom, a relay ignores every bot.
+  const solo = cfgFor(api, {}, [{ name: "xGrok", type: "relay" }]); const st2 = { bots: {} }; await baseline(solo, solo.bots[0], st2);
+  api.posts.length = 0; api.messages.push(msg(7, "Claude", "assistant", "@xGrok please"));
+  assert.equal(await pollBot(solo, solo.bots[0], st2, () => {}), 0); assert.equal(api.posts.length, 0);
+  api.close();
+});
+
+test("a failed card is reported and not retried", async () => {
+  const api = await fakeApi([]);
+  const cfg = cfgFor(api, {}, relays); const state = { bots: {} }; const bot = byName(cfg, "xGrok"); const logs = [];
+  await baseline(cfg, bot, state);
+  api.control.postStatus = 429; api.messages.push(msg(1, "Nick", "owner", "@xGrok try"));
+  assert.equal(await pollBot(cfg, bot, state, (l) => logs.push(l)), 1);
+  assert.match(logs.join("\n"), /exited with code 1.*NOU API 429/);
+  api.control.postStatus = 201;
+  assert.equal(await pollBot(cfg, bot, state, () => {}), 0); assert.equal(api.posts.length, 1);
+  api.close();
+});
+
+test("an external bot is never polled or started, but Claude's prompt lists it (and the relays) for hand-offs", async () => {
+  const api = await fakeApi([msg(1, "Nick", "owner", "@Kura hi")]);
+  const cfg = cfgFor(api, {}, relays); const kura = byName(cfg, "Kura");
+  assert.equal(await pollBot(cfg, kura, { bots: {} }, () => {}, async () => { throw new Error("must not run"); }), 0);
+  assert.equal(api.seen.length, 0, "no request was made for it");
+  assert.deepEqual(await runBot(cfg, kura, msg(1, "Nick", "owner", "@Kura hi"), () => {}), { code: 0, out: "An external bot starts itself." });
+  const p = buildPrompt(cfg, byName(cfg, "Claude"), msg(2, "Nick", "owner", "@Claude plan it"));
+  assert.match(p, /Kura \(it runs on its own/); assert.match(p, /xGrok \(it runs outside NOU, so Nick pastes/); assert.match(p, /GrokBots \(it runs outside NOU/);
+  assert.doesNotMatch(p, /Claude \(/);
+  api.close();
+});
+
+// ---- exiting with the parent ----
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(check, ms = 15000) { const end = Date.now() + ms; while (Date.now() < end) { if (await check()) return true; await sleep(50); } return false; }
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+/** Start the real runner as a child process with one command bot that records its pid and then waits forever. */
+async function startRunner(extraEnv) {
+  const api = await fakeApi([msg(1, "Nick", "owner", "old")]);
+  const dir = tmp(); const pidFile = join(dir, "pid"); const bot = join(dir, "bot.mjs");
+  writeFileSync(bot, `import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(()=>{},1000);`);
+  writeFileSync(join(dir, "bots.json"), JSON.stringify({ bots: [{ name: "Kura", tokenEnv: "NOU_TOKEN_KURA", type: "command", command: process.execPath, args: [bot] }] }));
+  const runner = spawn(process.execPath, [SCRIPT], { env: { ...process.env, NOU_API_URL: api.url, NOU_TOKEN_KURA: "tok-kura", NOU_BOTS_FILE: join(dir, "bots.json"), NOU_CLAUDE_STATE: join(dir, "s.json"), NOU_CLAUDE_POLL_MS: "1000", ...extraEnv }, stdio: ["pipe", "pipe", "pipe"] });
+  const exited = new Promise((r) => runner.on("exit", (code, signal) => r({ code, signal })));
+  assert.ok(await until(() => api.seen.length > 0), "the runner polled once for its baseline");
+  await sleep(100); api.messages.push(msg(2, "Nick", "owner", "start @Kura"));
+  assert.ok(await until(() => existsSync(pidFile)), "the tag started the bot process");
+  const pid = Number(readFileSync(pidFile, "utf8")); assert.ok(alive(pid));
+  return { runner, exited, pid, api };
+}
+
+test("with NOU_RUNNER_PARENT_PIPE=1 the runner stops when its stdin closes, taking the running bot process with it", async () => {
+  const { runner, exited, pid, api } = await startRunner({ NOU_RUNNER_PARENT_PIPE: "1" });
+  runner.stdin.end();
+  const r = await Promise.race([exited, sleep(10000).then(() => "timeout")]);
+  assert.deepEqual(r, { code: 0, signal: null });
+  assert.ok(await until(() => !alive(pid), 5000), "the bot process is gone too");
+  api.close();
+});
+
+test("without the parent pipe, closing stdin does not stop the runner; SIGTERM does, and it kills the bot process", { skip: process.platform === "win32" }, async () => {
+  const { runner, exited, pid, api } = await startRunner({});
+  runner.stdin.end(); await sleep(1500);
+  assert.equal(runner.exitCode, null, "still running");
+  runner.kill("SIGTERM");
+  const r = await Promise.race([exited, sleep(10000).then(() => "timeout")]);
+  assert.equal(r.code, 143);
+  assert.ok(await until(() => !alive(pid), 5000), "the bot process is gone too");
+  api.close();
 });

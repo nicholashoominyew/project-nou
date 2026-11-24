@@ -27,3 +27,11 @@ Schema 6 (`db/notes/006_gateway.sql`), another one-way schema step. Providers th
 
 ## Not built yet
 linked (multi-page) checklist items, per-provider setup, per-token rate limits, and a self-hosted-AI runner.
+
+## Addendum: the built-in bot runner
+A runner inside the app (`runner.rs`, embedding `tools/nou-claude/nou-claude.mjs`) can start bots when they are tagged in the Bots Hub, so tags work without the owner starting a program by hand. It adds no power to a bot, and every rule above still holds.
+- **Gated twice.** It runs only while its own switch (default off) and the Local API are both on.
+- **Runner tokens.** NOU mints two ordinary tokens per run, "Claude" (the existing note, database, chat and queue scopes) and "NOU relay" (chat and queue scopes only). The secrets live in memory and in the child's environment; they are never written to a file, the log or the audit log (output is also scrubbed of them). Their ids are recorded in `runner.json`.
+- **Idle-revoke rule.** `revoke_token` cancels a token's pending proposals, so an old runner token is revoked only when it has no pending or approved proposal; a token that still has one stays valid until a later start or stop finds it idle. Only recorded runner tokens are ever revoked.
+- **Relay cards.** A bot that exists only outside NOU (xGrok, GrokBots) cannot be started, so a tag posts an approval card, "Ready to paste into <Name>", with the tag removed from the text so it cannot re-trigger. Approving it is the owner's act in the app, like any approval, and means "pasted". It changes no note.
+- **Lifetime.** The runner is started hidden with its stdin held open as a parent pipe and exits when the pipe closes, so a closed or crashed NOU leaves nothing running. Each start begins after the newest message, so earlier tags are not replayed. Audit actions: `runner.enabled`, `runner.disabled`, `runner.started`, `runner.stopped`.

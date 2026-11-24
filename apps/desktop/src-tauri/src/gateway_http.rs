@@ -308,6 +308,9 @@ pub fn gateway_api_set_enabled(app: AppHandle, db: State<'_, Db>, server: State<
     cfg.enabled = enabled;
     write_config(&path, &ApiConfig { enabled, port: cfg.port })?;
     if let Ok(c) = db.0.lock() { let _ = gateway::audit(&c, "owner", if enabled { "api.enabled" } else { "api.disabled" }, json!({ "port": cfg.port })); }
+    // The bot runner follows the Local API: it starts when the API comes on (if its own switch is on) and stops when the API goes off.
+    // A runner that cannot start (Node missing, say) is shown on the AI access screen; it does not stop the API from being switched.
+    let _ = crate::runner::sync(&app, slot.is_some());
     Ok(status_of(&cfg, slot.is_some()))
 }
 

@@ -1,5 +1,8 @@
 {
   "bots": [
-    { "name": "Claude", "tokenEnv": "NOU_TOKEN", "type": "claude", "allowFrom": [] }
+    { "name": "Claude", "tokenEnv": "NOU_TOKEN", "type": "claude", "allowFrom": [] },
+    { "name": "Kura", "type": "external" },
+    { "name": "xGrok", "tokenEnv": "NOU_TOKEN_RELAY", "type": "relay", "allowFrom": ["Claude"] },
+    { "name": "GrokBots", "tokenEnv": "NOU_TOKEN_RELAY", "type": "relay", "allowFrom": ["Claude"] }
   ]
 }

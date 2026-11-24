@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 type Token = { id: string; name: string; scopes: string[]; created_at: string; last_used_at: string | null; revoked_at: string | null };
 type Created = { info: Token; secret: string };
 type ApiStatus = { enabled: boolean; running: boolean; port: number; address: string };
+type RunnerBot = { name: string; kind: string; note: string };
+type RunnerStatus = { enabled: boolean; running: boolean; api_on: boolean; port: number; node_ok: boolean; claude_ok: boolean; bots: RunnerBot[]; log_tail: string; last_error: string | null };
 type Audit = { id: number; at: string; actor: string; action: string; detail: Record<string, unknown> };
 
 const SCOPES: { id: string; label: string; help: string }[] = [
@@ -18,6 +20,48 @@ const SCOPES: { id: string; label: string; help: string }[] = [
   { id: "inhouse:read", label: "Read the in-house chat", help: "For the local model's runner only: read your private questions to it." },
   { id: "inhouse:write", label: "Answer in the in-house chat", help: "For the local model's runner only: reply in your private chat. No other assistant can see it." },
 ];
+
+/** The one word (and dot) that says what the bot runner is doing. The first thing that stops it wins. */
+export function runnerWord(s: RunnerStatus): { word: string; tone: "live" | "warn" | "off" } {
+  if (!s.enabled) return { word: "STOPPED", tone: "off" };
+  if (!s.api_on) return { word: "NEEDS THE LOCAL API", tone: "warn" };
+  if (!s.node_ok) return { word: "NODE MISSING", tone: "warn" };
+  if (!s.claude_ok) return { word: "CLAUDE CLI MISSING", tone: "warn" };
+  return s.running ? { word: "RUNNING", tone: "live" } : { word: "STOPPED", tone: "off" };
+}
+
+/** Bot runners: while NOU is open (and the Local API is on) a tag in the Bots Hub starts the bot that was tagged. Bots can still only post, queue and propose. */
+function RunnerCard({ apiRunning }: { apiRunning: boolean }) {
+  const [status, setStatus] = useState<RunnerStatus | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const refresh = useCallback(async () => {
+    try { const s = await invoke<RunnerStatus>("runner_status"); if (s && typeof s === "object") setStatus(s); } catch (e) { setError(String(e)); }
+  }, []);
+  // Look again when the Local API is switched (the runner follows it), and every few seconds while this screen is open.
+  useEffect(() => { void refresh(); }, [refresh, apiRunning]);
+  useEffect(() => { const id = window.setInterval(() => void refresh(), 5000); return () => window.clearInterval(id); }, [refresh]);
+  async function toggle(enabled: boolean) {
+    setError(""); setBusy(true);
+    try { const s = await invoke<RunnerStatus>("runner_set_enabled", { enabled }); if (s && typeof s === "object") setStatus(s); } catch (e) { setError(String(e)); } finally { setBusy(false); }
+  }
+  const shown = status ? runnerWord(status) : null;
+  return <section className="recovery-card runner-card" aria-label="Bot runners"><h2>Bot runners</h2>
+    <p>Tag a bot in the Bots Hub (for example <code>@Claude</code>) and NOU starts it for you, while NOU is open. A bot can only post, queue and <strong>propose</strong>; nothing changes in your notes until you approve it.</p>
+    <label className="scope-row"><input type="checkbox" role="switch" aria-label="Start bots when tagged" checked={!!status?.enabled} disabled={!status || busy} onChange={e => void toggle(e.target.checked)} />
+      <span><strong>Start bots when tagged</strong><em>Needs the Local API on, Node.js 18 or newer, and for Claude the Claude Code CLI signed in on this computer. It stops when NOU closes.</em></span></label>
+    {shown && <p className="runner-state" role="status" aria-label={"Runner status: " + shown.word}><i className={"runner-dot " + shown.tone} aria-hidden="true" />{shown.word}</p>}
+    {status && status.enabled && !status.api_on && <p className="hint">Turn on the Local API above. The runner starts as soon as it is on.</p>}
+    {status && status.enabled && status.api_on && !status.node_ok && <p className="hint">Node.js 18 or newer was not found. Install it from nodejs.org, then switch this off and on.</p>}
+    {status && status.enabled && status.api_on && status.node_ok && !status.claude_ok && <p className="hint">The Claude Code CLI (<code>claude</code>) was not found or is not signed in, so a tag of @Claude will fail. The other bots still work.</p>}
+    {(error || status?.last_error) && <p className="error" role="alert">{error || status?.last_error}</p>}
+    {!!status?.bots.length && <ul className="runner-bots" aria-label="Bots">{status.bots.map(b => <li key={b.name}><strong>{b.name}</strong><span className="hint"> {b.note}</span></li>)}</ul>}
+    <p className="hint">The runner uses two tokens it makes itself, “Claude” and “NOU relay”. They appear in the list below like any other token; you do not need to copy them.</p>
+    <details><summary>Log</summary>
+      {status?.log_tail ? <pre className="runner-log" aria-label="Runner log">{status.log_tail}</pre> : <p className="hint">Nothing logged yet.</p>}
+    </details>
+  </section>;
+}
 
 /** Create and revoke the tokens outside tools use, and see the audit trail. A token can only ask; it can never apply a change. */
 export default function GatewayPanel({ onClose }: { onClose: () => void }) {
@@ -72,6 +116,8 @@ export default function GatewayPanel({ onClose }: { onClose: () => void }) {
       {api?.running && <details><summary>How a tool uses it</summary>
         <p>Send <code>Authorization: Bearer YOUR_TOKEN</code>. Reads: <code>GET /v1/search?q=…</code>, <code>GET /v1/pages/ID</code>, <code>GET /v1/databases/ID</code>. To ask for a change: <code>POST /v1/proposals</code> with <code>{"{"}"op","payload","summary"{"}"}</code>. A change only happens after you approve it on the Home page.</p></details>}
     </section>
+
+    <RunnerCard apiRunning={!!api?.running} />
 
     <section className="recovery-card" aria-label="Create a token"><h2>Create a token</h2>
       <label>Name<input aria-label="Token name" value={name} maxLength={60} placeholder="For example: Claude desktop" onChange={e => setName(e.target.value)} /></label>

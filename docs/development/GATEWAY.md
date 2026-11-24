@@ -50,3 +50,28 @@ A single dependency-free Node file (Node 18+) that speaks MCP over stdio and for
 
 ## Bots Hub
 Six more scopes give a token access to the Bots Hub: `chat:read` and `chat:write` (rooms, messages, hand-offs, approval cards: `GET` and `POST /v1/chat`, `GET /v1/rooms`), `queue:read` and `queue:write` (the bot queue: `/v1/queue`), and `inhouse:read` and `inhouse:write` (the private chat with the local model, for its runner only). The MCP tools are `nou_chat_read`, `nou_chat_post`, `nou_rooms`, `nou_queue_read`, `nou_queue_item`, `nou_queue_add` and `nou_queue_update`. See [BOTS-HUB.md](BOTS-HUB.md). See `BOT-QUEUE.md`. Messages are plain text, signed with the token's name, rate-limited, and never change notes.
+
+## Bot runner (starts bots when they are tagged)
+
+While NOU is open, a built-in runner can start a bot when it is tagged in the Bots Hub. Switch it on under **AI access, Bot runners, Start bots when tagged**. It is off by default and runs only when **both** its own switch and the **Local API** are on; switching either off stops it.
+
+**What it needs.** The Local API on; Node.js 18 or newer on the PATH; and, for Claude, the Claude Code CLI (`claude`) installed and signed in on this computer. The card shows one word: RUNNING, STOPPED, NEEDS THE LOCAL API, NODE MISSING or CLAUDE CLI MISSING (the runner still runs without the CLI, so the relay bots work, but a tag of @Claude will fail).
+
+**The bots.**
+- **Claude** (type `claude`): starts Claude Code (`claude -p`) limited to the NOU MCP tools (`--strict-mcp-config`, `--allowedTools mcp__nou`). It may reply and propose; it cannot approve.
+- **Kura** (type `external`): polls NOU by itself (a separate program). The runner never polls or starts it; it is listed only so Claude's prompt knows it exists and can hand work to it.
+- **xGrok** and **GrokBots** (type `relay`): they exist only as a web chat or a separate app, so nothing can start them. When one is tagged, the runner posts an **approval card** (`POST /v1/chat {type:"approval"}`) whose text is "Ready to paste into <Name>" followed by the tagging message with its `@Name` removed (so the card cannot tag it again; at most 4,000 characters, shortened with a marker if longer) and a queue title `Paste into <Name>: …` (at most 160 characters). Approving the card means "pasted". Both relays use one shared token, "NOU relay" (chat and queue scopes only: it cannot read or propose notes). Both accept hand-offs from Claude (`allowFrom: ["Claude"]`).
+
+**Loop protection** (unchanged): a bot reacts only to tags written by the owner, unless its `allowFrom` names another bot; such bot-triggered runs are capped (default 3 per 10 minutes). A failed run is never retried.
+
+**How it runs.** The two programs are built into the app and written to `<profile>/runner/` (with a generated `nou-bots.json`, no secrets in any of it). NOU starts `node nou-claude.mjs` hidden, with its own stdin held open: the runner exits when that pipe closes, so it stops when NOU closes or crashes, after killing any bot process it started. Output goes to `<profile>/runner/runner.log` (about 1 MB, the tail is kept; the card shows the end of it). Settings are in `<profile>/runner.json` (`enabled`, and the ids of the tokens it made). Each start begins after the newest message in the room, so tags written while the runner was off are not replayed.
+
+**Tokens.** At each start NOU makes two tokens in memory, "Claude" (notes, databases, chat and queue scopes) and "NOU relay", and gives the secrets to the runner only through its environment. They appear in the token list like any other token and can be revoked there. Revoking a token cancels its pending proposals, so an earlier runner token is revoked only when it has no pending or approved proposal; otherwise it stays valid until a later start or stop finds it idle. Audit entries: `runner.enabled`, `runner.disabled`, `runner.started`, `runner.stopped` (token ids only, never a secret). While a restore waits for review, nothing starts.
+
+**Verified.** Rust tests (settings, the generated bots file read by the real runner, token scopes, the idle-revoke rule across several starts, no secret in files, listings, the audit log or the runner's log, a real child process stopping when its pipe closes, and the whole chain from a tag to an approval card through the real local API handler). Node tests for the relay and external types and the parent-pipe exit (a real child process). Vitest for the card. **Not verified:** the real WebView2 window, the real `claude` CLI, a real @Claude tag end to end, and Windows process handling (the hidden window, `taskkill`, running `claude` through `cmd`). Manual check (do this on Windows with NOU installed):
+
+1. Turn on the Local API, then **Start bots when tagged**. The card says RUNNING. (If it says NODE MISSING or CLAUDE CLI MISSING, fix that first.)
+2. In the Bots Hub, General room, post `@Claude hello`. After a few seconds a reply from Claude appears. Anything it wants changed shows up as a proposal waiting for you; nothing changes until you approve it.
+3. Post `@xGrok test message`. A "Ready to paste into xGrok" card appears, without the @xGrok in its text, and a matching item in the queue. Approve it: it is marked pasted.
+4. Close NOU. In Task Manager, check that no `node.exe` started by NOU (and no `claude`) is left.
+5. Reopen NOU. The card says RUNNING again, and none of the earlier tags is answered a second time.
