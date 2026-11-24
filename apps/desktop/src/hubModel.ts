@@ -10,7 +10,17 @@ export type QueueItem = { id: number; title: string; bot: string; status: QueueS
 export type Participant = { name: string; code: string; online: boolean; you: boolean };
 export type InhouseState = "running" | "sleeping" | "offline";
 export type Summary = { rooms: Room[]; participants: Participant[]; bots_online: number; inhouse_state: InhouseState | string; waiting: number; open: number };
-export type InhouseMessage = { id: number; at: string; author: "owner" | "bot" | string; body: string };
+export type InhouseMessage = { id: number; at: string; author: "owner" | "bot" | string; body: string; chat_id?: number };
+/** One private chat with the local model, and the ids of the harnesses chosen for it. */
+export type InhouseChatInfo = { id: number; title: string; created_at: string; updated_at: string; messages: number; harnesses: number[] };
+/** A named block of extra instructions for the local model. `always` applies it to every chat. */
+export type Harness = { id: number; name: string; instructions: string; always: boolean };
+/** Starting points written for NOU. Adding one only fills in the form: nothing is saved until the owner saves it. */
+export const HARNESS_PRESETS: { name: string; instructions: string }[] = [
+  { name: "NOU helper", instructions: "You live inside NOU, an offline notes app for Windows. NOU has pages (rich notes with subpages and favourites), databases with table, board, calendar, timeline, list, gallery, map and chart views, a Life Timetable (a weekly routine in half-hour blocks, with alternating Week A and Week B, a timer for the current event and a Focus mode) and a Bots Hub where assistants chat and queue work. When the user asks how to do something in NOU, explain it using those features and the app's own words. If you are not sure a feature exists, say so instead of inventing one." },
+  { name: "Timetable coach", instructions: "Help the user plan and review their Life Timetable. Time is split into half-hour blocks from Monday to Sunday, in two alternating weeks (A and B). When you suggest a change, name the week, the day, the start and end times and the activity so the user can make the change by hand. Remind the user that you cannot edit the timetable yourself." },
+  { name: "Brief answers", instructions: "Keep every answer to a few short sentences in plain words. Give more detail only when the user asks for it." },
+];
 
 /** The word shown next to a status dot. */
 export const STATUS_WORD: Record<string, string> = { running: "RUNNING", needs_nick: "NEEDS NICK", queued: "QUEUED", done: "DONE" };

@@ -4,7 +4,7 @@ import Approvals from "./Approvals";
 import CollabRoom from "./CollabRoom";
 import InhouseChat from "./InhouseChat";
 import QueuePanel from "./QueuePanel";
-import { mergeById, type HubMessage, type InhouseMessage, type QueueItem, type Summary } from "./hubModel";
+import { mergeById, type HubMessage, type QueueItem, type Summary } from "./hubModel";
 import type { PageInfo } from "./EditorContext";
 
 const POLL_MS = 3000;
@@ -21,15 +21,12 @@ export default function BotsHub({ disabled, pages = [], openPage = () => {}, onT
   const [slug, setSlug] = useState("general");
   const [messages, setMessages] = useState<HubMessage[] | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [inhouse, setInhouse] = useState<InhouseMessage[] | null>(null);
   const [error, setError] = useState("");
-  const [inhouseError, setInhouseError] = useState("");
   const [note, setNote] = useState("");
   const [full, setFull] = useState(false);
   const [apiNote, setApiNote] = useState(false);
   const [api, setApi] = useState<{ enabled: boolean; address: string } | null>(null);
   const lastMsg = useRef(0);
-  const lastInhouse = useRef(0);
   const slugRef = useRef(slug);
   slugRef.current = slug;
 
@@ -47,22 +44,13 @@ export default function BotsHub({ disabled, pages = [], openPage = () => {}, onT
       setError("");
     } catch (e) { setError(msg(e)); setMessages(old => old ?? []); }
   }, []);
-  const loadInhouse = useCallback(async () => {
-    try {
-      const got = await invoke<InhouseMessage[]>("inhouse_messages", lastInhouse.current ? { after: lastInhouse.current, limit: 200 } : { limit: 100 });
-      if (!Array.isArray(got)) return;
-      setInhouse(old => (lastInhouse.current === 0 && !got.length ? [] : mergeById(old ?? [], got)));
-      if (got.length) lastInhouse.current = Math.max(lastInhouse.current, ...got.map(m => m.id));
-      setInhouseError("");
-    } catch (e) { setInhouseError(msg(e)); setInhouse(old => old ?? []); }
-  }, []);
 
   useEffect(() => { lastMsg.current = 0; setMessages(null); void loadMessages(); }, [slug, loadMessages]);
   useEffect(() => {
-    void loadSummary(); void loadQueue(); void loadInhouse();
-    const t = window.setInterval(() => { void loadSummary(); void loadQueue(); void loadMessages(); void loadInhouse(); }, pollMs);
+    void loadSummary(); void loadQueue();
+    const t = window.setInterval(() => { void loadSummary(); void loadQueue(); void loadMessages(); }, pollMs);
     return () => window.clearInterval(t);
-  }, [loadSummary, loadQueue, loadMessages, loadInhouse, pollMs]);
+  }, [loadSummary, loadQueue, loadMessages, pollMs]);
   useEffect(() => { if (apiNote && !api) invoke<{ enabled: boolean; address: string }>("gateway_api_status").then(s => setApi(s && typeof s.address === "string" ? s : { enabled: false, address: "" })).catch(() => setApi({ enabled: false, address: "" })); }, [apiNote, api]);
 
   async function send(text: string) {
@@ -85,11 +73,7 @@ export default function BotsHub({ disabled, pages = [], openPage = () => {}, onT
     try { const r = await invoke<{ slug: string }>("chat_room_create", { name }); await loadSummary(); setSlug(r.slug); setError(""); }
     catch (e) { setError(msg(e)); throw e; }
   }
-  async function sendInhouse(text: string) {
-    try { const m = await invoke<InhouseMessage>("inhouse_send", { body: text }); setInhouse(old => mergeById(old ?? [], [m])); lastInhouse.current = Math.max(lastInhouse.current, m.id); setInhouseError(""); }
-    catch (e) { setInhouseError(msg(e)); throw e; }
-  }
-  async function loadSample() { try { await invoke("hub_seed_demo"); lastMsg.current = 0; lastInhouse.current = 0; setMessages(null); setInhouse(null); await Promise.all([loadSummary(), loadQueue(), loadMessages(), loadInhouse()]); } catch (e) { setNote(msg(e)); } }
+  async function loadSample() { try { await invoke("hub_seed_demo"); lastMsg.current = 0; setMessages(null); await Promise.all([loadSummary(), loadQueue(), loadMessages()]); } catch (e) { setNote(msg(e)); } }
 
   if (full) return <div className="document bot-screen hub-page">
     <button type="button" className="hub-back" onClick={() => setFull(false)}>← Bots Hub</button>
@@ -119,7 +103,7 @@ export default function BotsHub({ disabled, pages = [], openPage = () => {}, onT
       <CollabRoom room={room ?? (summary ? undefined : { id: 1, name: "General", slug: "general" })} rooms={summary?.rooms ?? [{ id: 1, name: "General", slug: "general" }]} onRoom={s => { if (s !== slug) setSlug(s); }}
         participants={summary?.participants ?? []} messages={messages} loading={messages === null} error={error} disabled={disabled} onSend={send} onApprove={approve} onOpenSpec={openSpec} onNewRoom={newRoom} />
       <div className="hub-side">
-        <InhouseChat state={summary?.inhouse_state ?? "offline"} messages={inhouse} error={inhouseError} disabled={disabled} onSend={sendInhouse} />
+        <InhouseChat state={summary?.inhouse_state ?? "offline"} disabled={disabled} pollMs={pollMs} />
         <QueuePanel items={queue} onOpenFull={() => setFull(true)} />
       </div>
     </div>

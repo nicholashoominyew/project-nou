@@ -811,3 +811,37 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .top-timer-name{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-weight:500}
 .top-timer-time{font:600 12px var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 @media (max-width:900px){.top-timer-name{display:none}}
+
+/* Kura: several chats, and harnesses (extra instructions for the local model) */
+.hub-inhouse{height:470px}
+.hub-chatbar{display:flex;gap:8px;align-items:center;padding:8px 16px 0}
+.hub-chatpick{flex:1;min-width:0;display:block}
+.hub-chatpick select,.hub-chatname{width:100%;box-sizing:border-box;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font:13px var(--font-body)}
+.hub-chatname{flex:1;min-width:0;border-color:var(--accent)}
+.hub-chatbar .hub-ghost,.hub-chattools .hub-ghost{height:30px!important;padding:0 10px!important;font-size:12px!important;white-space:nowrap}
+.hub-chattools{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 4px}
+.hub-chattools .hub-ghost.danger,.hub-harness .hub-ghost.danger{color:var(--danger)}
+.hub-chattools .hub-ghost[aria-expanded=true]{border-color:var(--accent);background:var(--hover)}
+.hub-inhouse>.error{margin:6px 16px 0}
+.hub-harness{flex:1;min-height:0;overflow-y:auto;padding:8px 16px 14px;display:flex;flex-direction:column;gap:10px}
+.hub-harness-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.hub-harness-head h3{margin:0;font-size:14px}
+.hub-harness .hub-empty{padding:0;margin:0;text-align:left}
+.hub-harness-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.hub-harness-row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg)}
+.hub-harness-pick{display:flex;align-items:center;gap:8px;min-width:0;font-size:13px}
+.hub-harness-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hub-harness-tag{margin-left:8px;font:500 10px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;font-style:normal;color:var(--accent)}
+.hub-harness-preview{grid-column:1/-1;margin:0;font-size:12px;line-height:1.4;color:var(--muted)}
+.hub-harness-actions{grid-column:2;grid-row:1;display:flex;gap:4px}
+.hub-harness-actions .hub-ghost{height:26px!important;padding:0 8px!important;font-size:12px!important}
+.hub-harness-form{display:flex;flex-direction:column;gap:8px}
+.hub-harness-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.hub-harness-form input:not([type=checkbox]),.hub-harness-form textarea{box-sizing:border-box;width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font:13px var(--font-body);resize:vertical}
+.hub-harness-form .hub-harness-always{flex-direction:row;align-items:center;gap:8px;color:var(--text)}
+.hub-harness-count{align-self:flex-end;font:11px var(--font-mono);color:var(--muted)}
+.hub-harness-formbtns{display:flex;justify-content:flex-end;gap:8px}
+.hub-harness .hub-ghost.primary{border-color:var(--accent);color:var(--accent)}
+.hub-harness .hub-ghost:disabled{opacity:.5;cursor:not-allowed}
+.hub-harness-add{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.hub-harness-presets{display:flex;flex-wrap:wrap;align-items:center;gap:6px}

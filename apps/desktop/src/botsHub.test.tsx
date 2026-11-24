@@ -4,7 +4,7 @@ import BotsHub from "./BotsHub";
 import { codeOf, addMention, approvalWord, dayLabel, filterCounts, filterItems, handoffLine, mergeById, openCount, statusWord, type HubMessage, type InhouseMessage, type QueueItem } from "./hubModel";
 
 const be = vi.hoisted(() => ({
-  messages: [] as any[], queue: [] as any[], inhouse: [] as any[], rooms: [] as any[], state: "running", calls: [] as [string, any][], fail: "" as string,
+  messages: [] as any[], queue: [] as any[], inhouse: [] as any[], chats: [] as any[], harnesses: [] as any[], rooms: [] as any[], state: "running", calls: [] as [string, any][], fail: "" as string,
 }));
 const summary = () => ({
   rooms: be.rooms, bots_online: 3, inhouse_state: be.state,
@@ -20,8 +20,21 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: a
   if (command === "chat_decide_approval") { const m = be.messages.find(x => x.id === args.id); m.approval = args.approve ? "approved" : "declined"; m.decided_at = new Date().toISOString(); const q = be.queue.find(x => x.id === m.queue_item_id); if (q) q.status = "done"; return m; }
   if (command === "chat_room_create") { const r = { id: be.rooms.length + 1, name: args.name, slug: args.name.toLowerCase().replace(/\s+/g, "-") }; be.rooms.push(r); return r; }
   if (command === "queue_items") return be.queue;
-  if (command === "inhouse_messages") { const after = args?.after ?? 0; return be.inhouse.filter(m => m.id > after); }
-  if (command === "inhouse_send") { const m = { id: be.inhouse.length + 1, at: new Date().toISOString(), author: "owner", body: args.body }; be.inhouse.push(m); return m; }
+  if (command === "inhouse_chats") return be.chats.map(c => ({ ...c, messages: be.inhouse.filter(m => m.chat_id === c.id).length }));
+  if (command === "inhouse_messages") { const after = args?.after ?? 0; return be.inhouse.filter(m => m.chat_id === (args?.chatId ?? 1) && m.id > after); }
+  if (command === "inhouse_send") { const m = { id: be.inhouse.length + 100, at: new Date().toISOString(), author: "owner", body: args.body, chat_id: args.chatId }; be.inhouse.push(m); return m; }
+  if (command === "inhouse_clear_chat") { be.inhouse = be.inhouse.filter(m => m.chat_id !== args.chatId); return 1; }
+  if (command === "inhouse_chat_create") { const c = { id: Math.max(0, ...be.chats.map(x => x.id)) + 1, title: "New chat", created_at: "", updated_at: "", messages: 0, harnesses: [] }; be.chats.unshift(c); return c; }
+  if (command === "inhouse_chat_rename") { const c = be.chats.find(x => x.id === args.chatId); c.title = args.title; return c; }
+  if (command === "inhouse_chat_delete") { be.chats = be.chats.filter(x => x.id !== args.chatId); be.inhouse = be.inhouse.filter(m => m.chat_id !== args.chatId); if (!be.chats.length) be.chats.push({ id: 99, title: "New chat", created_at: "", updated_at: "", messages: 0, harnesses: [] }); return null; }
+  if (command === "inhouse_harnesses") return be.harnesses;
+  if (command === "inhouse_harness_save") {
+    if (be.harnesses.some(h => h.name.toLowerCase() === args.name.trim().toLowerCase() && h.id !== args.id)) throw new Error("A harness with that name already exists");
+    if (args.id) { const h = be.harnesses.find(x => x.id === args.id); Object.assign(h, { name: args.name.trim(), instructions: args.instructions.trim(), always: args.always }); return h; }
+    const h = { id: be.harnesses.length + 1, name: args.name.trim(), instructions: args.instructions.trim(), always: args.always }; be.harnesses.push(h); return h;
+  }
+  if (command === "inhouse_harness_delete") { be.harnesses = be.harnesses.filter(h => h.id !== args.id); be.chats.forEach(c => { c.harnesses = c.harnesses.filter((i: number) => i !== args.id); }); return null; }
+  if (command === "inhouse_chat_harnesses") { const c = be.chats.find(x => x.id === args.chatId); c.harnesses = [...args.ids]; return c; }
   if (command === "gateway_api_status") return { enabled: true, running: true, port: 47651, address: "127.0.0.1:47651" };
   if (command === "gateway_list_proposals") return [];
   return null;
@@ -47,7 +60,8 @@ beforeEach(() => {
     { id: 13, title: "Harvest Vanguard tier posts", bot: "XGrok", status: "queued", room: "draftbot", created_at: "", updated_at: "", approval_message_id: null },
     { id: 14, title: "Pick today's five teachings", bot: "Kura", status: "done", room: "draftbot", created_at: "", updated_at: "", approval_message_id: null },
   ];
-  be.inhouse = [{ id: 1, at: at("07:30"), author: "owner", body: "What is left on today's list?" }, { id: 2, at: at("07:31"), author: "bot", body: "Three things." }];
+  be.inhouse = [{ id: 1, at: at("07:30"), author: "owner", body: "What is left on today's list?", chat_id: 1 }, { id: 2, at: at("07:31"), author: "bot", body: "Three things.", chat_id: 1 }];
+  be.chats = [{ id: 1, title: "Today's list", created_at: "", updated_at: "", messages: 2, harnesses: [] }]; be.harnesses = [];
 });
 afterEach(() => cleanup());
 
@@ -203,7 +217,7 @@ describe("Bots Hub: the in-house chat", () => {
     await open(); const p = inhousePanel();
     const input = within(p).getByLabelText("Ask Kura") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Move the sidebar fix to tonight." } }); fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_send")?.[1]).toEqual({ body: "Move the sidebar fix to tonight." }));
+    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_send")?.[1]).toEqual({ chatId: 1, body: "Move the sidebar fix to tonight." }));
     expect(await within(p).findByText("Move the sidebar fix to tonight.")).toBeTruthy(); await waitFor(() => expect(input.value).toBe(""));
     expect(be.calls.some(c => c[0] === "chat_post")).toBe(false);
     expect(within(room()).queryByText("Move the sidebar fix to tonight.")).toBeNull();
@@ -240,5 +254,131 @@ describe("hubModel helpers", () => {
     expect(mergeById([{ id: 1, v: "a" }, { id: 3, v: "c" }], [{ id: 2, v: "b" }, { id: 3, v: "C" }])).toEqual([{ id: 1, v: "a" }, { id: 2, v: "b" }, { id: 3, v: "C" }]);
     const now = new Date(2026, 10, 21, 12, 0); expect([dayLabel(new Date(2026, 10, 21, 7).toISOString(), now), dayLabel(new Date(2026, 10, 20, 23).toISOString(), now), dayLabel(new Date(2026, 10, 17, 9).toISOString(), now)]).toEqual(["TODAY", "YESTERDAY", "17 NOV"]);
     void ({} as HubMessage); void ({} as InhouseMessage); void act;
+  });
+});
+
+describe("Bots Hub: Kura chats and harnesses", () => {
+  const kura = () => within(inhousePanel());
+  const pick = () => kura().getByRole("combobox", { name: "Chat" }) as HTMLSelectElement;
+  const second = () => { be.chats.unshift({ id: 2, title: "Kanji plan", created_at: "", updated_at: "", messages: 1, harnesses: [] }); be.inhouse.push({ id: 3, at: at("08:00"), author: "owner", body: "Quiz me on N3 kanji", chat_id: 2 }); };
+  const confirm = (answer: boolean) => vi.spyOn(window, "confirm").mockReturnValue(answer);
+  afterEach(() => vi.restoreAllMocks());
+
+  it("lists the chats, shows the most recent one, and switching shows only that chat's messages", async () => {
+    second(); await open();
+    expect(await kura().findByText("Quiz me on N3 kanji")).toBeTruthy();
+    expect([...pick().options].map(o => o.textContent)).toEqual(["Kanji plan", "Today's list"]);
+    expect(kura().queryByText("What is left on today's list?")).toBeNull();
+    fireEvent.change(pick(), { target: { value: "1" } });
+    expect(await kura().findByText("What is left on today's list?")).toBeTruthy();
+    expect(kura().queryByText("Quiz me on N3 kanji")).toBeNull();
+    expect(be.calls.filter(c => c[0] === "inhouse_messages").map(c => c[1].chatId)).toContain(1);
+  });
+  it("messages are sent into the chat that is showing", async () => {
+    second(); await open();
+    await kura().findByText("Quiz me on N3 kanji");
+    const input = kura().getByLabelText("Ask Kura") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Start with the first ten" } }); fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_send")?.[1]).toEqual({ chatId: 2, body: "Start with the first ten" }));
+    expect(await kura().findByText("Start with the first ten")).toBeTruthy();
+  });
+  it("New chat starts an empty chat and switches to it", async () => {
+    await open(); await kura().findByText("Three things.");
+    fireEvent.click(kura().getByRole("button", { name: "New chat" }));
+    await waitFor(() => expect(pick().value).toBe("2"));
+    expect(be.calls.some(c => c[0] === "inhouse_chat_create")).toBe(true);
+    expect(await kura().findByText(/Ask Kura something/)).toBeTruthy();
+    expect(kura().queryByText("Three things.")).toBeNull();
+  });
+  it("Clear chat asks first, then empties only that chat; Cancel changes nothing", async () => {
+    second(); await open(); await kura().findByText("Quiz me on N3 kanji");
+    const ask = confirm(false);
+    fireEvent.click(kura().getByRole("button", { name: "Clear chat" }));
+    expect(ask).toHaveBeenCalledTimes(1); expect(be.calls.some(c => c[0] === "inhouse_clear_chat")).toBe(false);
+    ask.mockReturnValue(true);
+    fireEvent.click(kura().getByRole("button", { name: "Clear chat" }));
+    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_clear_chat")?.[1]).toEqual({ chatId: 2 }));
+    await waitFor(() => expect(kura().queryByText("Quiz me on N3 kanji")).toBeNull());
+    expect(await kura().findByText(/Ask Kura something/)).toBeTruthy();
+    expect(be.inhouse.some(m => m.chat_id === 1)).toBe(true);
+    expect((kura().getByRole("button", { name: "Clear chat" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("Rename edits the name in place: Enter saves, Esc cancels", async () => {
+    await open(); await kura().findByText("Three things.");
+    fireEvent.click(kura().getByRole("button", { name: "Rename" }));
+    let name = kura().getByLabelText("Chat name") as HTMLInputElement; expect(name.value).toBe("Today's list");
+    fireEvent.keyDown(name, { key: "Escape" }); expect(kura().queryByLabelText("Chat name")).toBeNull();
+    fireEvent.click(kura().getByRole("button", { name: "Rename" }));
+    name = kura().getByLabelText("Chat name") as HTMLInputElement;
+    fireEvent.change(name, { target: { value: "  Daily list " } }); fireEvent.keyDown(name, { key: "Enter" });
+    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_chat_rename")?.[1]).toEqual({ chatId: 1, title: "Daily list" }));
+    await waitFor(() => expect([...pick().options].map(o => o.textContent)).toEqual(["Daily list"]));
+  });
+  it("Delete removes the chat after a confirmation and falls back to another chat", async () => {
+    second(); await open(); await kura().findByText("Quiz me on N3 kanji");
+    const ask = confirm(false);
+    fireEvent.click(kura().getByRole("button", { name: "Delete" })); expect(be.calls.some(c => c[0] === "inhouse_chat_delete")).toBe(false);
+    ask.mockReturnValue(true);
+    fireEvent.click(kura().getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_chat_delete")?.[1]).toEqual({ chatId: 2 }));
+    await waitFor(() => expect(pick().value).toBe("1"));
+    expect(await kura().findByText("What is left on today's list?")).toBeTruthy();
+  });
+
+  const harnessTab = async () => { await open(); await kura().findByText("Three things."); fireEvent.click(kura().getByRole("button", { name: /^Harness/ })); return await screen.findByRole("region", { name: "Kura harness" }); };
+  it("adds a harness from a NOU template (it only fills the form), saves it, and ticks it for this chat", async () => {
+    const panel = within(await harnessTab());
+    expect(panel.getByText(/No harnesses yet/)).toBeTruthy();
+    fireEvent.click(panel.getByRole("button", { name: "Timetable coach" }));
+    const form = within(panel.getByRole("form", { name: "New harness" }));
+    expect((form.getByLabelText("Name") as HTMLInputElement).value).toBe("Timetable coach");
+    expect((form.getByLabelText("Instructions") as HTMLTextAreaElement).value).toMatch(/Life Timetable/);
+    expect(be.harnesses).toHaveLength(0);
+    fireEvent.click(form.getByRole("button", { name: "Save harness" }));
+    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_harness_save")?.[1]).toMatchObject({ id: null, name: "Timetable coach", always: false }));
+    const box = (await panel.findByRole("checkbox", { name: "Use Timetable coach in this chat" })) as HTMLInputElement; expect(box.checked).toBe(false);
+    expect(panel.queryByRole("button", { name: "Timetable coach" })).toBeNull(); // a used template is no longer offered
+    fireEvent.click(box);
+    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_chat_harnesses")?.[1]).toEqual({ chatId: 1, ids: [1] }));
+    await waitFor(() => expect((panel.getByRole("checkbox", { name: "Use Timetable coach in this chat" }) as HTMLInputElement).checked).toBe(true));
+    expect(kura().getByRole("button", { name: "Harness · 1" })).toBeTruthy();
+    fireEvent.click(panel.getByRole("checkbox", { name: "Use Timetable coach in this chat" }));
+    await waitFor(() => expect(be.calls.filter(c => c[0] === "inhouse_chat_harnesses").pop()?.[1]).toEqual({ chatId: 1, ids: [] }));
+  });
+  it("a harness for every chat is shown as on and cannot be unticked here; editing can change it", async () => {
+    be.harnesses = [{ id: 1, name: "Style", instructions: "Be brief.", always: true }];
+    const panel = within(await harnessTab());
+    const box = panel.getByRole("checkbox", { name: "Use Style in this chat" }) as HTMLInputElement;
+    expect([box.checked, box.disabled]).toEqual([true, true]); expect(panel.getByText("every chat")).toBeTruthy();
+    expect(kura().getByRole("button", { name: "Harness · 1" })).toBeTruthy();
+    fireEvent.click(panel.getByRole("button", { name: "Edit Style" }));
+    const form = within(panel.getByRole("form", { name: "Edit harness" }));
+    fireEvent.click(form.getByLabelText("Use in every chat")); fireEvent.change(form.getByLabelText("Instructions"), { target: { value: "Be very brief." } });
+    fireEvent.click(form.getByRole("button", { name: "Save harness" }));
+    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_harness_save")?.[1]).toEqual({ id: 1, name: "Style", instructions: "Be very brief.", always: false }));
+    await waitFor(() => expect((panel.getByRole("checkbox", { name: "Use Style in this chat" }) as HTMLInputElement).disabled).toBe(false));
+  });
+  it("shows a refusal (such as a repeated name) and keeps the form; Delete asks first", async () => {
+    be.harnesses = [{ id: 1, name: "Notes", instructions: "Pages and databases.", always: false }];
+    const panel = within(await harnessTab());
+    fireEvent.click(panel.getByRole("button", { name: "+ New harness" }));
+    const form = within(panel.getByRole("form", { name: "New harness" }));
+    expect((form.getByRole("button", { name: "Save harness" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: "notes" } }); fireEvent.change(form.getByLabelText("Instructions"), { target: { value: "x" } });
+    fireEvent.click(form.getByRole("button", { name: "Save harness" }));
+    expect((await panel.findByRole("alert")).textContent).toBe("A harness with that name already exists");
+    expect(panel.getByRole("form", { name: "New harness" })).toBeTruthy();
+    fireEvent.click(form.getByRole("button", { name: "Cancel" }));
+    const ask = confirm(false);
+    fireEvent.click(panel.getByRole("button", { name: "Delete Notes" })); expect(be.harnesses).toHaveLength(1);
+    ask.mockReturnValue(true);
+    fireEvent.click(panel.getByRole("button", { name: "Delete Notes" }));
+    await waitFor(() => expect(be.calls.find(c => c[0] === "inhouse_harness_delete")?.[1]).toEqual({ id: 1 }));
+    expect(await panel.findByText(/No harnesses yet/)).toBeTruthy();
+  });
+  it("Back to chat returns to the conversation", async () => {
+    const panel = within(await harnessTab());
+    fireEvent.click(panel.getByRole("button", { name: "Back to chat" }));
+    expect(await kura().findByText("Three things.")).toBeTruthy(); expect(screen.queryByRole("region", { name: "Kura harness" })).toBeNull();
   });
 });

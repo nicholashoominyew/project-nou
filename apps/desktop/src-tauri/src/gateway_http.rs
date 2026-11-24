@@ -134,15 +134,28 @@ pub fn handle(c: &Connection, req: &ApiRequest, port: u16) -> ApiResponse {
             if let Err(r) = needs(&who, "inhouse:read") { return r; }
             let after = req.query.get("after").and_then(|v| v.parse::<i64>().ok());
             let limit = req.query.get("limit").and_then(|v| v.parse::<u32>().ok()).unwrap_or(50);
-            match crate::hub::inhouse_list(c, after, limit) { Ok(list) => data(serde_json::to_value(list).unwrap_or(Value::Null)), Err(_) => fail(500, "The channel could not be read") }
+            let chat = req.query.get("chat").and_then(|v| v.parse::<i64>().ok());
+            match crate::hub::inhouse_list(c, chat, after, limit) { Ok(list) => data(serde_json::to_value(list).unwrap_or(Value::Null)), Err(_) => fail(500, "The channel could not be read") }
+        }
+        // The extra instructions (harnesses) for one chat, already combined: the runner adds them to the model's own instructions.
+        ("GET", ["v1", "inhouse", "harness"]) => {
+            if let Err(r) = needs(&who, "inhouse:read") { return r; }
+            let Some(chat) = req.query.get("chat").and_then(|v| v.parse::<i64>().ok()) else { return fail(400, "chat is required") };
+            match crate::hub::chat_instructions(c, chat) {
+                Ok((names, instructions)) => data(json!({ "chat": chat, "names": names, "instructions": instructions })),
+                Err(m) if m.contains("not found") => fail(404, &m),
+                Err(_) => fail(500, "The harness could not be read"),
+            }
         }
         ("POST", ["v1", "inhouse", "reply"]) => {
             if let Err(r) = needs(&who, "inhouse:write") { return r; }
             let Ok(body) = serde_json::from_slice::<Value>(&req.body) else { return fail(400, "The body must be JSON") };
             let Some(text) = body.get("body").and_then(Value::as_str) else { return fail(400, "body is required") };
-            match crate::hub::inhouse_post_bot(c, &who.id, text) {
-                Ok(m) => reply(201, json!({ "id": m.id, "at": m.at })),
+            let chat = body.get("chat").and_then(Value::as_i64);
+            match crate::hub::inhouse_post_bot(c, &who.id, chat, text) {
+                Ok(m) => reply(201, json!({ "id": m.id, "at": m.at, "chat": m.chat_id })),
                 Err(m) if m.contains("slow down") => fail(429, &m),
+                Err(m) if m.contains("Unknown chat") => fail(404, "Chat not found"),
                 Err(m) => fail(400, &m),
             }
         }
@@ -570,7 +583,7 @@ mod hub_tests {
     #[test]
     fn the_in_house_channel_needs_its_own_scopes_and_never_shows_in_the_room_or_to_other_bots() {
         let c = fresh(); let kura = secret(&c, "Kura", &["inhouse:read", "inhouse:write"]); let claude = secret(&c, "Claude", &ALL); let chat_only = secret(&c, "Chatty", &["chat:read", "chat:write"]);
-        crate::hub::inhouse_post_owner(&c, "What is left on today's list?").unwrap();
+        crate::hub::inhouse_post_owner(&c, 1, "What is left on today's list?").unwrap();
         // Another bot, even with every other scope, is refused.
         assert_eq!(call(&c, "GET", "/v1/inhouse", &claude, None).status, 403); assert_eq!(call(&c, "POST", "/v1/inhouse/reply", &claude, Some(json!({ "body": "x" }))).status, 403);
         assert_eq!(call(&c, "GET", "/v1/inhouse", &chat_only, None).status, 403);
@@ -585,5 +598,25 @@ mod hub_tests {
             assert!(!text.contains("today's list") && !text.contains("N3 kanji"), "{path} leaked the private channel");
         }
         assert!(call(&c, "GET", "/v1/chat", &kura, None).status == 403, "the in-house token cannot read the room either");
+    }
+
+    #[test]
+    fn the_runner_reads_one_chat_and_its_harness_and_replies_into_that_chat() {
+        let mut c = fresh(); let kura = secret(&c, "Kura", &["inhouse:read", "inhouse:write"]); let claude = secret(&c, "Claude", &ALL);
+        let second = crate::hub::chat_create(&c, Some("Second")).unwrap();
+        crate::hub::inhouse_post_owner(&c, 1, "first chat question").unwrap(); crate::hub::inhouse_post_owner(&c, second.id, "second chat question").unwrap();
+        let all = call(&c, "GET", "/v1/inhouse", &kura, None); assert_eq!(all.body["data"].as_array().unwrap().len(), 2);
+        assert_eq!(all.body["data"][1]["chat_id"], json!(second.id), "every message says which chat it belongs to");
+        let one = call(&c, "GET", &format!("/v1/inhouse?chat={}", second.id), &kura, None); assert_eq!((one.body["data"].as_array().unwrap().len(), one.body["data"][0]["body"].as_str()), (1, Some("second chat question")));
+        let h = crate::hub::harness_save(&c, None, "Style", "Be brief.", true).unwrap(); let t = crate::hub::harness_save(&c, None, "Timetable", "Plan the week.", false).unwrap();
+        crate::hub::chat_set_harnesses(&mut c, second.id, &[t.id]).unwrap(); let _ = h;
+        let got = call(&c, "GET", &format!("/v1/inhouse/harness?chat={}", second.id), &kura, None);
+        assert_eq!((got.status, got.body["data"]["names"].clone(), got.body["data"]["instructions"].as_str()), (200, json!(["Style", "Timetable"]), Some("## Style\nBe brief.\n\n## Timetable\nPlan the week.")));
+        assert_eq!(call(&c, "GET", "/v1/inhouse/harness?chat=1", &kura, None).body["data"]["names"], json!(["Style"]));
+        assert_eq!(call(&c, "GET", "/v1/inhouse/harness", &kura, None).status, 400); assert_eq!(call(&c, "GET", "/v1/inhouse/harness?chat=999", &kura, None).status, 404);
+        assert_eq!(call(&c, "GET", &format!("/v1/inhouse/harness?chat={}", second.id), &claude, None).status, 403, "another bot cannot read the harness either");
+        let reply = call(&c, "POST", "/v1/inhouse/reply", &kura, Some(json!({ "body": "answer", "chat": second.id }))); assert_eq!((reply.status, reply.body["chat"].clone()), (201, json!(second.id)));
+        assert_eq!(crate::hub::inhouse_list(&c, Some(second.id), None, 50).unwrap().len(), 2); assert_eq!(crate::hub::inhouse_list(&c, Some(1), None, 50).unwrap().len(), 1);
+        assert_eq!(call(&c, "POST", "/v1/inhouse/reply", &kura, Some(json!({ "body": "x", "chat": 999 }))).status, 404);
     }
 }
