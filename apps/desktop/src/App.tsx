@@ -20,6 +20,7 @@ import { SidebarResults, SidebarSearchBox } from "./SidebarSearch";
 import { LockButton, LockGate } from "./PageLock";
 import { appendBlocksToNote } from "./noteAppend";
 import {useReminders,ReminderToast} from "./timetable/reminders";
+import TopTimer from "./timetable/TopTimer";
 import { INBOX_KEY, parseCapture, pickInbox } from "./captureParse";
 const GatewayPanel=lazy(()=>import("./GatewayPanel"));
 const GraphView=lazy(()=>import("./GraphView"));
@@ -267,7 +268,7 @@ export default function App(){
   </aside>}
   <section className={"workspace"+(splitId&&current?" split":"")}>
    <header className="workspace-topbar" data-tauri-drag-region>{!sidebarOpen&&<button className="sb-open" aria-label="Open sidebar" title="Open sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(true)}><Icon name="menu" size={18}/></button>}<div className="tab-strip" data-tauri-drag-region><div className="page-tabs" role="tablist" aria-label="Open pages">{tabs.map(id=>{const page=pages.find(p=>p.id===id);return page&&<div className={"page-tab "+(id===selected&&!showTrash?"selected":"")} key={id}><button role="tab" aria-selected={id===selected&&!showTrash} disabled={guard} onClick={()=>openPage(id)}><i className="tab-dot" aria-hidden="true"/><span>{page.title}</span></button><button className="close-tab" aria-label={"Close "+page.title+" tab"} disabled={guard} onClick={()=>closeTab(id)}><Icon name="close" size={12}/></button></div>})}</div><button className="tab-new" aria-label="Open a page in a new tab" title="New tab" disabled={guard} onClick={()=>{setQuickFindText("");setQuickFind(true)}}><Icon name="plus" size={14}/></button></div>
-    <div className="window-tools" data-tauri-drag-region><button className="theme-tool" aria-label={"Switch to "+(theme==="light"?"dark":"light")+" mode"} title="Light / dark mode" onClick={()=>setTheme(v=>v==="light"?"dark":"light")}><Icon name={theme==="light"?"moon":"sun"} size={17}/></button><button className="fs-tool" aria-label="Toggle fullscreen" title="Fullscreen (F11)" onClick={()=>void toggleFullscreen()}><Icon name="fullscreen" size={17}/></button></div>
+    <div className="window-tools" data-tauri-drag-region><TopTimer onOpen={openTimetable} disabled={guard}/><button className="theme-tool" aria-label={"Switch to "+(theme==="light"?"dark":"light")+" mode"} title="Light / dark mode" onClick={()=>setTheme(v=>v==="light"?"dark":"light")}><Icon name={theme==="light"?"moon":"sun"} size={17}/></button><button className="fs-tool" aria-label="Toggle fullscreen" title="Fullscreen (F11)" onClick={()=>void toggleFullscreen()}><Icon name="fullscreen" size={17}/></button></div>
     <WindowControls/>
    </header>
    <ReminderToast reminder={reminders.toast} dismiss={reminders.dismiss}/>

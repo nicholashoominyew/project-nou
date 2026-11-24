@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LifeTimetable from "./LifeTimetable";
 import NowCard from "./NowCard";
 import NowPanel from "./NowPanel";
+import TopTimer from "./TopTimer";
 import { LAST_KEY, SETTINGS_KEY, ReminderToast, useReminders } from "./reminders";
 
 // jsdom has no PointerEvent: a MouseEvent with a pointerType carries the coordinates and button the drag code reads.
@@ -455,6 +456,27 @@ describe("block editor", () => {
     await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe("Unknown activity"));
     expect(screen.getByRole("dialog", { name: "Edit block · Week A" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+});
+
+describe("top bar timer", () => {
+  it("shows the current event's name and the time left, and opens the timetable when clicked", async () => {
+    const open = vi.fn();
+    render(<TopTimer onOpen={open} />);
+    const btn = await screen.findByRole("button", { name: /^Work, .*left\. Open the Life Timetable$/ });
+    expect(btn.querySelector(".top-timer-name")!.textContent).toBe("Work");
+    expect(btn.querySelector(".top-timer-time")!.textContent).toMatch(/^2:4[78]:\d\d$/); // 10:12 of a 09:00-13:00 block
+    fireEvent.click(btn);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+  it("shows m:ss under an hour, and nothing when no event is planned", async () => {
+    vi.setSystemTime(monday(12, 20, 0));
+    const { container } = render(<TopTimer onOpen={() => {}} />);
+    await waitFor(() => expect(container.querySelector(".top-timer-time")!.textContent).toMatch(/^(39|40):\d\d$/));
+    cleanup(); slots = [];
+    const empty = render(<TopTimer onOpen={() => {}} />);
+    await waitFor(() => expect(calls.some(c => c[0] === "timetable_get")).toBe(true));
+    expect(empty.container.querySelector(".top-timer")).toBeNull();
   });
 });
 

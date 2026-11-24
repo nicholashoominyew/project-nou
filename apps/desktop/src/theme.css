@@ -803,3 +803,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .tt-menu button{border:0;background:transparent;text-align:left;padding:7px 10px;border-radius:7px;font:inherit;color:inherit;cursor:pointer}
 .tt-menu button:hover,.tt-menu button:focus-visible{background:var(--hover);outline:none}
 .tt-menu button.danger{color:var(--danger)}
+
+/* Small timer in the top bar, left of the light/dark switch (the whole bar is hidden in focus mode) */
+.window-tools .top-timer{display:inline-flex;align-items:center;gap:8px;width:auto;height:30px;padding:0 10px 0 6px;margin-right:6px;border-radius:999px;color:var(--text);background:var(--hover);font-size:12px}
+.window-tools .top-timer:hover{background:var(--active,var(--hover));filter:brightness(1.1)}
+.top-timer-ring{display:block;width:20px;height:20px;flex:none}
+.top-timer-name{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-weight:500}
+.top-timer-time{font:600 12px var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (max-width:900px){.top-timer-name{display:none}}
