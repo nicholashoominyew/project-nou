@@ -20,14 +20,17 @@ test("a waiting question is answered through the local model and posted back, an
   const f = async (url, init) => {
     calls.push({ url, method: init.method, auth: init.headers.Authorization, body: init.body ? JSON.parse(init.body) : null });
     const ok = (obj) => ({ ok: true, status: 200, json: async () => obj });
-    if (url.endsWith("/v1/inhouse?limit=50")) return ok({ data: msgs });
+    if (url.endsWith("/v1/inhouse?limit=200")) return ok({ data: msgs }); // messages without a chat_id (an older NOU) belong to chat 1
+    if (url.endsWith("/v1/inhouse?chat=1&limit=50")) return ok({ data: msgs });
+    if (url.endsWith("/v1/inhouse/harness?chat=1")) return ok({ data: { chat: 1, names: [], instructions: "" } });
     if (url.endsWith("/api/chat")) return ok({ message: { content: "  Done. It now sits in the 20:00 block.  " } });
     if (url.endsWith("/v1/inhouse/reply")) return ok({ id: 4 });
     throw new Error("unexpected " + url);
   };
   assert.equal(await runOnce(config, f), "answered");
-  assert.equal(calls[1].body.model, "llama3.2"); assert.equal(calls[1].body.stream, false);
-  assert.deepEqual(calls[2].body, { body: "Done. It now sits in the 20:00 block." }); assert.equal(calls[2].auth, "Bearer t");
+  const ask = calls.find((c) => c.url.endsWith("/api/chat")), reply = calls.find((c) => c.url.endsWith("/v1/inhouse/reply"));
+  assert.equal(ask.body.model, "llama3.2"); assert.equal(ask.body.stream, false);
+  assert.deepEqual(reply.body, { body: "Done. It now sits in the 20:00 block.", chat: 1 }); assert.equal(reply.auth, "Bearer t");
   assert.ok(calls.every((c) => !JSON.stringify(c).includes("Bearer t") || c.auth), "the token only travels in the header");
   calls.length = 0;
   const idle = async (url) => { calls.push(url); return { ok: true, status: 200, json: async () => ({ data: msgs.slice(0, 2) }) }; };

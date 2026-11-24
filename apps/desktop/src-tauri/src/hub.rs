@@ -435,11 +435,12 @@ mod tests {
         assert_eq!(inhouse_list(&c, Some(1), None, 50).unwrap().iter().map(|m| m.body.as_str()).collect::<Vec<_>>().len(), 3);
         assert_eq!(inhouse_list(&c, Some(other.id), None, 50).unwrap().len(), 2);
         assert_eq!(inhouse_list(&c, None, None, 50).unwrap().len(), 6, "no chat given: every chat");
+        inhouse_post_owner(&c, other.id, "latest").unwrap(); // the last message decides, whatever the clock resolution
         assert_eq!(chats_list(&c).unwrap()[0].id, other.id, "the most recently used chat comes first");
         assert_eq!(chat_rename(&c, other.id, " Plan ").unwrap().title, "Plan"); assert!(chat_rename(&c, other.id, "  ").is_err() && chat_rename(&c, 999, "x").is_err());
         // Clearing one chat leaves the others, its name and its place in the list.
         assert_eq!(inhouse_clear(&c, 1).unwrap(), 3);
-        assert!(inhouse_list(&c, Some(1), None, 50).unwrap().is_empty()); assert_eq!(inhouse_list(&c, Some(other.id), None, 50).unwrap().len(), 2); assert_eq!(chats_list(&c).unwrap().len(), 3);
+        assert!(inhouse_list(&c, Some(1), None, 50).unwrap().is_empty()); assert_eq!(inhouse_list(&c, Some(other.id), None, 50).unwrap().len(), 3); assert_eq!(chats_list(&c).unwrap().len(), 3);
         // Deleting a chat deletes its messages; deleting the last chat leaves a fresh one.
         chat_delete(&mut c, other.id).unwrap(); assert!(inhouse_list(&c, Some(other.id), None, 50).unwrap().is_empty()); assert!(chat_delete(&mut c, other.id).is_err());
         chat_delete(&mut c, 1).unwrap(); chat_delete(&mut c, named.id).unwrap();
