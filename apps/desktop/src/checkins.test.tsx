@@ -5,7 +5,7 @@ import { testCheckin } from "./habitsApi";
 
 const h = vi.hoisted(() => ({
   calls: [] as { command: string; args: any }[], pending: [] as any[], shown: [] as any[], onAction: null as null | ((e: any) => void), sent: [] as any[], granted: true,
-  checkins: [] as any[], failShow: false, swept: 0,
+  checkins: [] as any[], failShow: false, swept: 0, rename: "",
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 vi.mock("@tauri-apps/plugin-notification", () => ({
@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
   h.calls.push({ command, args });
-  if (command === "timetable_get") return { system_page_id: null, swap_ab: false, activities: [{ id: "w", name: "Shower + Breakfast", category: "Chores", colour: null, remind: true, sort_order: 0 }, { id: "x", name: "Side projects", category: "Work", colour: null, remind: true, sort_order: 1 }],
+  if (command === "timetable_get") return { system_page_id: null, swap_ab: false, activities: [{ id: "w", name: h.rename || "Shower + Breakfast", category: "Chores", colour: null, remind: true, sort_order: 0 }, { id: "x", name: "Side projects", category: "Work", colour: null, remind: true, sort_order: 1 }],
     slots: [{ variant: "B", weekday: 0, slot_index: 10, activity_id: "w" }, { variant: "B", weekday: 0, slot_index: 11, activity_id: "x" }], edited: { a: false, b: false } };
   if (command === "habits_list_cmd") return [{ id: "h1", name: "Exercise", days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Training" }, { id: "h2", name: "Anki", days: 127, sort_order: 1, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health" }];
   if (command === "checkin_list_cmd") return [...h.checkins];
@@ -41,11 +41,18 @@ const mount = async (time: Date) => { setTime(time); await act(async () => { ren
 const look = async (time: Date) => { setTime(time); await act(async () => { fireEvent(window, new Event("focus")); await wait(80); }); };
 beforeEach(() => {
   resetNotificationSetup(); clock = 0; vi.spyOn(Date, "now").mockImplementation(() => clock);
-  Object.assign(h, { calls: [], pending: [], shown: [], onAction: null, sent: [], granted: true, checkins: [k("k1", "h1"), k("k2", "h2")], failShow: false, swept: 0 });
+  Object.assign(h, { calls: [], pending: [], shown: [], onAction: null, sent: [], granted: true, checkins: [k("k1", "h1"), k("k2", "h2")], failShow: false, swept: 0, rename: "" });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("check-in pop-ups", () => {
+  it("name the block from the database even when this window's copy of the timetable is still the old one", async () => {
+    await mount(at(4, 59, 58));
+    h.rename = "Reading"; // the block was just edited; no change event has reached this window yet
+    await look(at(5, 0, 3));
+    await waitFor(() => expect(sent("checkin_event_show_cmd")).toHaveLength(2));
+    expect(sent("checkin_event_show_cmd")[0].args.block).toBe("Reading");
+  });
   it("appear when a block is running: Workout and Anki each get their own, once, with the block's name and times", async () => {
     await mount(at(4, 59, 58));
     expect(sent("checkin_event_show_cmd")).toHaveLength(0); // not before the block starts

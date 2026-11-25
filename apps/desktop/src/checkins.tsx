@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { announceHabits, CHECKINS_CHANGED, habitsApi, HABITS_CHANGED, TEST_CHECKIN, todayLocal } from "./habitsApi";
 import { activeCheckins, appliesOn, blockRunning, slotRange, slotTime, type Checkin, type CheckinEvent, type Habit } from "./habitsLogic";
+import { invoke } from "@tauri-apps/api/core";
 import { now } from "./timetable/clock";
-import { clock as hhmm, eventAt, names, SLOTS_PER_DAY } from "./timetable/schedule";
-import { useTimetable } from "./timetable/useTimetable";
+import { buildGrids, clock as hhmm, eventAt, names, SLOTS_PER_DAY } from "./timetable/schedule";
+import { useTimetable, type TimetableData } from "./timetable/useTimetable";
 
 const msg = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^Error: /, "");
 const keyOf = (e: Pick<CheckinEvent, "checkin_id" | "day">) => e.checkin_id + "|" + e.day;
@@ -82,12 +83,19 @@ export function useCheckinPopups(): CheckinPopupState {
       const nowMs = now().getTime(); setClock(nowMs);
       const { timeline, activities, variantNow } = latest.current;
       const variant = variantNow(new Date(nowMs));
-      for (const k of activeCheckins(checkins.current, nowMs, variant)) {
+      const active = activeCheckins(checkins.current, nowMs, variant);
+      // The block's name is read from the database, not from this window's copy of the grid: right after an edit that copy can still be the old one.
+      let nowOn = { grid: timeline.grids, activities };
+      if (active.length) try {
+        const d = await invoke<TimetableData>("timetable_get");
+        if (d && Array.isArray(d.slots) && Array.isArray(d.activities)) nowOn = { grid: buildGrids(d.slots.map(x => ({ ...x, variant: x.variant === "B" ? "B" : "A" }))), activities: d.activities };
+      } catch { /* keep this window's copy */ }
+      for (const k of active) {
         const habit = habits.current.find(h => h.id === k.habit_id);
         if (!habit || !appliesOn(habit, k.day)) continue;
-        const ids = timeline.grids[variant]?.[k.weekday * SLOTS_PER_DAY + k.start_slot] ?? [];
+        const ids = nowOn.grid[variant]?.[k.weekday * SLOTS_PER_DAY + k.start_slot] ?? [];
         let ev: CheckinEvent | null = null;
-        try { ev = await habitsApi.show(k.id, k.day, names(ids, activities), Math.floor(new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), new Date(nowMs).getDate(), 0, k.end_slot * 30).getTime() / 1000)); } catch { ev = null; } // null: already shown today, or already ticked
+        try { ev = await habitsApi.show(k.id, k.day, names(ids, nowOn.activities), Math.floor(new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), new Date(nowMs).getDate(), 0, k.end_slot * 30).getTime() / 1000)); } catch { ev = null; } // null: already shown today, or already ticked
         if (ev) { void notifyCheckin(ev); }
       }
       let closed = 0; try { closed = await habitsApi.sweep(false); } catch { closed = 0; }

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { HABITS_CHANGED } from "../habitsApi";
 import { onSecond } from "../secondTick";
 import { buildGrids, variantFor, type Activity, type Timeline, type SlotRow, type Variant } from "./schedule";
 
@@ -21,7 +22,8 @@ export function useTimetable() {
     try { const v = await invoke<TimetableData>("timetable_get"); if (valid(v)) { setData(v); setError(""); } }
     catch (e) { setError(String(e)); }
   }, []);
-  useEffect(() => { void load(); window.addEventListener(CHANGED, load); return () => window.removeEventListener(CHANGED, load); }, [load]);
+  // Habits are activities too: adding, renaming or linking one changes the timetable, so those reload it as well.
+  useEffect(() => { void load(); window.addEventListener(CHANGED, load); window.addEventListener(HABITS_CHANGED, load); return () => { window.removeEventListener(CHANGED, load); window.removeEventListener(HABITS_CHANGED, load); }; }, [load]);
   const swap = !!data?.swap_ab;
   const timeline: Timeline = useMemo(() => ({ grids: buildGrids((data?.slots ?? []).map(s => ({ ...s, variant: s.variant === "B" ? "B" : "A" }))), swap }), [data, swap]);
   const activities = data?.activities ?? [];
