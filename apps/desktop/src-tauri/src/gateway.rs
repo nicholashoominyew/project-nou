@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 use uuid::Uuid;
 
-pub const SCOPES: [&str; 13] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write", "inhouse:read", "inhouse:write", "timetable:read", "timetable:write", "home:write"];
+pub const SCOPES: [&str; 11] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write", "timetable:read", "timetable:write", "home:write"];
 pub const OPS: [&str; 14] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder", "append_embed", "attach_html"];
 const MAX_PENDING_PER_TOKEN: i64 = 50;
 const MAX_PAYLOAD: usize = 60_000;
@@ -317,7 +317,7 @@ mod tests {
         assert!(!propose(&c, &tt.secret, "timetable_set_block", &block, "Put Work on Monday morning").map(|p| !p.existing).unwrap(), "the same request is not queued twice");
         assert!(propose(&c, &tt.secret, "timetable_add_activity", &json!({ "name": "Reading", "category": "Leisure" }), "Add Reading").is_ok() && propose(&c, &home.secret, "home_set_widgets", &widgets, "Show the weather").is_ok());
         assert_eq!(get_proposal(&c, &a.id).unwrap().status, "pending", "it only waits for the owner");
-        assert_eq!(SCOPES.len(), 13); assert!(create_token(&c, "x", &["timetable:read".to_string(), "timetable:write".to_string(), "home:write".to_string()]).is_ok());
+        assert_eq!(SCOPES.len(), 11); assert!(create_token(&c, "x", &["timetable:read".to_string(), "timetable:write".to_string(), "home:write".to_string()]).is_ok());
     }
 
     #[test]

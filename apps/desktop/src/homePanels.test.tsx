@@ -1,5 +1,6 @@
 import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { clearUndo, redoLatest, undoLatest } from "./undo";
 import { daysUntil, GoalsWidget, CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, SunArc, TasksWidget, TeachingWidget, WeatherWidget, type WeatherStore } from "./HomePanels";
 import { Flip } from "./HomeBits";
 import { dayKey } from "./timeLogic";
@@ -233,6 +234,13 @@ describe("today's tasks", () => {
     fireEvent.keyDown(screen.getByLabelText(/Drag Third to reorder/), { key: "ArrowUp" });
     await waitFor(() => expect(todos.calls).toContainEqual({ command: "linked_todo_reorder", args: { ids: ["a", "c", "b"] } }));
     expect(screen.getAllByRole("listitem").map(i => i.textContent?.replace("⠿", ""))).toEqual(["First", "Third", "Second"]);
+  });
+  it("takes a reorder and a tick back with the shared undo, and puts them back with redo", async () => {
+    clearUndo(); todos.list = [{ id: "a", text: "First", checked: false, pages: 0 }, { id: "b", text: "Second", checked: false, pages: 0 }];
+    render(<TasksWidget />); await screen.findByText("First");
+    fireEvent.keyDown(screen.getByLabelText(/Drag Second to reorder/), { key: "ArrowUp" }); await waitFor(() => expect(todos.calls.filter(c => c.command === "linked_todo_reorder")).toHaveLength(1));
+    expect(await undoLatest()).toBe("Order of tasks"); expect(todos.calls.filter(c => c.command === "linked_todo_reorder").at(-1).args).toEqual({ ids: ["a", "b"] });
+    expect(await redoLatest()).toBe("Order of tasks"); expect(todos.calls.filter(c => c.command === "linked_todo_reorder").at(-1).args).toEqual({ ids: ["b", "a"] });
   });
   it("adds a task with Enter, and says when there are none", async () => {
     render(<TasksWidget />);

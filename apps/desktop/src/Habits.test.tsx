@@ -1,13 +1,16 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Habits, { nextState } from "./Habits";
-import { clearUndo, undoLatest } from "./undo";
+import { clearUndo, redoLatest, undoLatest } from "./undo";
 
-const { calls, db } = vi.hoisted(() => ({ calls: [] as { command: string; args: any }[], db: { habits: [] as any[], log: [] as any[], pending: [] as any[], fail: {} as Record<string, string>, importResult: { habits_added: 1, entries_added: 3, entries_kept: 0 } } }));
+const { calls, db } = vi.hoisted(() => ({ calls: [] as { command: string; args: any }[], db: { checkins: [] as any[], activities: [] as any[], habits: [] as any[], log: [] as any[], pending: [] as any[], fail: {} as Record<string, string>, importResult: { habits_added: 1, entries_added: 3, entries_kept: 0 } } }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
   calls.push({ command, args });
   if (db.fail[command]) throw new Error(db.fail[command]);
   if (command === "habits_list_cmd") return db.habits;
+  if (command === "checkin_list_cmd") return db.checkins;
+  if (command === "timetable_get") return { system_page_id: null, swap_ab: false, activities: db.activities, slots: [], edited: { a: false, b: false } };
+  if (command === "habit_link_activity_cmd") return null;
   if (command === "habit_log_list_cmd") return db.log;
   if (command === "checkin_events_pending_cmd") return db.pending;
   if (command === "habit_add_cmd") { const h = { id: "h" + (db.habits.length + 1), name: args.name.trim(), days: args.days ?? 127, sort_order: db.habits.length, created_at: new Date(2026, 0, 1, 12).toISOString(), category: args.category ?? "Health" }; db.habits.push(h); return h; }
@@ -24,7 +27,7 @@ if (typeof Blob.prototype.text !== "function") Blob.prototype.text = function ()
 const TODAY = new Date(); const pad = (n: number) => String(n).padStart(2, "0"); const day = (offset = 0) => { const d = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() + offset); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const habit = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health", ...extra });
 const sent = (command: string) => calls.filter(c => c.command === command);
-beforeEach(() => { clearUndo(); calls.length = 0; db.habits = [habit("h1", "Exercise"), habit("h2", "Anki")]; db.log = []; db.pending = []; db.fail = {}; });
+beforeEach(() => { clearUndo(); db.checkins = []; db.activities = []; calls.length = 0; db.habits = [habit("h1", "Exercise"), habit("h2", "Anki")]; db.log = []; db.pending = []; db.fail = {}; });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const page = async () => { render(<Habits />); await screen.findByRole("region", { name: "Today" }); await screen.findByRole("region", { name: "Streaks" }); };
 const openHistory = async () => { fireEvent.click(screen.getByRole("button", { name: /^History/ })); return await screen.findByRole("group", { name: "View" }); };
@@ -188,6 +191,31 @@ describe("Your habits", () => {
   });
 });
 
+describe("pop-ups and the timetable", () => {
+  it("says which habits are not on the timetable yet (so they cannot pop up) and offers the timetable", async () => {
+    db.checkins = [{ id: "k1", habit_id: "h1", weekday: 0, start_slot: 10, end_slot: 11, variant: "A" }];
+    const open = vi.fn(); render(<Habits onOpenTimetable={open} />); await screen.findByRole("region", { name: "Streaks" });
+    const manage = openManage();
+    const ex = within(manage).getByRole("button", { name: "Open Exercise" }).closest("li")!, anki = within(manage).getByRole("button", { name: "Open Anki" }).closest("li")!;
+    expect(within(ex as HTMLElement).getByText(/On the timetable: 1 block$/)).toBeTruthy();
+    expect(within(anki as HTMLElement).getByText(/Not on the timetable yet, so it will not pop up/)).toBeTruthy();
+    fireEvent.click(within(anki as HTMLElement).getByRole("button", { name: "Open the Life Timetable" })); expect(open).toHaveBeenCalled();
+  });
+  it("a Test pop-up button asks for a pop-up for that habit", async () => {
+    const seen: any[] = []; const f = (e: Event) => seen.push((e as CustomEvent).detail); window.addEventListener("nou-test-checkin", f);
+    await page(); const manage = openManage(); fireEvent.click(within(within(manage).getByRole("button", { name: "Open Anki" }).closest("li") as HTMLElement).getByRole("button", { name: "Test pop-up" }));
+    window.removeEventListener("nou-test-checkin", f); expect(seen).toEqual([{ id: "h2", name: "Anki" }]);
+  });
+  it("lets a habit take over an activity already on the timetable, so its blocks start to check in", async () => {
+    db.activities = [{ id: "jp", name: "JP Anki", category: "Leisure", colour: null, remind: true, sort_order: 1, habit_id: null }, { id: "mine", name: "Anki", category: "Health", colour: null, remind: false, sort_order: 2, habit_id: "h2" }];
+    await page(); fireEvent.click(within(openManage()).getByRole("button", { name: "Open Anki" })); const win = await screen.findByRole("dialog", { name: "Anki details" });
+    const select = await within(win).findByLabelText("Use an existing timetable activity"); expect([...(select as HTMLSelectElement).options].map(o => o.text)).toEqual(["Use an existing activity…", "JP Anki"]); // activities that belong to a habit are not offered
+    expect((within(win).getByRole("button", { name: "Use it" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(select, { target: { value: "jp" } }); fireEvent.click(within(win).getByRole("button", { name: "Use it" }));
+    await waitFor(() => expect(sent("habit_link_activity_cmd")[0].args).toEqual({ habitId: "h2", activityId: "jp" }));
+  });
+});
+
 describe("Undo and import", () => {
   it("takes back a tick, a new habit and a new order with the shared Undo (Ctrl+Z)", async () => {
     await page(); fireEvent.click(within(screen.getByRole("region", { name: "Today" })).getByRole("button", { name: "Mark done: Exercise" })); await waitFor(() => expect(sent("habit_log_set_cmd")).toHaveLength(1));
@@ -196,6 +224,8 @@ describe("Undo and import", () => {
     expect(await undoLatest()).toBe("Order of habits"); await waitFor(() => expect(sent("habits_reorder_cmd")[1].args).toEqual({ ids: ["h1", "h2"] }));
     fireEvent.change(within(manage).getByLabelText("New habit name"), { target: { value: "Reading" } }); fireEvent.click(within(manage).getByRole("button", { name: "Add habit" })); await waitFor(() => expect(sent("habit_add_cmd")).toHaveLength(1));
     expect(await undoLatest()).toBe("New habit “Reading”"); await waitFor(() => expect(sent("habit_delete_cmd")[0].args).toEqual({ id: "h3" })); expect(await undoLatest()).toBeNull();
+    expect(await redoLatest()).toBe("New habit “Reading”"); await waitFor(() => expect(sent("habit_add_cmd")).toHaveLength(2)); expect(sent("habit_add_cmd")[1].args).toEqual({ name: "Reading", days: 127, category: "Health" }); // redo adds it again with the same details
+    expect(await redoLatest()).toBeNull(); // nothing else was undone
   });
   it("imports a history file, and refuses a file that is not one", async () => {
     await page(); const input = document.querySelector("input[type=file]") as HTMLInputElement;

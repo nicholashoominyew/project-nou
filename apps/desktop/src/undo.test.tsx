@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearUndo, isUndoKey, pushUndo, UndoHost, undoCount, undoEntry, undoLatest } from "./undo";
+import { clearUndo, isRedoKey, isUndoKey, pushUndo, redoCount, redoLatest, UndoHost, undoCount, undoEntry, undoLatest } from "./undo";
 
 beforeEach(() => clearUndo()); afterEach(cleanup);
 const key = (init: KeyboardEventInit, target?: Element) => { const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }); (target ?? document.body).dispatchEvent(e); return e; };
@@ -34,5 +34,36 @@ describe("the shared undo", () => {
     expect(await screen.findByText(/Could not undo “Deleted Anki”: db busy/)).toBeTruthy();
     const nothing = key({ key: "z", ctrlKey: true }); expect(nothing.defaultPrevented).toBe(false); // nothing to undo: the key is left alone
     fireEvent.keyDown(window, { key: "z" });
+  });
+});
+
+describe("redo", () => {
+  it("puts back what was undone, newest undo first, and goes round again", async () => {
+    const log: string[] = [];
+    pushUndo("one", () => { log.push("undo one"); }, () => { log.push("redo one"); }); pushUndo("two", () => { log.push("undo two"); }, () => { log.push("redo two"); });
+    await undoLatest(); await undoLatest(); expect(redoCount()).toBe(2);
+    expect(await redoLatest()).toBe("one"); expect(await redoLatest()).toBe("two"); expect(await redoLatest()).toBeNull();
+    expect(log).toEqual(["undo two", "undo one", "redo one", "redo two"]);
+    expect(await undoLatest()).toBe("two"); expect(log.at(-1)).toBe("undo two"); // a redone change can be undone again
+  });
+  it("a new change clears what could be redone, and a change with no redo function is simply not redoable", async () => {
+    pushUndo("a", () => {}, () => {}); await undoLatest(); expect(redoCount()).toBe(1);
+    pushUndo("b", () => {}, () => {}); expect(redoCount()).toBe(0);
+    pushUndo("c", () => {}); await undoLatest(); expect(redoCount()).toBe(0);
+  });
+  it("recognises Ctrl+Y and Ctrl+Shift+Z outside text boxes only", () => {
+    const ev = (init: KeyboardEventInit, target: HTMLElement = document.body) => { let seen = false; const f = (e: Event) => { seen = isRedoKey(e as KeyboardEvent); }; target.addEventListener("keydown", f, { once: true }); target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, ...init })); return seen; };
+    expect(ev({ key: "y", ctrlKey: true })).toBe(true); expect(ev({ key: "Y", metaKey: true })).toBe(true); expect(ev({ key: "z", ctrlKey: true, shiftKey: true })).toBe(true);
+    expect(ev({ key: "y" })).toBe(false); expect(ev({ key: "z", ctrlKey: true })).toBe(false); expect(ev({ key: "y", ctrlKey: true, shiftKey: true })).toBe(false);
+    const input = document.createElement("input"); document.body.append(input); expect(ev({ key: "y", ctrlKey: true }, input)).toBe(false); input.remove();
+    // Ctrl+Z is still only undo
+    let undoSeen = false; const f = (e: Event) => { undoSeen = isUndoKey(e as KeyboardEvent) || isRedoKey(e as KeyboardEvent); }; document.body.addEventListener("keydown", f, { once: true }); document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true })); expect(undoSeen).toBe(true);
+  });
+  it("Ctrl+Z then Ctrl+Y undoes and redoes with a note each time, and leaves the key alone when there is nothing to redo", async () => {
+    render(<UndoHost />); let n = 0; pushUndo("Ticked Exercise", () => { n--; }, () => { n++; });
+    key({ key: "z", ctrlKey: true }); expect(await screen.findByText("Undid: Ticked Exercise")).toBeTruthy(); expect(n).toBe(-1);
+    const redo = key({ key: "y", ctrlKey: true }); expect(redo.defaultPrevented).toBe(true); expect(await screen.findByText("Redid: Ticked Exercise")).toBeTruthy(); expect(n).toBe(0);
+    expect(key({ key: "y", ctrlKey: true }).defaultPrevented).toBe(false);
+    key({ key: "z", ctrlKey: true }); await screen.findByText("Undid: Ticked Exercise"); expect(key({ key: "Z", ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(true); // Ctrl+Shift+Z redoes too
   });
 });

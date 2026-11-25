@@ -1,4 +1,4 @@
-import { clearUndo, undoLatest } from "../undo";
+import { clearUndo, redoLatest, undoLatest } from "../undo";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LifeTimetable from "./LifeTimetable";
@@ -487,6 +487,8 @@ describe("block editor", () => {
     await waitFor(() => expect(calls.some(c => c[0] === "timetable_save_range")).toBe(true));
     expect(await undoLatest()).toBe("Timetable block saved");
     await waitFor(() => expect(calls.some(c => c[0] === "timetable_restore_cells")).toBe(true));
+    calls.length = 0; expect(await redoLatest()).toBe("Timetable block saved"); // Ctrl+Y writes the same block again
+    await waitFor(() => expect(calls.some(c => c[0] === "timetable_save_range")).toBe(true));
   });
   it("keeps the editor open and shows the reason when the save is refused", async () => {
     failSave = true;

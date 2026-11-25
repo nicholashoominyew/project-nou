@@ -319,7 +319,7 @@ export function TasksWidget({ disabled }: { disabled?: boolean }) {
     setTodos(old => (old ?? []).map(x => (x.id === t.id ? { ...x, checked: !t.checked } : x)));
     try {
       await invoke("linked_todo_set", { id: t.id, checked: !t.checked, text: null });
-      pushUndo(`${t.checked ? "Unticked" : "Ticked"} task “${t.text.slice(0, 40)}”`, async () => { await invoke("linked_todo_set", { id: t.id, checked: t.checked, text: null }); window.dispatchEvent(new Event("nou:linked-todo")); });
+      pushUndo(`${t.checked ? "Unticked" : "Ticked"} task “${t.text.slice(0, 40)}”`, async () => { await invoke("linked_todo_set", { id: t.id, checked: t.checked, text: null }); window.dispatchEvent(new Event("nou:linked-todo")); }, async () => { await invoke("linked_todo_set", { id: t.id, checked: !t.checked, text: null }); window.dispatchEvent(new Event("nou:linked-todo")); });
     } catch (e) { setError(errText(e)); void load(); }
   }
   async function add() {
@@ -333,7 +333,7 @@ export function TasksWidget({ disabled }: { disabled?: boolean }) {
   const reorder = useReorder(list.map(t => t.id), ids => {
     setTodos(old => { const by = new Map((old ?? []).map(t => [t.id, t])); return [...ids.map(id => by.get(id)!).filter(Boolean), ...(old ?? []).filter(t => !ids.includes(t.id))]; });
     const was = list.map(t => t.id);
-    invoke("linked_todo_reorder", { ids }).then(() => { pushUndo("Order of tasks", async () => { await invoke("linked_todo_reorder", { ids: was }); window.dispatchEvent(new Event("nou:linked-todo")); }); window.dispatchEvent(new Event("nou:linked-todo")); }).catch(e => { setError(errText(e)); void load(); });
+    invoke("linked_todo_reorder", { ids }).then(() => { pushUndo("Order of tasks", async () => { await invoke("linked_todo_reorder", { ids: was }); window.dispatchEvent(new Event("nou:linked-todo")); }, async () => { await invoke("linked_todo_reorder", { ids }); window.dispatchEvent(new Event("nou:linked-todo")); }); window.dispatchEvent(new Event("nou:linked-todo")); }).catch(e => { setError(errText(e)); void load(); });
   }, disabled);
   return <>
     <CardHead title="Today's tasks" live>
@@ -473,7 +473,7 @@ export function CalendarWidget({ ctx }: { ctx: HomeContext }) {
       {weeks.flat().map(cell => {
         const n = events.get(cell.date)?.length ?? 0, past = cell.date <= today, level = past && cell.inMonth ? activityLevel(n) : 0;
         const hp = cell.date <= today ? habitDay(cell.date) : null, pct = hp && hp.total > 0 ? hp.pct : null;
-        return <button key={cell.date} role="gridcell" className={"mcal-day lvl-" + level + (pct !== null ? " hp" : "") + (cell.inMonth ? "" : " out") + (cell.date === today ? " today" : "") + (cell.date === selected ? " sel" : "")}
+        return <button key={cell.date} role="gridcell" className={"mcal-day lvl-" + level + (pct !== null ? " hp" + (pct >= 55 ? " hi" : "") : "") + (cell.inMonth ? "" : " out") + (cell.date === today ? " today" : "") + (cell.date === selected ? " sel" : "")}
           style={pct !== null ? ({ "--hp": pct } as CSSProperties) : undefined}
           aria-label={cell.date + (n ? ", " + n + (n === 1 ? " item" : " items") : "") + (hp && pct !== null ? `, habits ${hp.done} of ${hp.total}, ${pct}%` : "")} aria-selected={cell.date === selected} onClick={() => setSelected(cell.date)}>
           <span className="num">{+cell.date.slice(8)}</span>{n > 0 && <i className="mcal-dot" aria-hidden="true" />}</button>;
@@ -485,8 +485,9 @@ export function CalendarWidget({ ctx }: { ctx: HomeContext }) {
     </div>
     {(() => { const hp = habitDay(selected); return hp.total > 0 && selected <= today
       ? <div className="mcal-habits" role="group" aria-label={"Habits on " + selected}><span className="mono-note">HABITS</span>
-          <span className="mini-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={hp.pct ?? 0} aria-label="Share of habits done"><i style={{ width: (hp.pct ?? 0) + "%", background: `hsl(${(hp.pct ?? 0) * 1.2} 65% 45%)` }} /></span>
-          <span>{hp.done}/{hp.total} · {hp.pct}%</span></div>
+          <span className="mini-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={hp.pct ?? 0} aria-label="Share of habits done"><i style={{ width: (hp.pct ?? 0) + "%" }} /></span>
+          <span>{hp.done}/{hp.total} · {hp.pct}%</span>
+          <span className="mcal-hlegend" aria-hidden="true"><span className="mono-note">LESS</span>{[0, 33, 66, 100].map(v => <i key={v} style={{ "--hp": v } as CSSProperties} />)}<span className="mono-note">MORE</span></span></div>
       : null; })()}
     <div className="mcal-list" aria-label={"Items on " + selected}>
       <p className="hint">{selected}</p>

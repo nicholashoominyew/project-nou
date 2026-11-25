@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Approvals from "./Approvals";
 import CollabRoom from "./CollabRoom";
-import InhouseChat from "./InhouseChat";
 import QueuePanel from "./QueuePanel";
 import { mergeById, type HubMessage, type QueueItem, type Summary } from "./hubModel";
 import type { PageInfo } from "./EditorContext";
@@ -12,7 +11,7 @@ const msg = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/
 
 /**
  * The Bots Hub: three panels at once. The collaboration room (rooms, hand-offs, approval cards) is the big one; beside it a private chat with the
- * local model (Kura) and the bot queue. Bots read and post through the local API with their own tokens, and nothing said here changes a note.
+ * bot queue. Bots read and post through the local API with their own tokens, and nothing said here changes a note.
  */
 export default function BotsHub({ disabled, pages = [], openPage = () => {}, onTokens, onWaiting = () => {}, refresh = async () => {}, pollMs = POLL_MS }: {
   disabled?: boolean; pages?: PageInfo[]; openPage?: (id: string) => void; onTokens?: () => void; onWaiting?: (n: number) => void; refresh?: () => Promise<void>; pollMs?: number;
@@ -97,13 +96,12 @@ export default function BotsHub({ disabled, pages = [], openPage = () => {}, onT
         <button type="button" className="hub-ghost" aria-expanded={apiNote} onClick={() => setApiNote(v => !v)}>API: POST /v1/chat</button>
       </div>
     </header>
-    {apiNote && <p className="hub-apinote" role="note">Bots post with <code>POST /v1/chat</code> to the local API{api?.address ? <> at <code>{api.address}</code></> : null}, signing with their token (turn on the chat, queue and in-house scopes under Settings, then AI access). {api && !api.enabled ? "The local API is switched off at the moment. Turn it on under Settings, then AI access." : ""}</p>}
+    {apiNote && <p className="hub-apinote" role="note">Bots post with <code>POST /v1/chat</code> to the local API{api?.address ? <> at <code>{api.address}</code></> : null}, signing with their token (turn on the chat and queue scopes under Settings, then AI access). {api && !api.enabled ? "The local API is switched off at the moment. Turn it on under Settings, then AI access." : ""}</p>}
     {note && <p className="notice" role="status">{note} <button type="button" className="link-button" onClick={() => setNote("")}>Dismiss</button></p>}
     <div className="hub-body">
       <CollabRoom room={room ?? (summary ? undefined : { id: 1, name: "General", slug: "general" })} rooms={summary?.rooms ?? [{ id: 1, name: "General", slug: "general" }]} onRoom={s => { if (s !== slug) setSlug(s); }}
         participants={summary?.participants ?? []} messages={messages} loading={messages === null} error={error} disabled={disabled} onSend={send} onApprove={approve} onOpenSpec={openSpec} onNewRoom={newRoom} />
       <div className="hub-side">
-        <InhouseChat state={summary?.inhouse_state ?? "offline"} disabled={disabled} pollMs={pollMs} />
         <QueuePanel items={queue} onOpenFull={() => setFull(true)} />
       </div>
     </div>

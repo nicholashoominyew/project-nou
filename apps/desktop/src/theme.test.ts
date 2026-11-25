@@ -166,7 +166,7 @@ describe("Bots Hub styles", () => {
     expect(rules.find(r => r.selector === ".hub-room")!.body).toMatch(/flex:999 1 560px;height:760px/);
     expect(rules.find(r => r.selector === ".hub-side")!.body).toMatch(/flex:1 1 340px/);
     expect(rules.find(r => r.selector === ".hub-body")!.body).toMatch(/display:flex;flex-wrap:wrap;gap:16px/);
-    expect(rules.find(r => r.selector === ".hub-inhouse,.hub-queue")!.body).toMatch(/height:372px/);
+    expect(rules.find(r => r.selector === ".hub-queue")!.body).toMatch(/height:372px/);
   });
   it("shows status as a dot plus a word: running is an accent dot, needs-nick has a soft ring, done is hollow, queued is muted", () => {
     const dot = (cls: string) => rules.find(r => r.selector === ".hub-dot" + cls || r.selector.split(",").includes(".hub-dot" + cls))!.body;

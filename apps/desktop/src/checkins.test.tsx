@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckinPopups, resetNotificationSetup, useCheckinPopups } from "./checkins";
+import { testCheckin } from "./habitsApi";
 
 const h = vi.hoisted(() => ({
   calls: [] as { command: string; args: any }[], pending: [] as any[], shown: [] as any[], onAction: null as null | ((e: any) => void), sent: [] as any[], granted: true,
@@ -71,14 +72,30 @@ describe("check-in pop-ups", () => {
     cleanup(); h.calls.length = 0; h.shown = []; h.pending = []; h.checkins = [k("other-day", "h1", { weekday: 1 }), k("other-week", "h1", { variant: "A" })];
     await mount(at(5, 10)); expect(sent("checkin_event_show_cmd")).toHaveLength(0);
   });
-  it("one tap on Yes, started answers it, and the card goes; there is no Skip and no way to hide it", async () => {
+  it("one tap on Yes, started answers it, and the card goes; there is no Skip", async () => {
     await mount(at(5, 0, 3));
     const exercise = await screen.findByRole("alertdialog", { name: "Check-in: Exercise" });
-    expect(screen.queryByRole("button", { name: /skip/i })).toBeNull(); expect(screen.queryByRole("button", { name: /hide/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /skip/i })).toBeNull();
     fireEvent.click(within(exercise).getByRole("button", { name: "Yes, started" }));
     await waitFor(() => expect(sent("checkin_event_answer_cmd")[0].args).toMatchObject({ checkinId: "k1", day: "2026-11-23", answer: "done" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "Check-in: Exercise" })).toBeNull());
     expect(screen.getByRole("alertdialog", { name: "Check-in: Anki" })).toBeTruthy(); // the other habit still waits
+  });
+  it("an X hides a pop-up for now without answering it (the other stays, and it is still open on the Habits page)", async () => {
+    await mount(at(5, 0, 3));
+    fireEvent.click(await screen.findByRole("button", { name: "Hide the Exercise check-in for now" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "Check-in: Exercise" })).toBeNull());
+    expect(screen.getByRole("alertdialog", { name: "Check-in: Anki" })).toBeTruthy(); expect(sent("checkin_event_answer_cmd")).toHaveLength(0); expect(h.pending.length).toBe(2);
+    await look(at(5, 10, 0)); expect(screen.queryByRole("alertdialog", { name: "Check-in: Exercise" })).toBeNull(); // it does not come back by itself while this block runs
+  });
+  it("a test pop-up can be shown for a habit at any time, sends the notification, and answering it ticks the habit for today without touching the check-in records", async () => {
+    h.checkins = []; await mount(at(9, 0, 0));
+    act(() => { testCheckin({ id: "h1", name: "Exercise" }); });
+    const card = await screen.findByRole("alertdialog", { name: "Check-in: Exercise" }); expect(within(card).getByText("Test pop-up")).toBeTruthy();
+    await waitFor(() => expect(h.sent.map(n => n.title)).toEqual(["Check-in: Exercise"]));
+    fireEvent.click(within(card).getByRole("button", { name: "Yes, started" }));
+    await waitFor(() => expect(sent("habit_log_set_cmd")[0].args).toMatchObject({ habitId: "h1", state: "done" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull()); expect(sent("checkin_event_answer_cmd")).toHaveLength(0); expect(sent("checkin_event_show_cmd")).toHaveLength(0);
   });
   it("opening NOU in the middle of a block shows its pop-up straight away", async () => {
     await mount(at(5, 20, 0));

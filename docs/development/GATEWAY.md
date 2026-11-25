@@ -59,7 +59,6 @@ While NOU is open, a built-in runner can start a bot when it is tagged in the Bo
 
 **The bots.**
 - **Claude** (type `claude`): starts Claude Code (`claude -p`) limited to the NOU MCP tools (`--strict-mcp-config`, `--allowedTools mcp__nou`). It may reply and propose; it cannot approve.
-- **Kura** (type `external`): polls NOU by itself (a separate program). The runner never polls or starts it; it is listed only so Claude's prompt knows it exists and can hand work to it.
 - **xGrok** and **GrokBots** (type `relay`): they exist only as a web chat or a separate app, so nothing can start them. When one is tagged, the runner posts an **approval card** (`POST /v1/chat {type:"approval"}`) whose text is "Ready to paste into <Name>" followed by the tagging message with its `@Name` removed (so the card cannot tag it again; at most 4,000 characters, shortened with a marker if longer) and a queue title `Paste into <Name>: …` (at most 160 characters). Approving the card means "pasted". Both relays use one shared token, "NOU relay" (chat and queue scopes only: it cannot read or propose notes). Both accept hand-offs from Claude (`allowFrom: ["Claude"]`).
 
 **Loop protection** (unchanged): a bot reacts only to tags written by the owner, unless its `allowFrom` names another bot; such bot-triggered runs are capped (default 3 per 10 minutes). A failed run is never retried.

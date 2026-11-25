@@ -104,7 +104,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
 
   /** Save a block's new place. Slots the block used to cover and no longer does become a gap; Undo puts everything back in one step. */
   async function write(s: EditorState, acts: string[], label = "saved") {
-    let before: Cell[] = [];
+    let before: Cell[] = []; let emptied: Cell[] = [];
     {
       await run(async () => {
         before = await saveRange(variant, s.days, s.start, s.end, acts);
@@ -112,11 +112,11 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
         if (o) { // slots the block used to cover and no longer does become a gap; Undo puts them back with the rest
           const gone: Cell[] = [];
           for (let i = o.start; i < o.end; i++) if (!s.days.includes(o.day) || i < s.start || i >= s.end) gone.push({ weekday: o.day, slot_index: i, activity_ids: [] });
-          if (gone.length) { await restoreCells(variant, gone); before = [...before, ...gone.map(c => ({ ...c, activity_ids: o.ids }))]; }
+          if (gone.length) { await restoreCells(variant, gone); emptied = gone; before = [...before, ...gone.map(c => ({ ...c, activity_ids: o.ids }))]; }
         }
       });
       const v = variant, cells = before;
-      setUndo({ id: pushUndo(`Timetable block ${label}`, () => restoreCells(v, cells)), label });
+      setUndo({ id: pushUndo(`Timetable block ${label}`, () => restoreCells(v, cells), async () => { await saveRange(v, s.days, s.start, s.end, acts); if (emptied.length) await restoreCells(v, emptied); }), label });
     }
   }
   async function commit(s: EditorState, acts: string[]) {
@@ -132,7 +132,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   const remove = (b: Block, d: number) => {
     if (disabled) return;
     const cells = (ids: string[]): Cell[] => Array.from({ length: b.count }, (_, i) => ({ weekday: d, slot_index: b.first + i, activity_ids: ids }));
-    void run(async () => { await restoreCells(variant, cells([])); const v = variant, back = cells([...b.ids]); setUndo({ id: pushUndo("Timetable block deleted", () => restoreCells(v, back)), label: "deleted" }); }).catch(() => undefined);
+    void run(async () => { await restoreCells(variant, cells([])); const v = variant, back = cells([...b.ids]); const gone = cells([]); setUndo({ id: pushUndo("Timetable block deleted", () => restoreCells(v, back), () => restoreCells(v, gone)), label: "deleted" }); }).catch(() => undefined);
   };
   const columnAt = (x: number, y: number): number | null => {
     const col = (document.elementsFromPoint?.(x, y) ?? []).find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.col !== undefined);
@@ -181,7 +181,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   const reset = () => {
     if (!window.confirm(`Reset Week ${variant} to the original plan? Your edits to this week will be replaced.`)) return;
     const v = variant, snapshot: Cell[] = grid.map((ids, i) => ({ weekday: Math.floor(i / SLOTS_PER_DAY), slot_index: i % SLOTS_PER_DAY, activity_ids: [...ids] })).filter(c => c.activity_ids.length);
-    void runQuiet(async () => { await resetVariant(v); pushUndo(`Reset of Week ${v}`, async () => { await restoreCells(v, Array.from({ length: 7 * SLOTS_PER_DAY }, (_, i) => snapshot.find(c => c.weekday * SLOTS_PER_DAY + c.slot_index === i) ?? { weekday: Math.floor(i / SLOTS_PER_DAY), slot_index: i % SLOTS_PER_DAY, activity_ids: [] })); }); });
+    void runQuiet(async () => { await resetVariant(v); pushUndo(`Reset of Week ${v}`, async () => { await restoreCells(v, Array.from({ length: 7 * SLOTS_PER_DAY }, (_, i) => snapshot.find(c => c.weekday * SLOTS_PER_DAY + c.slot_index === i) ?? { weekday: Math.floor(i / SLOTS_PER_DAY), slot_index: i % SLOTS_PER_DAY, activity_ids: [] })); }, () => resetVariant(v)); });
   };
   const flip = () => setViewVar(otherVariant(variant));
   const toggleSwap = () => { setViewVar(null); void runQuiet(() => setSwap(!swap)); };

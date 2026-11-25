@@ -17,8 +17,6 @@ const SCOPES: { id: string; label: string; help: string }[] = [
   { id: "chat:write", label: "Post to the Bots Hub room", help: "Write messages and hand-off lines in a room under this token's name. Plain text; nothing changes in your notes." },
   { id: "queue:read", label: "Read the bot queue", help: "See what each assistant is working on." },
   { id: "queue:write", label: "Write to the bot queue", help: "Add and update this token's own queue items, and ask you for approval with a card (approvals need this scope too)." },
-  { id: "inhouse:read", label: "Read the in-house chat", help: "For the local model's runner only: read your private questions to it." },
-  { id: "inhouse:write", label: "Answer in the in-house chat", help: "For the local model's runner only: reply in your private chat. No other assistant can see it." },
   { id: "timetable:read", label: "Read the Life Timetable", help: "See your activities and the blocks of both weeks (names and times only)." },
   { id: "timetable:write", label: "Propose timetable changes", help: "Ask to change a stretch of the timetable, add an activity, add a habit or tick one for a day. You see exactly what would change and approve each one." },
   { id: "home:write", label: "Propose Home page changes", help: "Ask to show or hide sections of the Home page. It can never hide the “Waiting for approval” section. You approve each one." },

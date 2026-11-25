@@ -9,7 +9,7 @@ export default function ActivitiesPanel({ activities, usedBy, disabled, run }: {
   const [deleting, setDeleting] = useState<{ id: string; to: string } | null>(null);
   const edit = (a: Activity, patch: Partial<Pick<Activity, "name" | "category" | "colour" | "remind">>) => run(async () => {
     const before = { id: a.id, name: a.name, category: a.category, colour: a.colour, remind: a.remind };
-    await updateActivity({ ...before, ...patch }); pushUndo(`Change to activity “${a.name}”`, () => updateActivity(before));
+    await updateActivity({ ...before, ...patch }); pushUndo(`Change to activity “${a.name}”`, () => updateActivity(before), () => updateActivity({ ...before, ...patch }));
   });
   return <section className="tt-card tt-acts" aria-label="Activities">
     <h2>Activities</h2>
@@ -30,7 +30,7 @@ export default function ActivitiesPanel({ activities, usedBy, disabled, run }: {
           : <button type="button" className="tt-btn danger" disabled={disabled} aria-label={"Delete " + a.name} onClick={() => setDeleting({ id: a.id, to: "" })}>Delete</button>}
       </li>)}
     </ul>
-    <form className="tt-add" onSubmit={e => { e.preventDefault(); if (!adding.name.trim()) return; void run(async () => { const made = await addActivity(adding.name.trim(), adding.category); pushUndo(`New activity “${made.name}”`, () => deleteActivity(made.id, null)); }).then(() => setAdding({ ...adding, name: "" })); }}>
+    <form className="tt-add" onSubmit={e => { e.preventDefault(); if (!adding.name.trim()) return; void run(async () => { const made = await addActivity(adding.name.trim(), adding.category); const [n, c] = [made.name, adding.category]; let id = made.id; pushUndo(`New activity “${n}”`, () => deleteActivity(id, null), async () => { id = (await addActivity(n, c)).id; }); }).then(() => setAdding({ ...adding, name: "" })); }}>
       <input aria-label="New activity name" placeholder="New activity" value={adding.name} disabled={disabled} onChange={e => setAdding({ ...adding, name: e.target.value })} />
       <select aria-label="New activity category" value={adding.category} onChange={e => setAdding({ ...adding, category: e.target.value as Category })}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
       <button type="submit" className="tt-btn primary" disabled={disabled || !adding.name.trim()}>Add activity</button>

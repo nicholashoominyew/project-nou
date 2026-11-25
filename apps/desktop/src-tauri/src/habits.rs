@@ -130,6 +130,22 @@ pub fn ensure_activity(c: &Connection, h: &Habit) -> Result<(), String> {
     }
     Ok(())
 }
+/// Make an existing timetable activity (for example "JP Anki") the habit's activity, so the blocks already on the timetable check in. The activity takes the habit's name and type.
+/// The habit's own activity, made when it was added, goes away if no block uses it; if blocks use it, nothing changes and the person is told.
+pub fn habit_link_activity(c: &Connection, habit_id: &str, activity_id: &str) -> Result<(), String> {
+    let h = habit_get(c, habit_id)?;
+    let target: Option<Option<String>> = c.query_row("SELECT habit_id FROM timetable_activities WHERE id=?1", [activity_id], |r| r.get(0)).optional().map_err(e)?;
+    match target { None => return Err("That timetable activity no longer exists".into()), Some(Some(other)) if other == h.id => return Ok(()), Some(Some(_)) => return Err("That activity already belongs to another habit".into()), Some(None) => {} }
+    let own: Option<String> = c.query_row("SELECT id FROM timetable_activities WHERE habit_id=?1", [&h.id], |r| r.get(0)).optional().map_err(e)?;
+    if let Some(own) = own {
+        let used: i64 = c.query_row("SELECT COUNT(*) FROM timetable_slots WHERE activity_id=?1", [&own], |r| r.get(0)).map_err(e)?;
+        if used > 0 { return Err(format!("“{}” is already on the timetable. Delete those blocks first, or pick that one.", h.name)); }
+        c.execute("DELETE FROM timetable_activities WHERE id=?1", [&own]).map_err(e)?;
+    }
+    c.execute("UPDATE timetable_activities SET habit_id=?1,name=?2,category=?3,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?4", params![h.id, h.name, h.category, activity_id])
+        .map_err(|x| if x.to_string().contains("UNIQUE") { "A timetable activity with that name already exists. Rename one of them first.".to_string() } else { x.to_string() })?;
+    sync_checkins(c)
+}
 /// After upgrading to schema 17: every habit gets its activity.
 pub fn link_all(c: &Connection) -> Result<(), String> {
     for h in habits_list(c)? { ensure_activity(c, &h)?; }
@@ -283,6 +299,8 @@ pub fn habits_list_cmd(db: State<'_, Db>) -> Result<Vec<Habit>, String> { let c 
 pub fn habit_add_cmd(db: State<'_, Db>, name: String, days: Option<i64>, category: Option<String>) -> Result<Habit, String> { let c = locked!(db); db.writable()?; habit_add(&c, &name, days, category.as_deref()) }
 #[tauri::command]
 pub fn habit_update_cmd(db: State<'_, Db>, id: String, name: Option<String>, days: Option<i64>, category: Option<String>) -> Result<Habit, String> { let c = locked!(db); db.writable()?; habit_update(&c, &id, name.as_deref(), days, category.as_deref()) }
+#[tauri::command]
+pub fn habit_link_activity_cmd(db: State<'_, Db>, habit_id: String, activity_id: String) -> Result<(), String> { let c = locked!(db); db.writable()?; habit_link_activity(&c, &habit_id, &activity_id) }
 #[tauri::command]
 pub fn habits_reorder_cmd(db: State<'_, Db>, ids: Vec<String>) -> Result<(), String> { let mut c = locked!(db); db.writable()?; habits_reorder(&mut c, &ids) }
 #[tauri::command]
@@ -456,6 +474,26 @@ mod tests {
         event_show(&c, &ks[1].id, "2027-01-29", "block", T0, 0).unwrap().unwrap(); habit_delete(&c, &anki.id).unwrap(); assert!(events_pending(&c, T0 + 1).unwrap().is_empty());
     }
 
+    #[test]
+    fn a_habit_can_take_over_an_activity_that_is_already_on_the_timetable() {
+        let c = fresh(); let anki = habit_add(&c, "Anki", None, Some("Health")).unwrap();
+        c.execute("UPDATE timetable_activities SET id='jp' WHERE name='JP Anki'", []).unwrap(); // the shipped plan already has "JP Anki"
+        for sl in 10..12 { c.execute("INSERT INTO timetable_slots(variant,weekday,slot_index,activity_id) VALUES('A',0,?1,'jp')", [sl]).unwrap(); }
+        assert!(checkin_list(&c).unwrap().is_empty(), "the habit's own activity is on no block yet");
+        habit_link_activity(&c, &anki.id, "jp").unwrap();
+        let (name, cat, hid): (String, String, Option<String>) = c.query_row("SELECT name,category,habit_id FROM timetable_activities WHERE id='jp'", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
+        assert_eq!((name.as_str(), cat.as_str(), hid.as_deref()), ("Anki", "Health", Some(anki.id.as_str())));
+        assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM timetable_activities WHERE name='Anki' COLLATE NOCASE", [], |r| r.get(0)).unwrap(), 1, "the unused activity made with the habit is gone");
+        let k = checkin_list(&c).unwrap(); assert_eq!((k.len(), k[0].start_slot, k[0].end_slot), (1, 10, 12), "its blocks now check in");
+        assert!(habit_link_activity(&c, &anki.id, "jp").is_ok(), "linking the same one again is fine");
+        let other = habit_add(&c, "Reading", None, None).unwrap(); assert!(habit_link_activity(&c, &other.id, "jp").unwrap_err().contains("another habit"));
+        assert!(habit_link_activity(&c, &other.id, "nope").is_err());
+        // A habit whose own activity is already on the grid is not silently split in two.
+        let own: String = c.query_row("SELECT id FROM timetable_activities WHERE habit_id=?1", [&other.id], |r| r.get(0)).unwrap();
+        c.execute("INSERT INTO timetable_slots(variant,weekday,slot_index,activity_id) VALUES('A',1,5,?1)", [&own]).unwrap();
+        c.execute("INSERT INTO timetable_activities(id,name,category,sort_order) VALUES('x','Book time','Leisure',91)", []).unwrap();
+        assert!(habit_link_activity(&c, &other.id, "x").unwrap_err().contains("already on the timetable"));
+    }
     #[test]
     fn a_pop_up_for_a_long_block_stays_open_until_the_block_ends() {
         let c = fresh(); let ex = habit_add(&c, "Exercise", None, None).unwrap(); block(&c, "A", &[4], 10, 16, &[ex.id.clone()]); let k = checkin_list(&c).unwrap().remove(0);

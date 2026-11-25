@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { announceHabits, CHECKINS_CHANGED, habitsApi, HABITS_CHANGED } from "./habitsApi";
+import { announceHabits, CHECKINS_CHANGED, habitsApi, HABITS_CHANGED, TEST_CHECKIN, todayLocal } from "./habitsApi";
 import { activeCheckins, appliesOn, blockRunning, slotRange, slotTime, type Checkin, type CheckinEvent, type Habit } from "./habitsLogic";
 import { now } from "./timetable/clock";
 import { clock as hhmm, eventAt, names, SLOTS_PER_DAY } from "./timetable/schedule";
@@ -41,7 +41,7 @@ export async function notifyCheckin(ev: CheckinEvent): Promise<boolean> {
   } catch { return false; }
 }
 
-export type CheckinPopupState = { visible: CheckinEvent[]; errors: Record<string, string>; answer: (ev: CheckinEvent) => Promise<void>; /** What the timetable has right after this check-in's block, like "05:30 PROJECT BLOCK", or "" when nothing is planned. */ next: (ev: CheckinEvent) => string };
+export type CheckinPopupState = { visible: CheckinEvent[]; errors: Record<string, string>; answer: (ev: CheckinEvent) => Promise<void>; /** Hide a pop-up for now (it stays on the Habits page and comes back at the next block or when NOU is reopened). */ hide: (ev: CheckinEvent) => void; /** What the timetable has right after this check-in's block, like "05:30 PROJECT BLOCK", or "" when nothing is planned. */ next: (ev: CheckinEvent) => string };
 
 /**
  * Mounted once for the whole app. Every few seconds it looks at the clock. While a check-in's timetable block is running and the habit is not ticked yet, there is a pop-up
@@ -53,6 +53,8 @@ export function useCheckinPopups(): CheckinPopupState {
   const [pending, setPending] = useState<CheckinEvent[]>([]);
   const [clock, setClock] = useState(() => now().getTime());
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [tests, setTests] = useState<CheckinEvent[]>([]);
   const checkins = useRef<Checkin[]>([]);
   const habits = useRef<Habit[]>([]);
   const latest = useRef({ timeline, activities, variantNow });
@@ -63,7 +65,12 @@ export function useCheckinPopups(): CheckinPopupState {
     try { const [c, h] = await Promise.all([habitsApi.checkins(), habitsApi.list()]); checkins.current = Array.isArray(c) ? c : []; habits.current = Array.isArray(h) ? h : []; } catch { /* no check-ins until it works */ }
   }, []);
   const loadPending = useCallback(async () => { try { const p = await habitsApi.pending(); setPending(Array.isArray(p) ? p : []); } catch { /* the Habits page shows errors */ } }, []);
+  const hide = useCallback((ev: CheckinEvent) => setHidden(old => new Set(old).add(keyOf(ev))), []);
   const answer = useCallback(async (ev: CheckinEvent) => {
+    if (ev.checkin_id.startsWith("test-")) { // a test pop-up: answering it ticks the habit for today, like any answer
+      try { await habitsApi.set(ev.day, ev.habit_id, "done"); announceHabits(); } catch (e) { setErrors(old => ({ ...old, [keyOf(ev)]: msg(e) })); return; }
+      setTests(old => old.filter(t => keyOf(t) !== keyOf(ev))); return;
+    }
     try { await habitsApi.answer(ev.checkin_id, ev.day, "done"); setErrors(old => { const n = { ...old }; delete n[keyOf(ev)]; return n; }); announceHabits(); }
     catch (e) { setErrors(old => ({ ...old, [keyOf(ev)]: msg(e) })); }
     await loadPending();
@@ -103,12 +110,19 @@ export function useCheckinPopups(): CheckinPopupState {
     document.addEventListener("visibilitychange", resume); window.addEventListener("focus", resume); window.addEventListener("nou-sim-changed", resume);
     window.addEventListener(CHECKINS_CHANGED, changed); window.addEventListener("nou-timetable-changed", changed); window.addEventListener(HABITS_CHANGED, changed);
     window.addEventListener(HABITS_CHANGED, habitsChanged);
+    const test = (e: Event) => {
+      const d = (e as CustomEvent<{ id: string; name: string }>).detail; if (!d) return;
+      const t = new Date(now().getTime()), slot = Math.floor((t.getHours() * 60 + t.getMinutes()) / 30);
+      const ev: CheckinEvent = { checkin_id: "test-" + d.id, day: todayLocal(), habit_id: d.id, habit: d.name, block: "Test pop-up", start_slot: slot, end_slot: Math.min(48, slot + 1), shown_at: 0, expires_at: 0, state: "shown" };
+      setHidden(old => { const n = new Set(old); n.delete(keyOf(ev)); return n; }); setTests(old => [...old.filter(x => keyOf(x) !== keyOf(ev)), ev]); void notifyCheckin(ev);
+    };
+    window.addEventListener(TEST_CHECKIN, test);
     onAnswerFromNotification = (_a, extra) => {
       const checkinId = typeof extra?.checkinId === "string" ? extra.checkinId : null, day = typeof extra?.day === "string" ? extra.day : null;
       if (checkinId && day) void habitsApi.answer(checkinId, day, "done").then(() => { announceHabits(); return loadPending(); }).catch(() => loadPending());
     };
     import("@tauri-apps/api/event").then(m => m.listen("timetable-tick", () => void check())).then(u => { if (gone) u(); else off = u; }).catch(() => { /* not running inside Tauri */ });
-    return () => { gone = true; clearInterval(id); off?.(); onAnswerFromNotification = null; document.removeEventListener("visibilitychange", resume); window.removeEventListener("focus", resume); window.removeEventListener("nou-sim-changed", resume); window.removeEventListener(CHECKINS_CHANGED, changed); window.removeEventListener("nou-timetable-changed", changed); window.removeEventListener(HABITS_CHANGED, changed); window.removeEventListener(HABITS_CHANGED, habitsChanged); };
+    return () => { gone = true; clearInterval(id); off?.(); onAnswerFromNotification = null; document.removeEventListener("visibilitychange", resume); window.removeEventListener("focus", resume); window.removeEventListener("nou-sim-changed", resume); window.removeEventListener(CHECKINS_CHANGED, changed); window.removeEventListener("nou-timetable-changed", changed); window.removeEventListener(HABITS_CHANGED, changed); window.removeEventListener(HABITS_CHANGED, habitsChanged); window.removeEventListener(TEST_CHECKIN, test); };
   }, [check, loadCheckins, loadPending]);
 
   const next = useCallback((ev: CheckinEvent) => {
@@ -116,7 +130,7 @@ export function useCheckinPopups(): CheckinPopupState {
     const after = eventAt(timeline, new Date(y, m - 1, d, 0, ev.end_slot * 30)); // the event that is on at the moment this block ends
     return after && after.ids.length ? `${hhmm(after.start)} ${names(after.ids, activities)}`.toUpperCase() : "";
   }, []);
-  return { visible: pending.filter(e => blockRunning(e, clock)), errors, answer, next };
+  return { visible: [...tests, ...pending.filter(e => blockRunning(e, clock))].filter(e => !hidden.has(keyOf(e))), errors, answer, hide, next };
 }
 
 /** The pop-ups themselves: one card per open check-in, with one tap to say it started. It stays for the whole block until ticked, and nothing is asked when a block ends. */
@@ -125,7 +139,8 @@ export function CheckinPopups({ state }: { state: CheckinPopupState }) {
   return <div className="checkin-stack" aria-label="Check-ins">
     {state.visible.map(ev => { const next = state.next(ev);
       return <section key={keyOf(ev)} className="checkin-pop hx-pop-card" role="alertdialog" aria-label={`Check-in: ${ev.habit}`}>
-        <div className="hx-mono hx-pop-top"><span><i className="hx-blink" />CHECK-IN · {slotTime(ev.start_slot)}</span><span>{ev.block || slotRange(ev.start_slot, ev.end_slot)}</span></div>
+        <div className="hx-mono hx-pop-top"><span><i className="hx-blink" />CHECK-IN · {slotTime(ev.start_slot)}</span><span>{ev.block || slotRange(ev.start_slot, ev.end_slot)}</span>
+          <button type="button" className="hx-pop-x" aria-label={`Hide the ${ev.habit} check-in for now`} title="Hide for now. It stays on the Habits page until you answer." onClick={() => state.hide(ev)}>×</button></div>
         <div><div className="hx-pop-name">{ev.habit}</div><div className="hx-pop-q">Did you start {ev.habit}?</div></div>
         {state.errors[keyOf(ev)] && <span className="checkin-err" role="alert">{state.errors[keyOf(ev)]}</span>}
         <button type="button" className="hx-pop-yes" onClick={() => void state.answer(ev)}>Yes, started</button>

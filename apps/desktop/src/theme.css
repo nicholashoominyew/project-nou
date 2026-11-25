@@ -653,7 +653,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .hub-panel h2{margin:0;font-size:14px;font-weight:600;line-height:1.3}
 .hub-room{flex:999 1 560px;height:760px}
 .hub-side{flex:1 1 340px;min-width:0;display:flex;flex-direction:column;gap:16px}
-.hub-inhouse,.hub-queue{height:372px}
+.hub-queue{height:372px}
 .hub-dot{display:inline-block;flex:none;width:7px;height:7px;border-radius:var(--radius-full);box-sizing:border-box;background:var(--muted)}
 .hub-dot.live{background:var(--accent)}.hub-dot.ask{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}.hub-dot.hollow{background:transparent;border:1px solid var(--muted)}
 .hub-avatar{position:relative;flex:none;display:grid;place-items:center;width:32px;height:32px;border-radius:var(--radius-sm);background:var(--card);border:1px solid var(--line);font:500 10px var(--font-mono);color:var(--text)}
@@ -813,7 +813,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 @media (max-width:900px){.top-timer-name{display:none}}
 
 /* Kura: several chats, and harnesses (extra instructions for the local model) */
-.hub-inhouse{height:470px}
+
 .hub-chatbar{display:flex;gap:8px;align-items:center;padding:8px 16px 0}
 .hub-chatpick{flex:1;min-width:0;display:block}
 .hub-chatpick select,.hub-chatname{width:100%;box-sizing:border-box;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font:13px var(--font-body)}
@@ -822,7 +822,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .hub-chattools{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 4px}
 .hub-chattools .hub-ghost.danger,.hub-harness .hub-ghost.danger{color:var(--danger)}
 .hub-chattools .hub-ghost[aria-expanded=true]{border-color:var(--accent);background:var(--hover)}
-.hub-inhouse>.error{margin:6px 16px 0}
+
 .hub-harness{flex:1;min-height:0;overflow-y:auto;padding:8px 16px 14px;display:flex;flex-direction:column;gap:10px}
 .hub-harness-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .hub-harness-head h3{margin:0;font-size:14px}
@@ -922,9 +922,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .tt-checkin-note{font-size:12px;color:var(--muted);margin:2px 0 0}
 
 /* Drag to reorder: the six-dot grip and the drop marker */
-.grip{background:transparent;border:0;color:var(--muted);cursor:grab;font-size:18px;line-height:1;padding:2px 4px;border-radius:6px}
+.grip{background:transparent;border:0;color:var(--muted);cursor:grab;font-size:18px;line-height:1;padding:4px 6px;min-width:28px;min-height:28px;border-radius:6px;touch-action:none;user-select:none}
 .grip:hover:not(:disabled){color:var(--text);background:var(--line)}.grip:active{cursor:grabbing}.grip:disabled{opacity:.35;cursor:not-allowed}
-.reorder-dragging{opacity:.45}.reorder-over{box-shadow:0 -2px 0 0 var(--accent)}
+.reorder-dragging{opacity:.45}.reorder-over{box-shadow:0 -2px 0 0 var(--accent)}.reorder-over-end{box-shadow:0 2px 0 0 var(--accent)}
 
 /* Habit detail window and list parts */
 .hb-name{background:transparent;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}.hb-name:hover{text-decoration:underline}
@@ -943,10 +943,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .undo-note{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:80;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
 .undo-note.bad{border-color:#c0392b}
 
-/* Home calendar: a day's bubble takes a colour from the share of habits done (red low, green high) */
-.mcal-day.hp{background:hsl(calc(var(--hp) * 1.2) 65% 45% / .42)}
-.mcal-day.hp.sel{outline:2px solid var(--accent)}
-.mcal-habits{display:flex;align-items:center;gap:10px;margin:8px 0 2px;font-size:13px}.mcal-habits .mini-bar{flex:1;min-width:60px}
+/* Home calendar: a day's bubble is filled with the theme's accent, from a little (few habits done) to a lot (all done): yellow in dark mode, blue in light mode */
+.mcal-day.hp{background:color-mix(in srgb,var(--accent) calc(6% + var(--hp) * .74%),var(--panel))}
+.mcal-day.hp.hi{color:var(--accent-ink)}.mcal-day.hp.sel{outline:2px solid var(--accent);outline-offset:1px}
+.mcal-habits{display:flex;align-items:center;gap:10px;margin:8px 0 2px;font-size:13px;flex-wrap:wrap}.mcal-habits .mini-bar{flex:1;min-width:60px}.mcal-habits .mini-bar i{background:var(--accent)}
+.mcal-hlegend{display:flex;align-items:center;gap:4px}.mcal-hlegend i{width:14px;height:14px;border-radius:4px;border:1px solid var(--line);background:color-mix(in srgb,var(--accent) calc(6% + var(--hp) * .74%),var(--panel))}
 .backup-more>summary{cursor:pointer;font-weight:600;padding:6px 0}.backup-more[open]>summary{margin-bottom:8px}
 details.recovery-card.backup-more{padding:12px 16px}
 

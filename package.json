@@ -14,7 +14,6 @@
     "package:windows": "npm run icons && npm exec --workspace=@nou/desktop -- tauri build --bundles nsis -- --locked",
     "test": "npm run test -w @nou/desktop",
     "test:mcp": "node --test tests/mcp",
-    "test:kura": "node --test tests/kura/kura.test.mjs",
     "test:runner": "node --test tools/nou-claude/nou-claude.test.mjs"
   }
 }

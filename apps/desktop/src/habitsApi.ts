@@ -9,6 +9,9 @@ export const announceHabits = () => { try { window.dispatchEvent(new Event(HABIT
 export const announceCheckins = () => { try { window.dispatchEvent(new Event(CHECKINS_CHANGED)); } catch { /* only a refresh hint */ } };
 /** The device clock (or the simulated one in a development build) as whole seconds, which is what the backend wants. */
 export const nowSecs = () => Math.floor(now().getTime() / 1000);
+/** Ask for a pop-up to be shown now, for a habit, to see that pop-ups and notifications work on this computer. Nothing is recorded until it is answered. */
+export const TEST_CHECKIN = "nou-test-checkin";
+export const testCheckin = (habit: { id: string; name: string }) => { try { window.dispatchEvent(new CustomEvent(TEST_CHECKIN, { detail: { id: habit.id, name: habit.name } })); } catch { /* only a request */ } };
 export const todayLocal = () => localDay(now());
 export type ImportRow = { day: string; habit: string; done: boolean };
 
@@ -16,6 +19,7 @@ export const habitsApi = {
   list: () => invoke<Habit[]>("habits_list_cmd"),
   add: (name: string, days?: number, category?: string) => invoke<Habit>("habit_add_cmd", { name, days: days ?? null, category: category ?? null }),
   update: (id: string, patch: { name?: string; days?: number; category?: string }) => invoke<Habit>("habit_update_cmd", { id, name: patch.name ?? null, days: patch.days ?? null, category: patch.category ?? null }),
+  linkActivity: (habitId: string, activityId: string) => invoke<void>("habit_link_activity_cmd", { habitId, activityId }),
   reorder: (ids: string[]) => invoke<void>("habits_reorder_cmd", { ids }),
   remove: (id: string) => invoke<void>("habit_delete_cmd", { id }),
   log: (from: string, to: string) => invoke<LogEntry[]>("habit_log_list_cmd", { from, to }),

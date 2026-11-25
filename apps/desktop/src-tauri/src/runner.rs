@@ -39,10 +39,9 @@ const STOP_GRACE: Duration = Duration::from_secs(3);
 // ---- the bots ----
 #[derive(Serialize, Clone, Copy, Debug, PartialEq)]
 pub struct BotInfo { pub name: &'static str, pub kind: &'static str, pub note: &'static str }
-/// The bots the runner knows about. Kura is listed only so Claude knows it exists; the runner never polls or starts it.
-pub const BOTS: [BotInfo; 4] = [
+/// The bots the runner knows about.
+pub const BOTS: [BotInfo; 3] = [
     BotInfo { name: "Claude", kind: "claude", note: "Starts Claude Code, replies and proposes" },
-    BotInfo { name: "Kura", kind: "external", note: "Polls NOU itself, nothing to start here" },
     BotInfo { name: "xGrok", kind: "relay", note: "Adds a ready-to-paste card for you to send" },
     BotInfo { name: "GrokBots", kind: "relay", note: "Adds a ready-to-paste card for you to send" },
 ];
@@ -378,12 +377,11 @@ mod tests {
     fn revoked(c: &Connection, id: &str) -> bool { c.query_row("SELECT revoked_at IS NOT NULL FROM api_tokens WHERE id=?1", [id], |r| r.get(0)).unwrap() }
 
     #[test]
-    fn the_generated_bots_file_lists_the_four_bots_and_holds_no_secret() {
+    fn the_generated_bots_file_lists_the_three_bots_and_holds_no_secret() {
         let v = bots_json(); let bots = v["bots"].as_array().unwrap();
-        assert_eq!(bots.iter().map(|b| (b["name"].as_str().unwrap(), b["type"].as_str().unwrap())).collect::<Vec<_>>(), vec![("Claude", "claude"), ("Kura", "external"), ("xGrok", "relay"), ("GrokBots", "relay")]);
+        assert_eq!(bots.iter().map(|b| (b["name"].as_str().unwrap(), b["type"].as_str().unwrap())).collect::<Vec<_>>(), vec![("Claude", "claude"), ("xGrok", "relay"), ("GrokBots", "relay")]);
         assert_eq!(bots[0]["tokenEnv"], "NOU_TOKEN"); assert_eq!(bots[0]["allowFrom"], json!([]));
-        assert!(bots[1].get("tokenEnv").is_none(), "Kura has no token here: the runner never polls it");
-        for relay in &bots[2..] { assert_eq!((relay["tokenEnv"].as_str(), &relay["allowFrom"]), (Some("NOU_TOKEN_RELAY"), &json!(["Claude"]))); }
+        for relay in &bots[1..] { assert_eq!((relay["tokenEnv"].as_str(), &relay["allowFrom"]), (Some("NOU_TOKEN_RELAY"), &json!(["Claude"]))); }
         let text = v.to_string(); assert!(!text.contains("nou_") && !text.to_lowercase().contains("secret"));
         assert_eq!(BOTS.iter().map(|b| b.note).filter(|n| n.is_empty()).count(), 0, "every bot has a one-line note for the screen");
     }
@@ -428,7 +426,7 @@ mod tests {
         let out = Command::new("node").arg(&check).env("RUNNER", &p.script).env("NOU_BOTS_FILE", &p.bots).env("NOU_API_URL", "http://127.0.0.1:47651").env("NOU_TOKEN", "t1").env("NOU_TOKEN_RELAY", "t2").output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let got: Value = serde_json::from_slice(&out.stdout).unwrap();
-        assert_eq!(got, json!([["Claude", "claude", "NOU_TOKEN", true, []], ["Kura", "external", "NOU_TOKEN", false, []], ["xGrok", "relay", "NOU_TOKEN_RELAY", true, ["Claude"]], ["GrokBots", "relay", "NOU_TOKEN_RELAY", true, ["Claude"]]]));
+        assert_eq!(got, json!([["Claude", "claude", "NOU_TOKEN", true, []], ["xGrok", "relay", "NOU_TOKEN_RELAY", true, ["Claude"]], ["GrokBots", "relay", "NOU_TOKEN_RELAY", true, ["Claude"]]]));
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -571,13 +569,13 @@ mod tests {
         let mut h = spawn_child("node", &p.script, env, &p.log, vec![m.claude_secret.clone(), m.relay_secret.clone()]).unwrap();
         let wait = |what: &str, check: &dyn Fn() -> bool| { let end = Instant::now() + Duration::from_secs(20); while Instant::now() < end { if check() { return; } std::thread::sleep(Duration::from_millis(100)); } panic!("timed out waiting for {what}\n{}", log_tail(&p.log)); };
         wait("the runner's baseline", &|| fs::read_to_string(&p.log).unwrap_or_default().contains("starting after message"));
-        // The owner tags xGrok, and Claude hands work to GrokBots (allowed: both relays have allowFrom Claude). Kura's tag and a stranger bot's tag must do nothing.
+        // The owner tags xGrok, and Claude hands work to GrokBots (allowed: both relays have allowFrom Claude). A stranger bot's tag must do nothing.
         let long = format!("@xGrok read this {}", "word ".repeat(794)); // 3,987 characters: allowed in the room, but too long once the card heading is added
         let claude_id = m.claude_id.clone();
         { let c = conn.lock().unwrap();
           crate::chat::post_owner(&c, &long, None).unwrap();
           crate::chat::post_to_room(&c, &claude_id, "Claude", None, "handoff", None, Some("GrokBots"), Some("tier posts"), "@GrokBots please take the tier posts @grokbots").unwrap();
-          crate::chat::post_owner(&c, "@Kura just talking", None).unwrap(); }
+          crate::chat::post_owner(&c, "@Stranger just talking", None).unwrap(); }
         let cards = || crate::chat::list(&conn.lock().unwrap(), None, 200, None).unwrap().into_iter().filter(|x| x.ty == "approval").collect::<Vec<_>>();
         wait("two cards", &|| cards().len() >= 2);
         std::thread::sleep(Duration::from_millis(2500)); // two more polls: nothing is posted twice

@@ -9,7 +9,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
   ] },
   { title: "Window", items: [
     ["Ctrl+\\", "Show or hide the sidebar"], ["Ctrl+Shift+F", "Focus mode (Esc leaves)"], ["F11", "Full screen"], ["Ctrl+P", "Print the page"], ["Ctrl+Shift+L", "Light / dark mode"],
-    ["Ctrl+= / Ctrl+− / Ctrl+0", "Zoom in / out / reset"], ["Ctrl+Z", "Undo the last change on the timetable, Habits and Today's tasks (typing keeps its own undo)"], ["Ctrl+/", "This list"],
+    ["Ctrl+= / Ctrl+− / Ctrl+0", "Zoom in / out / reset"], ["Ctrl+Z / Ctrl+Y", "Undo / redo the last change on the timetable, Habits and Today's tasks (typing keeps its own undo)"], ["Ctrl+/", "This list"],
   ] },
   { title: "Editing", items: [
     ["Ctrl+Z / Ctrl+Y", "Undo / redo"], ["Ctrl+C / Ctrl+X / Ctrl+V", "Copy / cut / paste"], ["Ctrl+Shift+V", "Paste without formatting"],

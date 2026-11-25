@@ -357,7 +357,7 @@ it("Backups & restore, Import recovered note and Trash moved from the sidebar in
  fireEvent.click(screen.getByText("Test note"));
  await waitFor(()=>expect(screen.queryByRole("list",{name:"Settings"})).toBeNull());
 });
-it("the Bots Hub opens from the sidebar with its three panels, and the sidebar shows how many items are waiting for you",async()=>{
+it("the Bots Hub opens from the sidebar with its two panels, and the sidebar shows how many items are waiting for you",async()=>{
  hub.waiting=2;
  chatList.value=[{id:1,at:"2026-11-18T10:00:00Z",kind:"assistant",author:"Claude",body:"ready for review",room:"general",type:"message",role:"ROUTER",from:null,to:null,task_ref:null,approval:null,queue_item_id:null,decided_at:null}];
  render(<App/>);await screen.findByText("Test note");
@@ -366,7 +366,7 @@ it("the Bots Hub opens from the sidebar with its three panels, and the sidebar s
  fireEvent.click(item);
  expect(await screen.findByRole("heading",{name:"Bots Hub"})).toBeTruthy();
  expect(await screen.findByText("ready for review")).toBeTruthy();
- for(const name of ["Bot collaboration room","In-house bot chat","Bot queue"])expect(screen.getByRole("region",{name})).toBeTruthy();
+ for(const name of ["Bot collaboration room","Bot queue"])expect(screen.getByRole("region",{name})).toBeTruthy();
  expect(within(screen.getByRole("button",{name:/Bots Hub/})).getByLabelText("2 waiting for you")).toBeTruthy();
  fireEvent.click(screen.getByText("Test note"));
  await waitFor(()=>expect(screen.queryByRole("heading",{name:"Bots Hub"})).toBeNull());

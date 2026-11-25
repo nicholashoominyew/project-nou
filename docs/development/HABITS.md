@@ -12,6 +12,9 @@ A permanent **Habits** screen (sidebar). Habits are also **activities in the Lif
 ## Pop-ups
 - While a habit's block is **running** and the habit is not ticked for the day, NOU shows a pop-up with one button, **Checked in**, and a system notification (once). It stays up for the whole block until ticked, and goes when the block ends. Opening NOU in the middle of a block shows it straight away.
 - There is no Skip. A day is done or not done.
+- The **×** on a pop-up hides it for now (it stays open on the Habits page and comes back at the next block or when NOU is reopened).
+- **Test pop-up** (Habits, Your habits) shows a pop-up and a Windows notification for a habit straight away, to check they work on this computer. Answering it ticks the habit for today.
+- A habit only pops up if it is on the timetable. Your habits shows which habits are not ("Not on the timetable yet"), and a habit's window can **use an existing timetable activity** (for example "JP Anki"): the activity takes the habit's name and type and its blocks start checking in.
 - Unanswered, the pop-up becomes **No answer** (not done) two hours after it was first shown, or when the block ends if that is later. A pop-up that expires while NOU is closed is not logged, so the day can be ticked by hand.
 - Ticking on the Habits page closes the pop-up.
 
@@ -27,8 +30,8 @@ Today card, waiting pop-ups, history (table / month), charts, **Your habits**: d
 `{"rows":[{"day":"YYYY-MM-DD","habit":"Exercise","done":true}]}` (or a bare array). Ticks only are stored, nothing existing is overwritten, and every habit in the file counts from the earliest day in it.
 
 ## Also in this release
-- Today's tasks can be reordered by dragging the six dots. The order is stored (`linked_todos.sort_order`).
-- **Ctrl+Z** undoes the last change on the timetable (blocks, resets, activities), Habits (ticks, new, renamed or deleted habits, order) and Today's tasks (ticks, order), up to 50 steps. Inside a text box or the note editor, Ctrl+Z keeps its normal typing undo. Page-level changes (trash, moves) are not covered yet.
+- Today's tasks can be reordered by dragging the six dots (the drag follows the pointer itself, not the browser's drag-and-drop). The order is stored (`linked_todos.sort_order`).
+- **Ctrl+Z** undoes (and **Ctrl+Y** or **Ctrl+Shift+Z** redoes) the last change on the timetable (blocks, resets, activities), Habits (ticks, new, renamed or deleted habits, order) and Today's tasks (ticks, order), up to 50 steps. Inside a text box or the note editor, Ctrl+Z keeps its normal typing undo. Page-level changes (trash, moves) are not covered yet.
 - The Home calendar colours each past day by the share of habits done (red low, green high) and shows a progress bar for the selected day.
 - Assistants can propose, with your approval each time: add a habit, tick a habit for a day, reorder Today's tasks (plus the existing timetable requests, which can put a habit on a block by name). Reads: `GET /v1/habits` (timetable:read) and `GET /v1/todos` (notes:read), without ids.
 

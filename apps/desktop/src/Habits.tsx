@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import HabitDetail from "./HabitDetail";
-import { announceHabits, habitsApi, type ImportRow } from "./habitsApi";
-import { addDays, appliesOn, habitRate, HABIT_TYPES, heatCells, heatLayout, logKey, maskLabel, monthGrid, parseDay, progressOn, rangeStats, streaks, WEEKDAYS, weekBlocks, type Habit, type LogState } from "./habitsLogic";
+import { announceHabits, habitsApi, testCheckin, type ImportRow } from "./habitsApi";
+import { addDays, appliesOn, slotRange, habitRate, HABIT_TYPES, heatCells, heatLayout, logKey, maskLabel, monthGrid, parseDay, progressOn, rangeStats, streaks, WEEKDAYS, weekBlocks, type Habit, type LogState } from "./habitsLogic";
 import { GRIP, useReorder } from "./Reorder";
 import { pushUndo } from "./undo";
-import { useHabits } from "./useHabits";
+import { useCheckinData, useHabits } from "./useHabits";
+import { useTimetable } from "./timetable/useTimetable";
 
 const msg = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^Error: /, "");
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -20,8 +21,11 @@ const Chips = ({ mask, label, disabled, onToggle }: { mask: number; label: strin
  * The Habits page: today's ring and one circle per habit, streaks with a heatmap per habit, a collapsed history (table and month, where any past day can be ticked by hand),
  * and a collapsed list of habits to manage. A circle ticks or clears the day; anything not done by the end of the day counts as not done.
  */
-export default function Habits({ disabled }: { disabled?: boolean }) {
+export default function Habits({ disabled, onOpenTimetable }: { disabled?: boolean; onOpenTimetable?: () => void }) {
   const { habits, log, today, error, reload, setError } = useHabits();
+  const { checkins } = useCheckinData();
+  const { activities } = useTimetable();
+  const blocksOf = (h: Habit) => checkins.filter(k => k.habit_id === h.id);
   const [range, setRange] = useState<7 | 30 | 90>(30);
   const [sweep, setSweep] = useState(0); // flips every time the range changes so the heatmap sweep plays again
   const [focus, setFocus] = useState<string | null>(null);
@@ -41,21 +45,25 @@ export default function Habits({ disabled }: { disabled?: boolean }) {
     setError(""); setNotice("");
     try { await job(); if (done) setNotice(done); announceHabits(); await reload(); } catch (e) { setError(msg(e)); }
   }
-  const reorder = useReorder(ids, order => void run(async () => { const was = ids; await habitsApi.reorder(order); pushUndo("Order of habits", async () => { await habitsApi.reorder(was); announceHabits(); }); }), disabled);
+  const reorder = useReorder(ids, order => void run(async () => { const was = ids; await habitsApi.reorder(order); pushUndo("Order of habits", async () => { await habitsApi.reorder(was); announceHabits(); }, async () => { await habitsApi.reorder(order); announceHabits(); }); }), disabled);
   const setCell = (day: string, habit: Habit, state: "done" | null) => {
     const before = log.get(logKey(day, habit.id))?.state; const restore = before === "done" || before === "skipped" ? before : null; // "no answer" is only written by a timed-out pop-up, so undo clears it
-    void run(async () => { await habitsApi.set(day, habit.id, state); pushUndo(`${state ? "Ticked" : "Cleared"} ${habit.name} on ${dayLabel(day)}`, async () => { await habitsApi.set(day, habit.id, restore); announceHabits(); }); });
+    void run(async () => { await habitsApi.set(day, habit.id, state); pushUndo(`${state ? "Ticked" : "Cleared"} ${habit.name} on ${dayLabel(day)}`, async () => { await habitsApi.set(day, habit.id, restore); announceHabits(); }, async () => { await habitsApi.set(day, habit.id, state); announceHabits(); }); });
   };
   const toggle = (day: string, h: Habit) => setCell(day, h, nextState(log.get(logKey(day, h.id))?.state));
   const addHabit = () => void run(async () => {
-    const made = await habitsApi.add(name, mask, type); setName(""); setMask(127);
-    pushUndo(`New habit “${made.name}”`, async () => { await habitsApi.remove(made.id); announceHabits(); });
+    const [n, m, t] = [name, mask, type]; const made = await habitsApi.add(n, m, t); setName(""); setMask(127);
+    let id = made.id; // adding the same name again brings the same habit (and its history) back
+    pushUndo(`New habit “${made.name}”`, async () => { await habitsApi.remove(id); announceHabits(); }, async () => { id = (await habitsApi.add(n, m, t)).id; announceHabits(); });
   }, "Habit added. It is now an activity in the Life Timetable.");
-  const setDays = (h: Habit, i: number) => { const next = h.days ^ (1 << i); if (next === 0) return; const was = h.days; void run(async () => { await habitsApi.update(h.id, { days: next }); pushUndo(`Days of “${h.name}”`, async () => { await habitsApi.update(h.id, { days: was }); announceHabits(); }); }); };
+  const setDays = (h: Habit, i: number) => { const next = h.days ^ (1 << i); if (next === 0) return; const was = h.days; void run(async () => { await habitsApi.update(h.id, { days: next }); pushUndo(`Days of “${h.name}”`, async () => { await habitsApi.update(h.id, { days: was }); announceHabits(); }, async () => { await habitsApi.update(h.id, { days: next }); announceHabits(); }); }); };
   const remove = (h: Habit) => {
     if (!window.confirm(`Delete “${h.name}”?\n\nIt leaves this page and the timetable's check-ins (its blocks stay in the timetable as an ordinary activity).\n\nIts history is kept, and comes back if you add a habit with the same name again.`)) return;
     const was = { name: h.name, days: h.days, category: h.category, order: ids };
-    void run(async () => { await habitsApi.remove(h.id); pushUndo(`Deleted habit “${h.name}”`, async () => { const back = await habitsApi.add(was.name, was.days, was.category); await habitsApi.reorder(was.order.map(x => (x === h.id ? back.id : x))); announceHabits(); }); }, `“${h.name}” deleted.`);
+    void run(async () => {
+      await habitsApi.remove(h.id); let cur = h.id;
+      pushUndo(`Deleted habit “${h.name}”`, async () => { const back = await habitsApi.add(was.name, was.days, was.category); cur = back.id; await habitsApi.reorder(was.order.map(x => (x === h.id ? back.id : x))); announceHabits(); }, async () => { await habitsApi.remove(cur); announceHabits(); });
+    }, `“${h.name}” deleted.`);
   };
   const importFile = async (f: File | undefined) => {
     if (!f) return;
@@ -160,7 +168,11 @@ export default function Habits({ disabled }: { disabled?: boolean }) {
       {editOpen && <>
         <ul className="hx-manage" aria-label="Habits">{list.map(h => <li key={h.id} {...reorder.rowProps(h.id)} className={"hx-manage-row hx-lift " + reorder.rowProps(h.id).className}>
           <button {...reorder.gripProps(h.id, h.name)}>{GRIP}</button>
-          <div className="hx-manage-name"><button type="button" className="hx-name" onClick={() => setOpen(h.id)} aria-label={`Open ${h.name}`}>{h.name}</button><div className="hx-mono">{h.category} · {maskLabel(h.days)}</div></div>
+          <div className="hx-manage-name"><button type="button" className="hx-name" onClick={() => setOpen(h.id)} aria-label={`Open ${h.name}`}>{h.name}</button><div className="hx-mono">{h.category} · {maskLabel(h.days)}</div>
+            {blocksOf(h).length
+              ? <div className="hx-sched">On the timetable: {blocksOf(h).length} block{blocksOf(h).length === 1 ? "" : "s"}</div>
+              : <div className="hx-sched warn">Not on the timetable yet, so it will not pop up. {onOpenTimetable && <button type="button" className="hx-link" onClick={onOpenTimetable}>Open the Life Timetable</button>}</div>}</div>
+          <button type="button" className="hx-link" disabled={disabled} onClick={() => testCheckin(h)} title="Show a pop-up for this habit now, to see that pop-ups and notifications work on this computer">Test pop-up</button>
           <Chips mask={h.days} label={`Days for ${h.name}`} disabled={disabled} onToggle={i => setDays(h, i)} />
           <button type="button" className="hx-x" disabled={disabled} aria-label={`Delete ${h.name}`} onClick={() => remove(h)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button></li>)}</ul>
         <form className="hx-new" aria-label="Add a habit" onSubmit={e => { e.preventDefault(); if (name.trim()) addHabit(); }}>
@@ -172,7 +184,8 @@ export default function Habits({ disabled }: { disabled?: boolean }) {
         <p className="hint">Drag the six dots to put your habits in order. Click a name to see its streaks, rename it or change its type. Each habit is also an activity in the Life Timetable: put it on a block there, and its check-in comes when that block starts.</p>
       </>}
     </section>
-    {open && (() => { const h = list.find(x => x.id === open); return h ? <HabitDetail habit={h} log={log} today={today} disabled={disabled} onClose={() => setOpen(null)}
-      onChange={patch => void run(async () => { const was = { name: h.name, days: h.days, category: h.category }; await habitsApi.update(h.id, patch); pushUndo(`Change to habit “${h.name}”`, async () => { await habitsApi.update(h.id, was); announceHabits(); }); })} onDelete={() => { remove(h); setOpen(null); }} /> : null; })()}
+    {open && (() => { const h = list.find(x => x.id === open); return h ? <HabitDetail habit={h} log={log} today={today} disabled={disabled} onClose={() => setOpen(null)} blocks={blocksOf(h).map(k => `${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][k.weekday]} ${slotRange(k.start_slot, k.end_slot)} · week ${k.variant}`)} onOpenTimetable={onOpenTimetable}
+      activities={activities.filter(a => !a.habit_id).map(a => ({ id: a.id, name: a.name }))} onLink={id => void run(async () => { await habitsApi.linkActivity(h.id, id); }, "Done. Its blocks on the timetable now check in.")}
+      onChange={patch => void run(async () => { const was = { name: h.name, days: h.days, category: h.category }; await habitsApi.update(h.id, patch); pushUndo(`Change to habit “${h.name}”`, async () => { await habitsApi.update(h.id, was); announceHabits(); }, async () => { await habitsApi.update(h.id, patch); announceHabits(); }); })} onDelete={() => { remove(h); setOpen(null); }} /> : null; })()}
   </div>;
 }
