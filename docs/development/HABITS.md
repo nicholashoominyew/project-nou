@@ -32,13 +32,13 @@ Today card, waiting pop-ups, history (table / month), charts, **Your habits**: d
 ## Also in this release
 - Today's tasks can be reordered by dragging the six dots (the drag follows the pointer itself, not the browser's drag-and-drop). The order is stored (`linked_todos.sort_order`).
 - **Ctrl+Z** undoes (and **Ctrl+Y** or **Ctrl+Shift+Z** redoes) the last change on the timetable (blocks, resets, activities), Habits (ticks, new, renamed or deleted habits, order) and Today's tasks (ticks, order), up to 50 steps. Inside a text box or the note editor, Ctrl+Z keeps its normal typing undo. Page-level changes (trash, moves) are not covered yet.
-- The Home calendar colours each past day by the share of habits done (red low, green high) and shows a progress bar for the selected day.
+- The Home calendar colours each past day in shades of the accent colour by the share of habits done (faint for few, strong for all) and shows a progress bar for the selected day.
 - Assistants can propose, with your approval each time: add a habit, tick a habit for a day, reorder Today's tasks (plus the existing timetable requests, which can put a habit on a block by name). Reads: `GET /v1/habits` (timetable:read) and `GET /v1/todos` (notes:read), without ids.
 
 ## Data
 `habits` (+ `category`), `habit_log`, `checkins` (derived from the timetable, rebuilt after every timetable change), `checkin_events`, `timetable_activities.habit_id`, `linked_todos.sort_order`, `app_settings`. See `db/notes/016_habits.sql` and `017_habit_activities.sql`.
 
 ## Known limits
-- Not verified on real Windows: notification button, WebView2 behaviour, real restarts, the drag with a real mouse.
-- The six-dot drop marker and the habit window were checked in tests, not in the real window.
+- Checked on Windows 11 on 25 Nov 2026 (dev and release builds, throwaway profile): the pop-up through a running block, the toast reaching Windows with its **Checked in** button, dragging tasks and habits with a real mouse and keeping the order after a restart, Ctrl+Z and Ctrl+Y.
+- Not verified: pressing the toast's button (Do Not Disturb was on, which also keeps banners off the screen). The plugin only reports a press while the toast is on screen, not from the notification centre. Toasts are silent. A build run from `target\` shows them under PowerShell's name; the installed app uses its own.
 - Several habits on the same block each get their own pop-up.
