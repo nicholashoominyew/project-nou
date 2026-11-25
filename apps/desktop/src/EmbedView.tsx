@@ -111,7 +111,7 @@ export default function EmbedView(p: EmbedProps) {
     </div>}
     {body}
     {framed && <div className="embed-foot">
-      {p.mode === "live" ? <>Not showing? <button type="button" className="embed-link" onClick={open}>Open in new tab</button></> : <span>A saved copy: it will not update. Scripts that need the internet do not run.</span>}
+      {p.mode === "live" ? <>Not showing? <button type="button" className="embed-link" onClick={open}>Open in new tab</button></> : <span>A saved copy: it will not update, and its scripts do not run.</span>}
       {p.editable && <button type="button" className="embed-grip" role="slider" aria-label="Embed height" aria-orientation="vertical" aria-valuemin={MIN_HEIGHT} aria-valuemax={MAX_HEIGHT} aria-valuenow={shownHeight} title="Drag to resize"
         onPointerDown={startDrag} onKeyDown={e => { if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); p.onChange?.({ height: clampHeight(height + (e.key === "ArrowDown" ? 40 : -40)) }); } }}>⠿</button>}
     </div>}

@@ -14,7 +14,8 @@ export function progressPath(fraction: number): string {
 /** `mini` is for the small ring in the top bar: it is drawn about 20 pixels wide, so its line is much thicker in the drawing to stay visible. */
 export function ProgressRing({ fraction, label, thin, mini }: { fraction: number; label: string; thin?: boolean; mini?: boolean }) {
   const w = mini ? 40 : thin ? 6 : 10;
-  return <svg viewBox="0 0 300 300" width="100%" height="100%" role="img" aria-label={label} className="tt-ring">
+  // The thick line of the mini ring reaches past 300 units (132 + 40 / 2 = 152 from the centre), so its drawing is given a margin or its sides are cut flat.
+  return <svg viewBox={mini ? "-4 -4 308 308" : "0 0 300 300"} width="100%" height="100%" role="img" aria-label={label} className="tt-ring">
     <circle cx="150" cy="150" r={R} className="tt-ring-track" style={{ strokeWidth: w }} />
     <path d={progressPath(fraction)} className="tt-ring-arc" data-testid="ring-arc" style={{ strokeWidth: w }} />
   </svg>;
