@@ -16,6 +16,13 @@ export const PageIdContext = createContext<string>("");
 const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 type Item = { id: string; icon?: string; label: string; keys?: string[]; hint?: string; checked?: boolean; swatch?: string; run: () => void };
 
+/** The words and characters typed in a block (its own text, not its children), or nothing for blocks without text. */
+export function blockCount(content: unknown): { words: number; characters: number } | null {
+  if (!Array.isArray(content)) return null;
+  const text = content.map(c => typeof c?.text === "string" ? c.text : Array.isArray(c?.content) ? c.content.map((x: { text?: string }) => x.text ?? "").join("") : "").join("");
+  return { words: text.split(/\s+/).filter(Boolean).length, characters: Array.from(text).length };
+}
+
 function Row({ i }: { i: Item }) {
   const Components = useComponentsContext()!;
   return <Components.Generic.Menu.Item className="bn-menu-item" checked={i.checked} onClick={i.run}>
@@ -44,7 +51,17 @@ function NouMenuItems() {
   const [moveQuery, setMoveQuery] = useState("");
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { input.current?.focus(); }, []);
-
+  // The menu opens level with the block and, with little room to the left, on top of it. It is moved just below the block (when it fits there) so what it acts on stays visible.
+  // It cannot go left over the sidebar: the editor clips it there.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const menu = input.current?.closest<HTMLElement>(".bn-drag-handle-menu"), target = block && document.querySelector(`.bn-editor .bn-block-outer[data-id="${block.id}"]>.bn-block>.bn-block-content`);
+      if (!menu || !target || !menu.dataset.position?.startsWith("right")) return;
+      const top = menu.getBoundingClientRect().top, down = target.getBoundingClientRect().bottom + 10 - top;
+      if (down > 0 && top + down + menu.offsetHeight <= window.innerHeight - 8) menu.style.translate = `0 ${down}px`;
+    }, 30);
+    return () => clearTimeout(t);
+  }, [block?.id]);
   const pages = useMemo(() => features.pages.filter(p => p.id !== pageId), [features.pages, pageId]);
   if (!block) return null;
 
@@ -84,7 +101,10 @@ function NouMenuItems() {
   const found = searching ? flat.filter(i => matchesAction(query, i.label, i.keys)).slice(0, 14) : [];
   const moveShown = pages.filter(p => matchesAction(moveQuery, p.title || "Untitled")).slice(0, 40);
 
+  const count = blockCount((block as { content?: unknown }).content);
   return <>
+    {/* The block the menu acts on is outlined while the menu is open. A style rule, so nothing inside the editor's own page is touched. */}
+    <style>{`.bn-editor .bn-block-outer[data-id="${block.id}"]>.bn-block>.bn-block-content{outline:1px solid color-mix(in srgb,var(--muted) 55%,transparent);outline-offset:3px;border-radius:6px}`}</style>
     <div className="nou-menu-search"><input ref={input} aria-label="Search actions" placeholder="Search actions…" value={query} onChange={e => setQuery(e.target.value)}
       onKeyDown={e => { if (e.key !== "Escape") e.stopPropagation(); if (e.key === "Enter" && found[0]) { e.preventDefault(); found[0].run(); } }} /></div>
     {searching ? (found.length ? found.map(i => <Row key={i.id} i={i} />) : <Components.Generic.Menu.Label>No actions match</Components.Generic.Menu.Label>) : <>
@@ -95,7 +115,7 @@ function NouMenuItems() {
         <Sub icon="palette" label="Box border colour">{BOX_COLORS.map(c => <Row key={c} i={flat.find(i => i.id === "border-" + c)!} />)}</Sub>
         <Sub icon="palette" label="Box fill colour">{BOX_COLORS.map(c => <Row key={c} i={flat.find(i => i.id === "fill-" + c)!} />)}</Sub>
       </>}
-      {turn.length > 0 && <Sub icon="turn" label="Turn into">{turn.map(t => <Row key={t.id} i={{ ...t, label: t.shortLabel }} />)}</Sub>}
+      {turn.length > 0 && <Sub icon="turn" label="Turn into">{turn.map(t => <Row key={t.id} i={{ ...t, icon: undefined, label: t.shortLabel }} />)}</Sub>}
       <BlockColorsItem><span className="nou-menu-row"><span className="nou-menu-icon"><Icon name="palette" size={15} /></span><span>Color</span></span></BlockColorsItem>
       <Components.Generic.Menu.Divider />
       <Row i={flat.find(i => i.id === "dup")!} />
@@ -107,6 +127,7 @@ function NouMenuItems() {
       <TableColumnHeaderItem>Header column</TableColumnHeaderItem>
       <Components.Generic.Menu.Divider />
       <Row i={flat.find(i => i.id === "del")!} />
+      {count && <><Components.Generic.Menu.Divider /><div className="nou-menu-foot">{count.words} word{count.words === 1 ? "" : "s"}, {count.characters} character{count.characters === 1 ? "" : "s"}</div></>}
     </>}
   </>;
 }
