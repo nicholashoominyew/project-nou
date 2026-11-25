@@ -151,7 +151,10 @@ test("the Claude bot is started with NOU tools only, a token-free MCP file, and 
   const dir = tmp(); const fake = join(dir, "fake-claude.mjs"); const outFile = join(dir, "out.json");
   writeFileSync(fake, `#!/usr/bin/env node\nimport {readFileSync,writeFileSync} from "node:fs"; const a=process.argv.slice(2); const cfg=readFileSync(a[a.indexOf("--mcp-config")+1],"utf8"); let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{writeFileSync(${JSON.stringify(outFile)},JSON.stringify({a,cfg,t:process.env.NOU_TOKEN,s}));});`);
   const { chmodSync } = await import("node:fs"); chmodSync(fake, 0o755);
-  const cfg = cfgFor({ url: "http://127.0.0.1:1" }, { NOU_CLAUDE_BIN: fake });
+  // Windows cannot start a .mjs through its first line, so it gets a .cmd wrapper (in a path with a space, like Program Files).
+  let bin = fake;
+  if (process.platform === "win32") { const { mkdirSync } = await import("node:fs"); mkdirSync(join(dir, "with space")); bin = join(dir, "with space", "fake-claude.cmd"); writeFileSync(bin, `@"${process.execPath}" "${fake}" %*\r\n`); }
+  const cfg = cfgFor({ url: "http://127.0.0.1:1" }, { NOU_CLAUDE_BIN: bin });
   const r = await runBot(cfg, cfg.bots[0], msg(3, "Nick", "owner", "@Claude hi"), () => {});
   assert.equal(r.code, 0);
   const o = JSON.parse(readFileSync(outFile, "utf8"));

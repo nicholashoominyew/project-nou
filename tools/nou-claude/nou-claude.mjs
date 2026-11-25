@@ -145,7 +145,7 @@ const q = (s) => (process.platform === "win32" && /[\s"]/.test(s) ? `"${s.replac
 function spawnWithPrompt(cmd, args, env, prompt, timeoutMs, cleanup, log) {
   return new Promise((done) => {
     let out = "";
-    const child = spawn(cmd, args.map(q), { env, shell: process.platform === "win32", windowsHide: true });
+    const child = spawn(q(cmd), args.map(q), { env, shell: process.platform === "win32", windowsHide: true });
     active.add(child);
     const timer = setTimeout(() => { log("Run timed out; stopping it."); killTree(child); }, timeoutMs);
     const finish = (r) => { clearTimeout(timer); active.delete(child); cleanup(); done(r); };
