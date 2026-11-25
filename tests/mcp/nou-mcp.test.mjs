@@ -264,3 +264,14 @@ test("an automatically approved proposal says so; any other still says it is wai
   assert.ok(!/waiting for the person/.test(auto.result.content[0].text));
   assert.match((await call("nou_propose_append_text", { page: "p1", text: "by hand" })).result.content[0].text, /waiting for the person to approve/);
 });
+
+test("asking for transcripts is a proposal under the databases scope, sent as it was asked", async () => {
+  const tool = TOOLS.find((x) => x.name === "nou_propose_extract_transcripts");
+  assert.equal(tool.needs, "databases:write");
+  assert.match(tool.description, /The person approves first/);
+  seen.length = 0;
+  const r = await call("nou_propose_extract_transcripts", { urls: ["https://youtu.be/dQw4w9WgXcQ"], timestamps: true });
+  assert.deepEqual(seen[0].body, { op: "transcripts_extract", payload: { urls: ["https://youtu.be/dQw4w9WgXcQ"], timestamps: true }, summary: "Get transcripts for 1 YouTube address(es)" });
+  assert.match(r.result.content[0].text, /waiting for the person to approve/);
+  assert.match((await call("nou_propose_extract_transcripts", { urls: ["x"], cookie_file: "c" })).result.content[0].text, /Unknown argument: cookie_file/);
+});

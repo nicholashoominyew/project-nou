@@ -41,6 +41,28 @@ fn append(c: &Connection, s: &str, page: &str, text: &str) -> (String, bool) { a
 fn status(c: &Connection, id: &str) -> String { get_proposal(c, id).unwrap().status }
 
 #[test]
+fn the_schema_19_step_keeps_the_automatic_history() {
+    let c = Connection::open_in_memory().unwrap();
+    c.pragma_update(None, "foreign_keys", "ON").unwrap();
+    c.execute_batch(include_str!("../../../../db/notes/001_initial.sql")).unwrap();
+    c.execute("INSERT INTO workspaces(id,title) VALUES('personal','Personal')", []).unwrap();
+    for sql in [include_str!("../../../../db/notes/002_editor_formats.sql"), include_str!("../../../../db/notes/003_page_icons.sql"), include_str!("../../../../db/notes/004_databases.sql"),
+        include_str!("../../../../db/notes/005_page_links.sql"), include_str!("../../../../db/notes/006_gateway.sql"), include_str!("../../../../db/notes/007_linked_todos.sql"), include_str!("../../../../db/notes/008_page_locks.sql"),
+        include_str!("../../../../db/notes/009_bot_chat.sql"), include_str!("../../../../db/notes/010_life_timetable.sql"), include_str!("../../../../db/notes/011_timetable_variants.sql"), include_str!("../../../../db/notes/012_bots_hub.sql"),
+        include_str!("../../../../db/notes/013_chart_views.sql"), include_str!("../../../../db/notes/014_inhouse_chats.sql"), include_str!("../../../../db/notes/015_proposal_ops.sql"), include_str!("../../../../db/notes/016_habits.sql"),
+        include_str!("../../../../db/notes/017_habit_activities.sql"), include_str!("../../../../db/notes/018_auto_approve.sql")] { c.execute_batch(sql).unwrap(); }
+    c.execute("INSERT INTO api_tokens(id,name,token_hash,scopes) VALUES('t','Claude',?1,'[]')", ["a".repeat(64)]).unwrap();
+    c.execute("INSERT INTO proposals(id,token_id,op,payload,summary,dedupe_key,status) VALUES('p','t','append_text','{}','s',?1,'applied')", ["b".repeat(64)]).unwrap();
+    c.execute("INSERT INTO auto_log(proposal_id,rule_id,rule_name,source,op,change_text) VALUES('p','r','Rule','Claude','append_text','Add text')", []).unwrap();
+    c.execute_batch(include_str!("../../../../db/notes/019_transcript_requests.sql")).unwrap();
+    let kept: i64 = c.query_row("SELECT COUNT(*) FROM auto_log l JOIN proposals p ON p.id=l.proposal_id", [], |r| r.get(0)).unwrap();
+    assert_eq!(kept, 1);
+    assert!(!c.prepare("PRAGMA foreign_key_check").unwrap().exists([]).unwrap());
+    c.execute("DELETE FROM proposals WHERE id='p'", []).unwrap();
+    assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM auto_log", [], |r| r.get(0)).unwrap(), 0, "the link to proposals still works");
+}
+
+#[test]
 fn nothing_is_automatic_until_the_feature_is_on_and_a_rule_exists() {
     let c = fresh(); let s = bot(&c, "Claude");
     assert_eq!(switches(&c).unwrap(), Switches { feature_on: false, paused: false });

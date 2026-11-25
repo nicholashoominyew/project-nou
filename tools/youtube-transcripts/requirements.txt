@@ -1,0 +1,5 @@
+youtube-transcript-api>=1.0
+yt-dlp[default]>=2025.11.12
+faster-whisper>=1.1
+# faster-whisper 1.2.1 cannot open audio with PyAV 19
+av>=11,<19

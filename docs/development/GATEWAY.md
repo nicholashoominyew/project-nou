@@ -52,6 +52,8 @@ A single dependency-free Node file (Node 18+) that speaks MCP over stdio and for
 
 A remote client can use the same tools over Streamable HTTP through the separate [MCP gateway](MCP-GATEWAY.md).
 
+Since schema 19 a client can also ask for [YouTube transcripts](YOUTUBE-TRANSCRIPTS.md); that request is always approved by hand.
+
 ## Bots Hub
 Six more scopes give a token access to the Bots Hub: `chat:read` and `chat:write` (rooms, messages, hand-offs, approval cards: `GET` and `POST /v1/chat`, `GET /v1/rooms`), `queue:read` and `queue:write` (the bot queue: `/v1/queue`), and `inhouse:read` and `inhouse:write` (the private chat with the local model, for its runner only). The MCP tools are `nou_chat_read`, `nou_chat_post`, `nou_rooms`, `nou_queue_read`, `nou_queue_item`, `nou_queue_add` and `nou_queue_update`. See [BOTS-HUB.md](BOTS-HUB.md). See `BOT-QUEUE.md`. Messages are plain text, signed with the token's name, rate-limited, and never change notes.
 

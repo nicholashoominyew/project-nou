@@ -9,7 +9,7 @@ use tauri::State;
 use uuid::Uuid;
 
 pub const SCOPES: [&str; 11] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write", "timetable:read", "timetable:write", "home:write"];
-pub const OPS: [&str; 14] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder", "append_embed", "attach_html"];
+pub const OPS: [&str; 15] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder", "append_embed", "attach_html", "transcripts_extract"];
 const MAX_PENDING_PER_TOKEN: i64 = 50;
 const MAX_PAYLOAD: usize = 60_000;
 const EXPIRY: &str = "-7 days";
@@ -89,7 +89,7 @@ pub fn verify_token(c: &Connection, secret: &str) -> Result<Verified, String> {
     }
 }
 
-fn scope_for(op: &str) -> &'static str { match op { "create_row" | "set_value" => "databases:write", "timetable_set_block" | "timetable_add_activity" | "habit_add" | "habit_tick" => "timetable:write", "home_set_widgets" => "home:write", _ => "notes:write" } }
+fn scope_for(op: &str) -> &'static str { match op { "create_row" | "set_value" | "transcripts_extract" => "databases:write", "timetable_set_block" | "timetable_add_activity" | "habit_add" | "habit_tick" => "timetable:write", "home_set_widgets" => "home:write", _ => "notes:write" } }
 
 /// A client asks for a change. This only stores it; it never touches notes. The owner's auto-approve rules (auto.rs) are the one thing
 /// that can mark it approved here, and then the app applies it only after checking them again.
@@ -165,6 +165,13 @@ pub fn mark_applied(c: &Connection, id: &str, ok: bool, result: &str) -> Result<
     get_proposal(c, id)
 }
 
+/// A transcript request is "applied" once its job is queued; when the job ends the app records how it went, which the asking bot reads.
+pub fn set_result(c: &Connection, id: &str, result: &str) -> Result<(), String> {
+    let text: String = result.chars().take(4000).collect();
+    let n = c.execute("UPDATE proposals SET result=?1 WHERE id=?2 AND op='transcripts_extract' AND status='applied'", params![text, id]).map_err(e)?;
+    if n != 1 { return Err("Only an approved transcript request can report its outcome".into()); }
+    audit(c, "app", "transcripts.finished", json!({ "proposal_id": id }))
+}
 pub fn recent_audit(c: &Connection, limit: u32) -> Result<Vec<AuditEntry>, String> {
     let mut s = c.prepare("SELECT id,at,actor,action,detail FROM audit_log ORDER BY id DESC LIMIT ?1").map_err(e)?;
     let it = s.query_map([limit.clamp(1, 500)], |r| { let d: String = r.get(4)?; Ok(AuditEntry { id: r.get(0)?, at: r.get(1)?, actor: r.get(2)?, action: r.get(3)?, detail: serde_json::from_str(&d).unwrap_or(Value::Null) }) }).map_err(e)?;
@@ -188,6 +195,8 @@ pub fn gateway_list_proposals(db: State<'_, Db>, status: Option<String>, limit: 
 pub fn gateway_decide(db: State<'_, Db>, id: String, approve: bool) -> Result<Proposal, String> { let c = db.0.lock().map_err(|_| "Database lock poisoned")?; db.writable()?; decide(&c, &id, approve) }
 #[tauri::command]
 pub fn gateway_mark_applied(db: State<'_, Db>, id: String, ok: bool, result: String) -> Result<Proposal, String> { let c = db.0.lock().map_err(|_| "Database lock poisoned")?; db.writable()?; mark_applied(&c, &id, ok, &result) }
+#[tauri::command]
+pub fn gateway_set_result(db: State<'_, Db>, id: String, result: String) -> Result<(), String> { let c = db.0.lock().map_err(|_| "Database lock poisoned")?; db.writable()?; set_result(&c, &id, &result) }
 #[tauri::command]
 pub fn gateway_audit(db: State<'_, Db>, limit: Option<u32>) -> Result<Vec<AuditEntry>, String> { let c = db.0.lock().map_err(|_| "Database lock poisoned")?; recent_audit(&c, limit.unwrap_or(100)) }
 
@@ -367,5 +376,21 @@ mod tests {
         assert!(propose(&c, &notes.secret, "append_embed", &json!({ "page": "p1", "url": "https://evil.example/a" }), "x").unwrap_err().contains("not on the list"));
         assert!(propose(&c, &notes.secret, "attach_html", &json!({ "page": "p1", "title": "T", "html": "<p>hi</p>" }), "Attach").is_ok());
         let pending: i64 = c.query_row("SELECT COUNT(*) FROM proposals WHERE status='pending'", [], |r| r.get(0)).unwrap(); assert_eq!(pending, 2, "refused requests are never queued");
+    }
+    #[test]
+    fn a_transcript_request_needs_the_databases_write_scope_is_never_automatic_and_reports_its_outcome_once_applied() {
+        let c = fresh();
+        let reader = token(&c, &["notes:write"]);
+        let urls = json!({ "urls": ["https://youtu.be/dQw4w9WgXcQ"] });
+        assert!(propose(&c, &reader.secret, "transcripts_extract", &urls, "x").is_err());
+        let t = token(&c, &["databases:write"]);
+        crate::auto::set_switches(&c, true, false).unwrap();
+        crate::auto::save_rule(&c, crate::auto::Rule { id: String::new(), name: "all".into(), page_id: None, include_subtree: true, ops: crate::auto::AUTO_OPS.iter().map(|o| o.to_string()).collect(), source: None, enabled: true, per_hour: 100 }).unwrap();
+        let p = propose(&c, &t.secret, "transcripts_extract", &urls, "x").unwrap();
+        assert!(!p.auto, "never automatic");
+        assert!(set_result(&c, &p.id, "done").is_err(), "not before the owner approved it");
+        decide(&c, &p.id, true).unwrap(); mark_applied(&c, &p.id, true, "Queued").unwrap();
+        set_result(&c, &p.id, "1 saved").unwrap();
+        assert_eq!(get_proposal(&c, &p.id).unwrap().result.as_deref(), Some("1 saved"));
     }
 }

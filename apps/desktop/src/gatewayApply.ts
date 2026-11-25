@@ -5,6 +5,7 @@ import { DEFAULT_LAYOUT_KEY, HOME_LAYOUT_EVENT, HOME_NEVER_HIDDEN, HOME_WIDGET_I
 import { addActivity, restoreCells, saveRange } from "./timetable/useTimetable";
 import { announceHabits, habitsApi, todayLocal } from "./habitsApi";
 import { HABIT_TYPES, WEEKDAYS } from "./habitsLogic";
+import { parseBotRequest, runBotRequest } from "./youtube";
 import { allowedHosts, clampHeight, hostAllowed, MAX_HEIGHT, MAX_HTML, MIN_HEIGHT, parseEmbedUrl } from "./embed";
 
 /** One request from an outside client, as the gateway stores it. Never trust its shape: every field is re-checked here. */
@@ -22,9 +23,10 @@ export const OP_LABELS: Record<string, string> = {
   timetable_set_block: "Change the Life Timetable", timetable_add_activity: "Add a timetable activity", home_set_widgets: "Show or hide Home sections",
   habit_add: "Add a habit", habit_tick: "Tick a habit for a day", todo_reorder: "Reorder Today's tasks",
   append_embed: "Embed a page in a note", attach_html: "Attach an HTML page to a note",
+  transcripts_extract: "Get YouTube transcripts",
 };
 /** Operations the app can apply today. The others can be viewed and rejected but not approved. */
-export const APPLICABLE_OPS = ["create_page", "rename_page", "set_value", "create_row", "append_text", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder", "append_embed", "attach_html"] as const;
+export const APPLICABLE_OPS = ["create_page", "rename_page", "set_value", "create_row", "append_text", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder", "append_embed", "attach_html", "transcripts_extract"] as const;
 /** An open copy of the page reloads itself, so an approved change shows up without reopening the page. */
 function announceNoteChanged(pageId: string) { try { window.dispatchEvent(new CustomEvent("nou:note-changed", { detail: pageId })); } catch { /* only a refresh hint */ } }
 export const canApply = (op: string) => (APPLICABLE_OPS as readonly string[]).includes(op);
@@ -128,6 +130,7 @@ export function describeProposal(op: string, d: Record<string, unknown>): string
     if (op === "timetable_add_activity") return text(d.name, 80) && CATEGORIES.includes(d.category as string) ? `A new activity “${(d.name as string).trim()}” (${d.category}) will be added to your list. It is not placed on any day.` : null;
     if (op === "append_embed") { const e = parseAppendEmbed(d); return `${e.title ? "“" + e.title + "” (" : "("}${e.host}) will be embedded at the end of the note, ${e.height} pixels tall. It shows live when you are online; if the site refuses to be shown inside NOU you get a card with “Open in new tab”.`; }
     if (op === "attach_html") { const a = parseAttachHtml(d); return `“${a.title}” will be saved with the note as a static copy (${new TextEncoder().encode(a.html).length} bytes) and shown at the end of the note. It works offline, runs in a frame with no network and no access to NOU, and will not update.`; }
+    if (op === "transcripts_extract") { const r = parseBotRequest(d); return `${r.urls.length} YouTube address${r.urls.length === 1 ? "" : "es"} (a playlist or channel can mean many videos) will be fetched on this PC and saved to your Transcripts database${r.alwaysWhisper ? ", always with Whisper" : ""}${r.reextract ? ", replacing any already saved" : ""}.`; }
     if (op === "habit_add") { const h = parseHabitAdd(d); return `A new habit “${h.name}” (${h.category}, ${h.days === 127 ? "every day" : WEEKDAYS.filter((_, i) => h.days & (1 << i)).join(", ")}) will be added. It also appears in the Life Timetable's activities, but is not placed on any day.`; }
     if (op === "habit_tick") { const t = parseHabitTick(d); return `“${t.habit}” will be marked ${t.done ? "done" : "not done (cleared)"} on ${t.day}.`; }
     if (op === "todo_reorder") { const t = parseTodoOrder(d); return `Today's tasks will start with, in this order: ${t.order.map(x => "“" + x.trim() + "”").join(", ")}. The rest keep their order after them.`; }
@@ -142,7 +145,7 @@ export type ApplyAfter = { page?: string; blocks?: AddedBlock[] };
  * Apply an approved proposal through the app's own commands (the same ones a person's edits use), so validation,
  * the restore barrier and backups all still apply. Returns a short result for the audit log; never throws.
  */
-export async function applyProposal(p: Pick<Proposal, "op" | "payload">, after: ApplyAfter = {}): Promise<{ ok: boolean; result: string }> {
+export async function applyProposal(p: Pick<Proposal, "op" | "payload"> & { id?: string }, after: ApplyAfter = {}): Promise<{ ok: boolean; result: string }> {
   const d = p.payload;
   try {
     switch (p.op) {
@@ -235,6 +238,7 @@ export async function applyProposal(p: Pick<Proposal, "op" | "payload">, after: 
         if (out.changed) announceNoteChanged(a.page);
         return { ok: true, result: out.message + " (saved copy of “" + a.title + "”)" };
       }
+      case "transcripts_extract": return { ok: true, result: await runBotRequest(d, p.id) };
       case "habit_add": {
         const h = parseHabitAdd(d);
         const made = await habitsApi.add(h.name, h.days, h.category); announceHabits();

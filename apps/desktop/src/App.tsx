@@ -13,6 +13,7 @@ import ShortcutsHelp from "./ShortcutsHelp";
 import SettingsPage from "./SettingsPage";
 import { OPEN_AUTO, announceAuto, useAutoApply } from "./autoApprove";
 const AutoApprovalPanel=lazy(()=>import("./AutoApprovalPanel"));
+const YouTubePanel=lazy(()=>import("./YouTubePanel"));
 import BotsHub from "./BotsHub";
 import Home from "./Home";
 import QuickCapture from "./QuickCapture";
@@ -73,7 +74,7 @@ export default function App(){
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
  const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [showTimetable,setShowTimetable]=useState(false);const [showHabits,setShowHabits]=useState(false);const [sbQuery,setSbQuery]=useState("");const [showSettings,setShowSettings]=useState(false);const [showBot,setShowBot]=useState(false);const [waiting,setWaiting]=useState(0);const [lockedIds,setLockedIds]=useState<string[]>([]);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
- const [showAuto,setShowAuto]=useState(false);useEffect(()=>{const open=()=>setShowAuto(true);window.addEventListener(OPEN_AUTO,open);return()=>window.removeEventListener(OPEN_AUTO,open)},[]);
+ const [showYouTube,setShowYouTube]=useState(false);const [showAuto,setShowAuto]=useState(false);useEffect(()=>{const open=()=>setShowAuto(true);window.addEventListener(OPEN_AUTO,open);return()=>window.removeEventListener(OPEN_AUTO,open)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -245,6 +246,7 @@ export default function App(){
  const menuPage=menu?pages.find(p=>p.id===menu.id):undefined;
  if(showRecovery)return <Suspense fallback={<p role="status">Opening backups…</p>}><BackupPanel onBusyChange={value=>{markBusy(value)}} onClose={()=>{setShowRecovery(false);setSelected(null);onEditorStatus("saved");void reload().catch(e=>setError(String(e)))}}/></Suspense>;
  if(showAuto)return <Suspense fallback={<p role="status">Opening auto-approval…</p>}><AutoApprovalPanel pages={pages} onClose={()=>setShowAuto(false)} onOpenPage={id=>{setShowAuto(false);openPage(id)}} refresh={reload}/></Suspense>;
+ if(showYouTube)return <Suspense fallback={<p role="status">Opening transcripts…</p>}><YouTubePanel onClose={()=>setShowYouTube(false)} onOpenPage={id=>{setShowYouTube(false);openPage(id)}} refresh={reload}/></Suspense>;
  if(showGateway)return <Suspense fallback={<p role="status">Opening AI access…</p>}><GatewayPanel onClose={()=>setShowGateway(false)}/></Suspense>;
  if(showImport)return <Suspense fallback={<p role="status">Opening import…</p>}><ImportNotePanel onClose={()=>setShowImport(false)} onImported={async id=>{await reload();setShowImport(false);setShowTrash(false);openPage(id)}}/></Suspense>;
  return <EditorFeatures.Provider value={{pages,theme,canNavigate:!guard,open:openPage,create:createChild,upload,uploadFile,onError:e=>setError(String(e)),setPeekBusy:reportPeekBusy}}>
@@ -297,7 +299,7 @@ export default function App(){
    :showHabits?<Suspense fallback={<p role="status">Opening habits…</p>}><HabitsLazy disabled={recoveryBlocked} onOpenTimetable={openTimetable}/></Suspense>
    :showFiles?<Suspense fallback={<p role="status">Opening files…</p>}><FileTracker onOpen={openPage} disabled={guard}/></Suspense>
    :showGraph?<Suspense fallback={<p role="status">Opening graph…</p>}><GraphView pages={pages} onOpen={openPage} disabled={guard}/></Suspense>
-   :current?<div className="document" key={current.id}><div className="toolbar"><nav className="breadcrumb" aria-label="Breadcrumb"><button disabled={guard} onClick={()=>setSelected(null)}>Workspace</button>{crumbs.map((page,i)=><span key={page.id}><span aria-hidden="true"> / </span>{i<crumbs.length-1?<button disabled={guard} onClick={()=>openPage(page.id)}>{page.title}</button>:<span aria-current="page">{page.title}</span>}</span>)}</nav><div className="actions">
+   :current?<div className="document" key={current.id}><div className="toolbar"><nav className="breadcrumb" aria-label="Breadcrumb"><button disabled={guard} onClick={()=>setSelected(null)}>Workspace</button>{crumbs.map((page,i)=><span key={page.id}><span aria-hidden="true"> / </span>{i<crumbs.length-1?<button disabled={guard} onClick={()=>openPage(page.id)}>{page.title}</button>:<span aria-current="page">{page.title}</span>}</span>)}</nav><div className="actions">{current.title==="YouTube Transcripts"&&<button disabled={guard||recoveryBlocked} onClick={()=>setShowYouTube(true)}>Get transcripts</button>}
     <LockButton pageId={current.id} locked={lockedIds.includes(current.id)} disabled={guard||recoveryBlocked} onChanged={()=>void reload().catch(e=>setError(String(e)))}/>
     <button aria-label="Focus mode" title="Focus mode (Ctrl+Shift+F)" onClick={()=>setFocus(true)}>Focus</button>
     {current.id!==inboxId&&<button className="danger" disabled={guard||recoveryBlocked} onClick={()=>{if(window.confirm("Move this page and its subpages to Trash?"))void run(async()=>{await invoke("trash_page",{pageId:current.id});setSelected(null)})}}>Trash</button>}<div id="note-export-host"/>

@@ -57,6 +57,24 @@ export async function removeAddedBlocks(pageId: string, added: AddedBlock[]): Pr
   });
 }
 
+/** Replace everything in a saved note with these blocks (used when a transcript is fetched again). */
+export async function replaceNoteBlocks(pageId: string, blocks: NewBlock[]): Promise<void> {
+  await withNote<void>(pageId, async ed => {
+    const partial = blocks.map(b => b.type === "raw" ? b.block : { type: b.type === "checkListItem" || b.type === "bulletListItem" ? b.type : "paragraph", content: [{ type: "text", text: b.text, styles: {} }] });
+    ed.replaceBlocks(ed.document, partial as never);
+    return { save: true, out: undefined };
+  });
+}
+
+/** The ids of the database blocks in a saved note. Reads only. */
+export async function databaseBlocks(pageId: string): Promise<string[]> {
+  return withNote<string[]>(pageId, async ed => {
+    const found: string[] = [];
+    for (const b of walk(ed.document as readonly AnyBlock[])) if (b.type === "nouDatabase" && typeof b.props?.databaseId === "string" && b.props.databaseId) found.push(b.props.databaseId);
+    return { save: false, out: found };
+  });
+}
+
 /** Load a saved note into a headless editor, let `change` edit it, and save it through the normal save command. */
 async function withNote<T>(pageId: string, change: (ed: BlockNoteEditor<any, any, any>) => Promise<{ save: boolean; out: T }>): Promise<T> {
   const loaded = await invoke<Loaded>("load_note", { pageId });
