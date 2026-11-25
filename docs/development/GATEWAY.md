@@ -2,6 +2,8 @@
 
 Roadmap: Phase 3 (`ROADMAP-PROPOSAL-2026-11-11.md`, draft). Design and threat model: `docs/architecture/ADR-004-approval-gateway.md`. Stacked on `feature/home-page`. Nothing here is merged.
 
+Since schema 18, rules you write can approve some requests without a tap: see [AUTO-APPROVE.md](AUTO-APPROVE.md). Without a rule, everything below is unchanged.
+
 ## What exists
 - **Schema 6** (`db/notes/006_gateway.sql`): `api_tokens` (SHA-256 hashes only), `proposals`, `audit_log` with triggers that refuse UPDATE and DELETE.
 - **Core** (`gateway.rs`): create/list/revoke/verify tokens (scopes `notes:read`, `databases:read`, `notes:write`, `databases:write`); `propose` (scope and operation checks, payload and summary limits, duplicate protection, 50-pending cap); decide once; apply only after approval; 7-day expiry; every step audited.

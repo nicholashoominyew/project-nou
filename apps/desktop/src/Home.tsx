@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icons";
 import type { PageInfo } from "./EditorContext";
 import Approvals from "./Approvals";
+import AutoBar from "./AutoBar";
 import { CardHead, StateDot } from "./HomeBits";
 import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, SunArc, TasksWidget, GoalsWidget, TeachingWidget, WeatherWidget, useWeatherStore, type WeatherStore } from "./HomePanels";
 import NowCard from "./timetable/NowCard";
@@ -97,7 +98,7 @@ export const HOME_WIDGETS: HomeWidget[] = [
   { id: "periods", title: "Year, quarter, month and day", live: true, slot: "row1", render: () => <PeriodsWidget /> },
   { id: "countdowns", title: "Countdowns", slot: "row1", render: () => <CountdownWidget /> },
   { id: "goals", title: "Goals", slot: "row1", render: ctx => <GoalsWidget today={ctx.today} /> },
-  { id: "approvals", title: "Waiting for approval", live: true, slot: "row1", hint: "AI tools can ask; only you can approve", render: ctx => <Approvals disabled={ctx.disabled} refresh={ctx.refresh} /> },
+  { id: "approvals", title: "Waiting for approval", live: true, slot: "row1", hint: "AI tools can ask; you decide, or your rules do", render: ctx => <><AutoBar disabled={ctx.disabled} /><Approvals disabled={ctx.disabled} refresh={ctx.refresh} /></> },
   { id: "recent", title: "Recently edited", live: true, slot: "row2", render: ctx => <RecentWidget ctx={ctx} /> },
   { id: "favorites", title: "Favorites", live: true, slot: "row2", render: ctx => <FavoritesWidget ctx={ctx} /> },
   { id: "resurface", title: "Worth revisiting", slot: "row2", hint: "Old notes, and what you wrote on this day", render: ctx => <ResurfaceWidget ctx={ctx} /> },

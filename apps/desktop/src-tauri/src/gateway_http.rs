@@ -157,7 +157,8 @@ pub fn handle(c: &Connection, req: &ApiRequest, port: u16) -> ApiResponse {
             let Ok(body) = serde_json::from_slice::<Value>(&req.body) else { return fail(400, "The body must be JSON") };
             let (Some(op), Some(payload), Some(summary)) = (body.get("op").and_then(Value::as_str), body.get("payload"), body.get("summary").and_then(Value::as_str)) else { return fail(400, "op, payload and summary are required") };
             match gateway::propose(c, &secret, op, payload, summary) {
-                Ok(p) => reply(if p.existing { 200 } else { 201 }, json!({ "id": p.id, "existing": p.existing, "status": "pending", "note": "A person must approve this in NOU before anything changes." })),
+                Ok(p) if p.auto => reply(if p.existing { 200 } else { 201 }, json!({ "id": p.id, "existing": p.existing, "status": "approved", "auto": true, "note": "Approved automatically by one of the owner's rules. NOU is applying it now." })),
+                Ok(p) => reply(if p.existing { 200 } else { 201 }, json!({ "id": p.id, "existing": p.existing, "status": "pending", "auto": false, "note": "A person must approve this in NOU before anything changes." })),
                 Err(m) if m.contains("lacks") => fail(403, &m),
                 Err(m) if m.starts_with("Too many") => fail(429, &m),
                 Err(m) => fail(400, &m),
@@ -166,7 +167,7 @@ pub fn handle(c: &Connection, req: &ApiRequest, port: u16) -> ApiResponse {
         ("GET", ["v1", "proposals", id]) => {
             // A client may only look at its own proposals.
             match gateway::get_proposal(c, id) {
-                Ok(p) if p.token_id == who.id => reply(200, json!({ "id": p.id, "op": p.op, "status": p.status, "result": p.result, "decided_at": p.decided_at })),
+                Ok(p) if p.token_id == who.id => reply(200, json!({ "id": p.id, "op": p.op, "status": p.status, "result": p.result, "decided_at": p.decided_at, "auto": crate::auto::is_auto(c, id) })),
                 _ => fail(404, "Proposal not found"),
             }
         }
@@ -251,6 +252,8 @@ fn start(app: &AppHandle, port: u16) -> Result<Running, String> {
         if (req.method == "POST" || req.method == "PATCH") && db.writable().is_err() { return fail(503, "NOU is waiting for you to review a restore; try again later"); }
         let guard = db.0.lock();
         let out = match &guard { Ok(c) => handle_request(c, req, p), Err(_) => fail(500, "The database is unavailable") };
+        // Tell the window there is something to apply, so it does not wait for its next look.
+        if out.body.get("auto").and_then(Value::as_bool) == Some(true) && req.method == "POST" { use tauri::Emitter; let _ = handle.emit("auto-approved", ()); }
         out
     });
     let thread = { let stop = stop.clone(); std::thread::spawn(move || serve(server, stop, port, handler)) };

@@ -15,6 +15,9 @@ The plan requires that **every AI- or bot-requested write is explicitly approved
 7. **Expiry.** Pending proposals expire after 7 days; expired proposals cannot be approved.
 8. **Built so far:** storage, token and proposal rules, audit log, a loopback-only opt-in HTTP API, the approval widget and token screen, and appliers for `create_page`, `rename_page`, `set_value`, `create_row`, `append_text` and `add_checklist_item` (note-body edits go through a headless editor bound to the note's Yjs state and the normal save command). An MCP stdio bridge (`tools/nou-mcp`) forwards to the local API.
 
+## Addendum: auto-approval rules (schema 18)
+Decision 2 ("writes always need approval") now has one exception the owner opts into: rules written in the app may approve six page operations that add content (never delete, never overwrite). The rule check happens when the proposal is stored and again before the app applies it; the write path, validation and audit log are the same. See `docs/development/AUTO-APPROVE.md`. Consequence for the threat model: a prompt-injected bot covered by a rule can add content inside that rule's scope up to its hourly limit without a tap, so scope rules narrowly.
+
 ## Threat model (summary)
 - **Prompt injection:** content read through the gateway may contain instructions aimed at the model. Defences: reads are data only; no tool can write without a human decision; the approval screen shows the real operation and target; payload limits; op allow-list.
 - **Stolen token:** limited by scopes, instant revocation, no write without approval, audit trail. Tokens never appear in logs or the UI after creation.

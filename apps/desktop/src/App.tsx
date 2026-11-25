@@ -11,6 +11,8 @@ import {iconNames} from "./iconPaths";
 import {pageDrop,type DropPosition} from "./workspaceModel";
 import ShortcutsHelp from "./ShortcutsHelp";
 import SettingsPage from "./SettingsPage";
+import { OPEN_AUTO, announceAuto, useAutoApply } from "./autoApprove";
+const AutoApprovalPanel=lazy(()=>import("./AutoApprovalPanel"));
 import BotsHub from "./BotsHub";
 import Home from "./Home";
 import QuickCapture from "./QuickCapture";
@@ -71,6 +73,7 @@ export default function App(){
  useEffect(()=>writeSetting("nou-sidebar-open",sidebarOpen),[sidebarOpen]);useEffect(()=>writeSetting("nou-sidebar-width",sidebarWidth),[sidebarWidth]);
  const [backupNotice,setBackupNotice]=useState("");const [iconPicker,setIconPicker]=useState(false);
  const [dragged,setDragged]=useState<string|null>(null);const [dropHint,setDropHint]=useState("");const [quickFind,setQuickFind]=useState(false);const [quickFindText,setQuickFindText]=useState("");const [showShortcuts,setShowShortcuts]=useState(false);const [showGateway,setShowGateway]=useState(false);const [showGraph,setShowGraph]=useState(false);const [showCapture,setShowCapture]=useState(false);const [showFiles,setShowFiles]=useState(false);const [showTimetable,setShowTimetable]=useState(false);const [showHabits,setShowHabits]=useState(false);const [sbQuery,setSbQuery]=useState("");const [showSettings,setShowSettings]=useState(false);const [showBot,setShowBot]=useState(false);const [waiting,setWaiting]=useState(0);const [lockedIds,setLockedIds]=useState<string[]>([]);const [focus,setFocus]=useState(false);const [peekBusy,setPeekBusy]=useState(false);const peekBusyRef=useRef(false);const reportPeekBusy=useCallback((value:boolean)=>{peekBusyRef.current=value;setPeekBusy(value)},[]);
+ const [showAuto,setShowAuto]=useState(false);useEffect(()=>{const open=()=>setShowAuto(true);window.addEventListener(OPEN_AUTO,open);return()=>window.removeEventListener(OPEN_AUTO,open)},[]);
  const pagesRef=useRef<Page[]>([]);pagesRef.current=pages;const closedTabs=useRef<string[]>([]);const nav=useRef({stack:[] as string[],index:-1,skip:false});
  const [zoom,setZoom]=useState<number>(()=>{const z=Number(readSetting<unknown>("nou-zoom",1));return Number.isFinite(z)?Math.min(2,Math.max(0.5,z)):1});
  useEffect(()=>{document.documentElement.style.setProperty("zoom",String(zoom));writeSetting("nou-zoom",zoom)},[zoom]);
@@ -91,6 +94,9 @@ export default function App(){
   setTabs(old=>old.filter(id=>active.some(p=>p.id===id)));setSelected(old=>old&&active.some(p=>p.id===old)?old:null);
  },[]);
  useEffect(()=>{void reload().catch(e=>setError(String(e)))},[reload]);
+ // Applies what the auto-approve rules allow, and keeps the badges. Opening a page clears its badge.
+ const autoUnseen=useAutoApply(recoveryBlocked,reload);
+ useEffect(()=>{if(selected&&autoUnseen.pages.includes(selected))void invoke("auto_seen",{pageId:selected}).then(announceAuto).catch(()=>{})},[selected,autoUnseen]);
  useEffect(()=>{document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme;writeSetting("nou-theme",theme)},[theme]);
  useEffect(()=>writeSetting("nou-open-tabs",tabs),[tabs]);useEffect(()=>writeSetting("nou-active-tab",selected),[selected]);useEffect(()=>writeSetting("nou-collapsed",collapsed),[collapsed]);
  useEffect(()=>{
@@ -221,7 +227,7 @@ export default function App(){
    {editing?<input className="row-rename" aria-label={"Rename "+page.title} autoFocus defaultValue={page.title} onFocus={e=>e.currentTarget.select()}
      onBlur={e=>{if(cancelRename.current){cancelRename.current=false;return}void renamePage(page,e.target.value)}}
      onKeyDown={e=>{if(e.nativeEvent.isComposing)return;if(e.key==="Enter")e.currentTarget.blur();else if(e.key==="Escape"){cancelRename.current=true;setRenaming(null)}}}/>
-   :<button className="tree-page" disabled={guard} onClick={()=>openPage(page.id)} onDoubleClick={()=>{if(editable)setRenaming(page.id)}}><span>{page.title}{lockedIds.includes(page.id)&&<span className="row-lock" title="Locked with a password"><Icon name="lock" size={12}/></span>}</span></button>}
+   :<button className="tree-page" disabled={guard} onClick={()=>openPage(page.id)} onDoubleClick={()=>{if(editable)setRenaming(page.id)}}><span>{page.title}{lockedIds.includes(page.id)&&<span className="row-lock" title="Locked with a password"><Icon name="lock" size={12}/></span>}{autoUnseen.pages.includes(page.id)&&<em className="auto-tag" title="A bot changed this page automatically">AUTO</em>}</span></button>}
    {!editing&&<span className="row-actions">
     <button aria-label={"More options for "+page.title} aria-haspopup="menu" aria-expanded={menu?.id===page.id} disabled={!editable} onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();openMenu(r.left,r.bottom+4)}}>{"\u22EF"}</button>
     <button aria-label={"Add a subpage to "+page.title} title="Add a subpage" disabled={!editable} onClick={()=>void addSubpage(page)}>+</button></span>}
@@ -238,6 +244,7 @@ export default function App(){
  const favorites=pages.filter(p=>p.is_favorite).sort((a,b)=>a.title.localeCompare(b.title));
  const menuPage=menu?pages.find(p=>p.id===menu.id):undefined;
  if(showRecovery)return <Suspense fallback={<p role="status">Opening backups…</p>}><BackupPanel onBusyChange={value=>{markBusy(value)}} onClose={()=>{setShowRecovery(false);setSelected(null);onEditorStatus("saved");void reload().catch(e=>setError(String(e)))}}/></Suspense>;
+ if(showAuto)return <Suspense fallback={<p role="status">Opening auto-approval…</p>}><AutoApprovalPanel pages={pages} onClose={()=>setShowAuto(false)} onOpenPage={id=>{setShowAuto(false);openPage(id)}} refresh={reload}/></Suspense>;
  if(showGateway)return <Suspense fallback={<p role="status">Opening AI access…</p>}><GatewayPanel onClose={()=>setShowGateway(false)}/></Suspense>;
  if(showImport)return <Suspense fallback={<p role="status">Opening import…</p>}><ImportNotePanel onClose={()=>setShowImport(false)} onImported={async id=>{await reload();setShowImport(false);setShowTrash(false);openPage(id)}}/></Suspense>;
  return <EditorFeatures.Provider value={{pages,theme,canNavigate:!guard,open:openPage,create:createChild,upload,uploadFile,onError:e=>setError(String(e)),setPeekBusy:reportPeekBusy}}>
@@ -247,7 +254,7 @@ export default function App(){
     <div className="sb-header-actions"><button aria-label="Close sidebar" title="Close sidebar (Ctrl+\\)" onClick={()=>setSidebarOpen(false)}><Icon name="chevronLeft" size={16}/></button>
      <button aria-label="New page" title="New page (Ctrl+N)" disabled={guard||recoveryBlocked} onClick={()=>void newRootPage()}><Icon name="compose" size={16}/></button></div></div>
    <SidebarSearchBox query={sbQuery} onQuery={setSbQuery} disabled={guard}/>
-   <button className={"sb-item"+(!current&&!showTrash&&!showGraph&&!showFiles&&!showTimetable&&!showHabits&&!showSettings&&!showBot?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowTimetable(false);setShowHabits(false);setShowSettings(false);setShowBot(false)}}><Icon name="home" size={17}/><span>Home</span></button>
+   <button className={"sb-item"+(!current&&!showTrash&&!showGraph&&!showFiles&&!showTimetable&&!showHabits&&!showSettings&&!showBot?" active":"")} disabled={guard} onClick={()=>{setSelected(null);setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowTimetable(false);setShowHabits(false);setShowSettings(false);setShowBot(false)}}><Icon name="home" size={17}/><span>Home</span>{autoUnseen.count>0&&<em className="auto-tag" aria-label={autoUnseen.count+" approved automatically"}>{autoUnseen.count} AUTO</em>}</button>
    <button className={"sb-item"+(showGraph?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowFiles(false);setShowTimetable(false);setShowHabits(false);setShowSettings(false);setShowBot(false);setShowGraph(v=>!v)}}><Icon name="link" size={17}/><span>Graph</span></button>
    <button className={"sb-item"+(!!inboxId&&selected===inboxId&&!showTrash&&!showGraph&&!showFiles&&!showTimetable&&!showHabits&&!showSettings&&!showBot?" active":"")} disabled={guard||(!inboxId&&recoveryBlocked)} onClick={openInboxPage}><Icon name="inbox" size={17}/><span>Inbox</span></button>
    <button className={"sb-item"+(showBot?" active":"")} disabled={guard} onClick={()=>{setShowTrash(false);setShowGraph(false);setShowFiles(false);setShowTimetable(false);setShowHabits(false);setShowSettings(false);setShowBot(v=>!v)}}><Icon name="hub" size={17}/><span>Bots Hub</span>{waiting>0&&<em className="sb-badge" aria-label={waiting+" waiting for you"}>{waiting} WAITING</em>}</button>

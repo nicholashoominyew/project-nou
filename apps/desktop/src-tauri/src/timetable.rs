@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn a_new_database_gets_the_tables_the_system_page_and_both_weeks() {
         let c = fresh();
-        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 17);
+        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 18);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM pages WHERE system_key='life_timetable' AND title='Life Timetable' AND parent_id IS NULL"), 1);
         assert!(count(&c, "SELECT COUNT(*) FROM timetable_activities") >= 30);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM timetable_activities WHERE name LIKE '%alternating%'"), 0, "the old combined activity is not seeded");
@@ -421,7 +421,7 @@ mod tests {
     fn the_upgrade_copies_existing_slots_into_both_weeks_and_splits_the_saturday() {
         let c = v10(false);
         crate::editor::upgrade(&c).unwrap();
-        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 17);
+        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 18);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM timetable_slots WHERE variant='A' AND weekday=0 AND slot_index=18 AND activity_id='w'"), 1);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM timetable_slots WHERE variant='B' AND weekday=0 AND slot_index=18 AND activity_id='w'"), 1, "both weeks keep the edit");
         assert_eq!(names_at(&c, "A", 5, 25), vec!["Dark Sphere"]); assert_eq!(names_at(&c, "B", 5, 25), vec!["Deep learning (library)"]);

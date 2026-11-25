@@ -637,6 +637,21 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 /* ---------- Elementel radius tokens (colour, type and spacing tokens already match the theme above) ---------- */
 :root{--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:10px;--radius-full:999px}
 
+/* Auto-approval: the screen, the Home bar, grouped requests and the badges. Colours and fonts come from the theme. */
+.auto-screen{max-width:820px;margin:0 auto;padding:24px}.auto-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.auto-card{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:16px 18px;margin-top:12px;display:flex;flex-direction:column;gap:10px}.auto-card h2{margin:0;font-size:15px}.auto-screen .hint{margin:0}
+.auto-switch{display:flex;align-items:center;gap:8px;font-size:14px}.auto-switch input,.auto-card input[type=checkbox]{accent-color:var(--accent)}
+.auto-rules,.auto-recent{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}.auto-rules li,.auto-recent li{border:1px solid var(--line);border-radius:6px;background:var(--card);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.auto-meta,.auto-state{font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;color:var(--muted)}
+.auto-actions,.approval-bulk,.auto-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.auto-screen button,.auto-bar button,.approval-bulk button{min-height:32px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px}
+.auto-screen button.auto-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);align-self:flex-start}.auto-screen button:disabled{opacity:.5}.auto-screen button.link-button{border:0;background:transparent;color:var(--accent);padding:0}
+.auto-form{display:flex;flex-direction:column;gap:10px}.auto-form label:not(.auto-switch){display:flex;flex-direction:column;gap:4px;font-size:13px}.auto-form input:not([type=checkbox]),.auto-form select{min-height:34px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:inherit;font-size:13px}
+.auto-form fieldset{border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;gap:6px}.auto-form small{color:var(--muted)}
+.auto-bar{justify-content:space-between;margin-bottom:10px;font-size:13px}
+.auto-tag{margin-left:6px;font:600 9px var(--font-mono);letter-spacing:.1em;font-style:normal;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:0 4px;vertical-align:middle}
+.approval-group details{margin:6px 0}.approval-group summary{cursor:pointer;font-size:13px;color:var(--muted)}
+
 /* ---------- Bots Hub: three panels (collaboration room, in-house chat, bot queue). Elementel: borders not shadows, status = dot + word, mono uppercase labels, one accent fill (Send). ---------- */
 .hub-page{max-width:1240px;margin:0 auto;box-sizing:border-box;padding:32px 48px 48px;display:block}
 .hub-page :focus-visible{outline:2px solid var(--accent);outline-offset:2px}

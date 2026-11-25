@@ -27,7 +27,7 @@ The gateway refuses to start if the two are equal or if the gateway token looks 
 
 ## What is offered
 
-Tool names, descriptions, argument checks and answers come from the stdio bridge, so both behave the same. Only **reads** and **proposals** are offered (25 tools at the time of writing, including `nou_timetable_read`). There is no approve or apply tool, and NOU's API has no route that does either: you approve each change inside NOU.
+Tool names, descriptions, argument checks and answers come from the stdio bridge, so both behave the same. Only **reads** and **proposals** are offered (25 tools at the time of writing, including `nou_timetable_read`). There is no approve or apply tool, and NOU's API has no route that does either: you approve each change inside NOU, unless an auto-approve rule you wrote covers it ([AUTO-APPROVE.md](AUTO-APPROVE.md)). Pick the bot in each rule so that a rule meant for a local one does not cover this remote one.
 
 The three stdio tools that write to the Bots Hub at once (`nou_chat_post`, `nou_queue_add`, `nou_queue_update`) change no note but are not approved by anyone, so they are **off**. `NOU_GATEWAY_ALLOW_HUB_WRITES=1` turns them on if you decide the remote assistant may post. A tool added to the bridge later is offered only if it reads or proposes.
 

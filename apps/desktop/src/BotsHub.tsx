@@ -77,7 +77,7 @@ export default function BotsHub({ disabled, pages = [], openPage = () => {}, onT
   if (full) return <div className="document bot-screen hub-page">
     <button type="button" className="hub-back" onClick={() => setFull(false)}>← Bots Hub</button>
     <h1 className="hub-title">Full queue</h1>
-    <p className="hub-sub">What AI tools have asked to change in your notes. Each request shows exactly what it would do; only you can approve it.</p>
+    <p className="hub-sub">What AI tools have asked to change in your notes. Each request shows exactly what it would do; it waits for you unless a rule you wrote covers it.</p>
     <section className="hub-fullqueue" aria-label="Full queue"><Approvals disabled={!!disabled} refresh={refresh} /></section>
   </div>;
 

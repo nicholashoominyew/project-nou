@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
-import { appendBlocksToNote } from "./noteAppend";
+import { appendBlocksToNote, type AddedBlock } from "./noteAppend";
 import { DEFAULT_LAYOUT_KEY, HOME_LAYOUT_EVENT, HOME_NEVER_HIDDEN, HOME_WIDGET_IDS, HOME_WIDGET_INFO, normalizeLayout, setWidgetHidden } from "./homeLayout";
 import { addActivity, restoreCells, saveRange } from "./timetable/useTimetable";
 import { announceHabits, habitsApi, todayLocal } from "./habitsApi";
@@ -136,11 +136,13 @@ export function describeProposal(op: string, d: Record<string, unknown>): string
   return null;
 }
 
+/** What was made, for undo: a new page or row, or the blocks added to a note. Filled in while applying. */
+export type ApplyAfter = { page?: string; blocks?: AddedBlock[] };
 /**
  * Apply an approved proposal through the app's own commands (the same ones a person's edits use), so validation,
  * the restore barrier and backups all still apply. Returns a short result for the audit log; never throws.
  */
-export async function applyProposal(p: Pick<Proposal, "op" | "payload">): Promise<{ ok: boolean; result: string }> {
+export async function applyProposal(p: Pick<Proposal, "op" | "payload">, after: ApplyAfter = {}): Promise<{ ok: boolean; result: string }> {
   const d = p.payload;
   try {
     switch (p.op) {
@@ -148,6 +150,7 @@ export async function applyProposal(p: Pick<Proposal, "op" | "payload">): Promis
         if (!text(d.title, 200)) throw new Error("The title is missing or too long");
         if (d.parent !== undefined && !id(d.parent)) throw new Error("The parent page id is invalid");
         const page = await invoke<{ id: string }>("create_page", { parentId: (d.parent as string | undefined) ?? null, title: (d.title as string).trim(), initialUpdate: await newRichUpdate() });
+        after.page = page.id;
         return { ok: true, result: "Created page " + page.id };
       }
       case "rename_page": {
@@ -166,6 +169,7 @@ export async function applyProposal(p: Pick<Proposal, "op" | "payload">): Promis
         const values = d.values === undefined ? {} : d.values;
         if (!values || typeof values !== "object" || Array.isArray(values)) throw new Error("The values must be an object");
         const row = await invoke<{ id: string }>("add_row", { databaseId: d.database, initialUpdate: await newRichUpdate() });
+        after.page = row.id;
         if (typeof d.title === "string") await invoke("rename_page", { pageId: row.id, title: d.title.trim() });
         for (const [property, value] of Object.entries(values as Record<string, unknown>)) await invoke("set_value", { rowId: row.id, propertyId: property, value });
         return { ok: true, result: "Added row " + row.id };
@@ -177,7 +181,7 @@ export async function applyProposal(p: Pick<Proposal, "op" | "payload">): Promis
         const lines = d.text.split(/\r?\n/).map(l => l.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim()).filter(Boolean);
         if (!lines.length) throw new Error("There is no text to add");
         if (lines.length > 200 || lines.some(l => l.length > 2000)) throw new Error("The text has too many lines (200) or a line over 2,000 characters");
-        const out = await appendBlocksToNote(d.page as string, lines.map(text => ({ type: "paragraph" as const, text })));
+        const out = await appendBlocksToNote(d.page as string, lines.map(text => ({ type: "paragraph" as const, text })), after.blocks = []);
         if (out.changed) announceNoteChanged(d.page as string);
         return { ok: true, result: out.message };
       }
@@ -185,7 +189,7 @@ export async function applyProposal(p: Pick<Proposal, "op" | "payload">): Promis
         if (!id(d.page)) throw new Error("The page id is invalid");
         if (!text(d.text, 500) || /[\r\n]/.test(d.text as string)) throw new Error("A to-do must be one line of up to 500 characters");
         if (d.checked !== undefined && typeof d.checked !== "boolean") throw new Error("checked must be true or false");
-        const out = await appendBlocksToNote(d.page as string, [{ type: "checkListItem", text: (d.text as string).trim(), checked: d.checked === true }]);
+        const out = await appendBlocksToNote(d.page as string, [{ type: "checkListItem", text: (d.text as string).trim(), checked: d.checked === true }], after.blocks = []);
         if (out.changed) announceNoteChanged(d.page as string);
         return { ok: true, result: out.message };
       }

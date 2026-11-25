@@ -1,4 +1,5 @@
 import { Icon } from "./Icons";
+import { openAutoScreen } from "./autoApprove";
 import ReminderSettings from "./timetable/ReminderSettings";
 import EmbedSettings from "./EmbedSettings";
 
@@ -10,6 +11,7 @@ export default function SettingsPage({ trashedCount, disabled, readOnly, onBacku
     { icon: "archive", title: "Backups & restore", text: "Make a backup of your notes, restore from one, or set up automatic and encrypted backups.", action: "Open", run: onBackups, off: disabled },
     { icon: "import", title: "Import a recovered note", text: "Bring back a note from a recovery file you exported earlier. The note is added as a new page.", action: "Import…", run: onImport, off: disabled || readOnly },
     { icon: "trash", title: "Trash", text: "Pages you deleted stay here until you restore them. Restoring a page also restores its subpages deleted at the same time.", action: "Open trash", run: onTrash, off: disabled, meta: String(trashedCount) },
+    { icon: "check", title: "Auto-approval", text: "Let small changes from bots apply by themselves, by rules you write. See what was approved and undo it.", action: "Rules", run: openAutoScreen, off: disabled },
     { icon: "link", title: "AI access", text: "Give an AI tool a token so it can read what you allow and ask for changes. You approve each change.", action: "Manage", run: onAccess, off: false },
   ];
   return <div className="document settings-screen">

@@ -27,7 +27,7 @@ pub struct Verified { pub id: String, pub name: String, pub scopes: Vec<String> 
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct Proposal { pub id: String, pub token_id: String, pub token_name: String, pub op: String, pub payload: Value, pub summary: String, pub status: String, pub created_at: String, pub decided_at: Option<String>, pub applied_at: Option<String>, pub result: Option<String> }
 #[derive(Serialize, Debug, PartialEq)]
-pub struct Proposed { pub id: String, pub existing: bool }
+pub struct Proposed { pub id: String, pub existing: bool, pub auto: bool }
 #[derive(Serialize, Debug)]
 pub struct AuditEntry { pub id: i64, pub at: String, pub actor: String, pub action: String, pub detail: Value }
 
@@ -91,7 +91,8 @@ pub fn verify_token(c: &Connection, secret: &str) -> Result<Verified, String> {
 
 fn scope_for(op: &str) -> &'static str { match op { "create_row" | "set_value" => "databases:write", "timetable_set_block" | "timetable_add_activity" | "habit_add" | "habit_tick" => "timetable:write", "home_set_widgets" => "home:write", _ => "notes:write" } }
 
-/// A client asks for a change. This only queues it; it never touches notes.
+/// A client asks for a change. This only stores it; it never touches notes. The owner's auto-approve rules (auto.rs) are the one thing
+/// that can mark it approved here, and then the app applies it only after checking them again.
 pub fn propose(c: &Connection, secret: &str, op: &str, payload: &Value, summary: &str) -> Result<Proposed, String> {
     let who = verify_token(c, secret)?;
     if !OPS.contains(&op) { return Err(format!("Unsupported operation: {op}")); }
@@ -103,15 +104,16 @@ pub fn propose(c: &Connection, secret: &str, op: &str, payload: &Value, summary:
     let summary = summary.split_whitespace().collect::<Vec<_>>().join(" ");
     if summary.is_empty() || summary.chars().count() > 500 || summary.chars().any(char::is_control) { return Err("A summary of 1 to 500 characters is required".into()); }
     let key = sha256_hex(format!("{op}\n{body}").as_bytes());
-    // The same pending request from the same token is returned, not duplicated.
-    let existing: Option<String> = c.query_row("SELECT id FROM proposals WHERE token_id=?1 AND dedupe_key=?2 AND status='pending'", params![who.id, key], |r| r.get(0)).optional().map_err(e)?;
-    if let Some(id) = existing { return Ok(Proposed { id, existing: true }); }
+    // The same request from the same token, still waiting (for the owner, or to be applied automatically), is returned, not duplicated.
+    let existing: Option<String> = c.query_row("SELECT id FROM proposals WHERE token_id=?1 AND dedupe_key=?2 AND (status='pending' OR (status='approved' AND EXISTS(SELECT 1 FROM auto_log WHERE proposal_id=proposals.id)))", params![who.id, key], |r| r.get(0)).optional().map_err(e)?;
+    if let Some(id) = existing { let auto = crate::auto::is_auto(c, &id); return Ok(Proposed { id, existing: true, auto }); }
     let pending: i64 = c.query_row("SELECT COUNT(*) FROM proposals WHERE token_id=?1 AND status='pending'", [&who.id], |r| r.get(0)).map_err(e)?;
     if pending >= MAX_PENDING_PER_TOKEN { return Err("Too many pending proposals for this token; approve or reject some first".into()); }
     let id = Uuid::new_v4().to_string();
     c.execute("INSERT INTO proposals(id,token_id,op,payload,summary,dedupe_key) VALUES(?1,?2,?3,?4,?5,?6)", params![id, who.id, op, body, summary, key]).map_err(e)?;
     audit(c, &format!("token:{}", who.id), "proposal.created", json!({ "proposal_id": id, "op": op }))?;
-    Ok(Proposed { id, existing: false })
+    let auto = crate::auto::on_proposed(c, &id, &who.name, op, payload)?;
+    Ok(Proposed { id, existing: false, auto })
 }
 
 fn proposal_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Proposal> {
@@ -159,6 +161,7 @@ pub fn mark_applied(c: &Connection, id: &str, ok: bool, result: &str) -> Result<
     let text: String = result.chars().take(4000).collect();
     c.execute("UPDATE proposals SET status=?1,applied_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),result=?2 WHERE id=?3", params![if ok { "applied" } else { "failed" }, text, id]).map_err(e)?;
     audit(c, "app", if ok { "proposal.applied" } else { "proposal.failed" }, json!({ "proposal_id": id, "op": current.op }))?;
+    if ok { crate::auto::note_created(c, &current, result)?; }
     get_proposal(c, id)
 }
 
@@ -332,18 +335,17 @@ mod tests {
             include_str!("../../../../db/notes/014_inhouse_chats.sql")] { c.execute_batch(sql).unwrap(); }
         assert_eq!(c.query_row::<i64, _, _>("SELECT MAX(version) FROM schema_migrations", [], |r| r.get(0)).unwrap(), 14);
         let t = token(&c, &["notes:write"]);
-        let p = propose(&c, &t.secret, "create_page", &json!({ "title": "Old request" }), "Create Old request").unwrap();
-        gateway_decide_for_test(&c, &p.id);
+        // Written as the app of that time stored it (propose() now needs the newest schema, which the app upgrades to before it listens).
+        c.execute("INSERT INTO proposals(id,token_id,op,payload,summary,dedupe_key,status) VALUES('old',?1,'create_page','{\"title\":\"Old request\"}','Create Old request',?2,'approved')", params![t.info.id, "f".repeat(64)]).unwrap();
         assert!(c.execute("INSERT INTO proposals(id,token_id,op,payload,summary,dedupe_key) VALUES('x',?1,'home_set_widgets','{}','s',?2)", params![t.info.id, "0".repeat(64)]).is_err(), "schema 14 refuses the new operation");
         c.execute_batch(include_str!("../../../../db/notes/015_proposal_ops.sql")).unwrap();
-        let old = get_proposal(&c, &p.id).unwrap();
+        let old = get_proposal(&c, "old").unwrap();
         assert_eq!((old.op.as_str(), old.status.as_str(), old.summary.as_str(), old.payload["title"].as_str()), ("create_page", "approved", "Create Old request", Some("Old request")), "the old proposal is unchanged");
         c.execute("INSERT INTO proposals(id,token_id,op,payload,summary,dedupe_key) VALUES('y',?1,'home_set_widgets','{}','s',?2)", params![t.info.id, "1".repeat(64)]).unwrap();
         assert!(c.execute("INSERT INTO proposals(id,token_id,op,payload,summary,dedupe_key) VALUES('z',?1,'drop_everything','{}','s',?2)", params![t.info.id, "2".repeat(64)]).is_err(), "an unknown operation is still refused by the table");
         let indexes: i64 = c.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='proposals' AND name IN ('proposals_status','proposals_dedupe')", [], |r| r.get(0)).unwrap();
         assert_eq!(indexes, 2); assert!(c.prepare("PRAGMA foreign_key_check").unwrap().exists([]).map(|b| !b).unwrap());
     }
-    fn gateway_decide_for_test(c: &Connection, id: &str) { decide(c, id, true).unwrap(); }
 
     #[test]
     fn habit_and_task_requests_use_the_timetable_and_notes_scopes() {
