@@ -3,6 +3,7 @@ import { save as chooseSavePath } from "@tauri-apps/plugin-dialog";
 import { exportNote } from "./noteTransfer";
 import { createPortal } from "react-dom";
 import {useEditorFeatures} from "./EditorContext";
+import { copyBlockLink, parseBlockLink, revealBlock } from "./blockLink";
 import {DismissibleDetails} from "./Dismissible";
 import {filterSuggestionItems,insertOrUpdateBlockForSlashMenu} from "@blocknote/core/extensions";
 import {Icon} from "./Icons";
@@ -28,7 +29,16 @@ type Session = { doc: Y.Doc; loaded: Loaded; queue: SaveQueue };
 
 function RichEditor({ session, pageId, disabled, onChange }: { session: Session; pageId: string; disabled: boolean; onChange: (text: string, ids?:string[]) => void }) {
   const context=useEditorFeatures();const [pending,setPending]=useState(false);
-  const editor = useCreateBlockNote(withCollaboration({ schema: noteSchema, collaboration: {
+  const latest=useRef(context);latest.current=context;
+  /** A click on a link: a link to a block opens that page at the block; any other link opens as it always did. */
+  function followLink(event:MouseEvent){
+    const link=(event.target as HTMLElement|null)?.closest<HTMLAnchorElement>("a[href]");if(!link)return false;
+    const to=parseBlockLink(link.href);if(!to){window.open(link.href,link.target||"_blank");return true}
+    const now=latest.current;
+    if(to.pageId!==pageId){if(!now.pages.some(p=>p.id===to.pageId)){now.onError("That page no longer exists.");return true}now.open(to.pageId)}
+    revealBlock(to.blockId);return true;
+  }
+  const editor = useCreateBlockNote(withCollaboration({ schema: noteSchema, links: { onClick: followLink }, collaboration: {
     fragment: session.doc.getXmlFragment(FRAGMENT), user: { name: "Local user", color: "#52675a" },
   } }), [session]);
   const blockFor=(info:{id:string;name:string;mime:string})=>({type:info.mime.startsWith("image/")?"nouImage":info.mime==="application/pdf"?"nouPdf":"nouFile",props:{fileId:info.id,name:info.name}}) as never;
@@ -146,10 +156,16 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     {title:"PDF",icon:<Icon name="pdf" size={18}/>,aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
     {title:"File",icon:<Icon name="attachment" size={18}/>,aliases:["file","attachment","html","upload"],group:"NOU",onItemClick:()=>void create("file")}
   ];
-  return <div className={"editor-drop"+(over?" over":"")} onKeyDown={e=>{if(shouldTrapTab(e))e.preventDefault()}} onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateBlock()}else if(isHighlightShortcut(e)){e.preventDefault();applyHighlight()}}}
+  /** A pasted link to a block reads as "Link to block in <page>" instead of the address. */
+  function pasteBlockLink(e:React.ClipboardEvent):boolean{
+   const text=e.clipboardData.getData("text/plain").trim();const to=parseBlockLink(text);if(!to)return false;
+   const title=context.pages.find(p=>p.id===to.pageId)?.title;
+   e.preventDefault();e.stopPropagation();editor.insertInlineContent([{type:"link",href:text,content:"Link to block"+(title?" in "+title:"")}] as never);return true;
+  }
+  return <div className={"editor-drop"+(over?" over":"")} onKeyDown={e=>{if(shouldTrapTab(e))e.preventDefault()}} onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateBlock()}else if(e.altKey&&e.shiftKey&&!e.ctrlKey&&!e.metaKey&&e.code==="KeyL"){e.preventDefault();void copyBlockLink(pageId,editor.getTextCursorPosition().block.id).catch(()=>context.onError("The link could not be copied."))}else if(isHighlightShortcut(e)){e.preventDefault();applyHighlight()}}}
     onDragOverCapture={e=>{if(hasFiles(e)){e.preventDefault();e.dataTransfer.dropEffect=disabled?"none":"copy";setOver(!disabled)}}}
     onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
-    onPasteCapture={e=>{if(!disabled&&!pending&&pasteEmbed(e))return;const images=pastedImages(e.clipboardData);if(!images.length)return;e.preventDefault();e.stopPropagation();if(disabled)return;void insertPasted(images)}}
+    onPasteCapture={e=>{if(!disabled&&!pending&&(pasteBlockLink(e)||pasteEmbed(e)))return;const images=pastedImages(e.clipboardData);if(!images.length)return;e.preventDefault();e.stopPropagation();if(disabled)return;void insertPasted(images)}}
     onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
   <PageIdContext.Provider value={pageId}><BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} sideMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
     <SuggestionMenuController triggerCharacter="/" getItems={async query=>{const linked=wantsExistingDatabases(query)?await linkedDatabaseItems():[];const todos=wantsExistingTodos(query)?await linkedTodoItems():[];return filterSuggestionItems([...items(),...linked,...todos],query)}}/>

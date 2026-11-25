@@ -4,6 +4,7 @@ import { BlockColorsItem, DragHandleMenu, SideMenu, TableColumnHeaderItem, Table
 import { appendBlocksToNote } from "./noteAppend";
 import { useEditorFeatures } from "./EditorContext";
 import { Icon } from "./Icons";
+import { copyBlockLink } from "./blockLink";
 import { BOX_COLORS, BOX_COLOR_HEX, TURN_INTO, boxColor, canTurnInto, copyBlock, matchesAction, type AnyBlock } from "./blockOps";
 import { FROM_LINKED, canLink, fromLinked, toLinked } from "./linkedConvert";
 
@@ -77,6 +78,7 @@ function NouMenuItems() {
   const turn = [...textTurn, ...toLinkedItem, ...fromLinkedItems];
   const duplicate = () => editor.insertBlocks([copyBlock(block)] as never, block as never, "after");
   const remove = () => { const picked = editor.getSelection()?.blocks; editor.removeBlocks(picked && picked.some(b => b.id === block.id) ? picked : [block as never]); };
+  const copyLink = () => void copyBlockLink(pageId, block.id!).catch(() => features.onError("The link could not be copied."));
   const moveTo = async (target: { id: string; title: string }) => {
     try {
       await appendBlocksToNote(target.id, [{ type: "raw", block: copyBlock(block) }]);
@@ -93,6 +95,7 @@ function NouMenuItems() {
       ...BOX_COLORS.map(c => ({ id: "fill-" + c, label: "Box fill: " + capitalise(c), keys: ["fill", "background", "colour", "color", c], checked: boxColor(block.props?.boxFill) === c, swatch: BOX_COLOR_HEX[c], run: () => update({ boxFill: c }) })),
     ] : []),
     ...turn,
+    { id: "link", icon: "link", label: "Copy link to block", keys: ["copy", "link", "url", "address"], hint: "Alt+Shift+L", run: copyLink },
     { id: "dup", icon: "duplicate", label: "Duplicate", keys: ["copy", "clone"], hint: "Ctrl+D", run: duplicate },
     ...pages.map(p => ({ id: "move-" + p.id, icon: "move", label: "Move to " + (p.title || "Untitled"), keys: ["move", "send"], run: () => void moveTo(p) })),
     { id: "del", icon: "trash", label: "Delete", keys: ["remove", "trash"], hint: "Del", run: remove },
@@ -118,6 +121,7 @@ function NouMenuItems() {
       {turn.length > 0 && <Sub icon="turn" label="Turn into">{turn.map(t => <Row key={t.id} i={{ ...t, icon: undefined, label: t.shortLabel }} />)}</Sub>}
       <BlockColorsItem><span className="nou-menu-row"><span className="nou-menu-icon"><Icon name="palette" size={15} /></span><span>Color</span></span></BlockColorsItem>
       <Components.Generic.Menu.Divider />
+      <Row i={flat.find(i => i.id === "link")!} />
       <Row i={flat.find(i => i.id === "dup")!} />
       <Sub icon="move" label="Move to…">
         <div className="nou-menu-search"><input aria-label="Find a page to move to" placeholder="Find a page…" value={moveQuery} onChange={e => setMoveQuery(e.target.value)} onKeyDown={e => { if (e.key !== "Escape") e.stopPropagation(); }} /></div>
