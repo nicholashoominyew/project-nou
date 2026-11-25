@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import HabitDetail from "./HabitDetail";
-import { announceHabits, habitsApi, testCheckin, type ImportRow } from "./habitsApi";
-import { addDays, appliesOn, slotRange, habitRate, HABIT_TYPES, heatCells, heatLayout, logKey, maskLabel, monthGrid, parseDay, progressOn, rangeStats, streaks, WEEKDAYS, weekBlocks, type Habit, type LogState } from "./habitsLogic";
+import { announceHabits, habitsApi, loadTargets, saveTargets, testCheckin, type ImportRow } from "./habitsApi";
+import { addDays, appliesOn, slotRange, habitRate, HABIT_TYPES, heatCells, heatLayout, logKey, maskLabel, monthGrid, parseDay, progressOn, rangeStats, streaks, targetOn, usualOn, WEEKDAYS, weekBlocks, withDay, withUsual, type Habit, type LogState, type Targets } from "./habitsLogic";
 import { GRIP, useReorder } from "./Reorder";
 import { pushUndo } from "./undo";
 import { useCheckinData, useHabits } from "./useHabits";
@@ -22,7 +22,7 @@ const Chips = ({ mask, label, disabled, onToggle }: { mask: number; label: strin
  * and a collapsed list of habits to manage. A circle ticks or clears the day; anything not done by the end of the day counts as not done.
  */
 export default function Habits({ disabled, onOpenTimetable }: { disabled?: boolean; onOpenTimetable?: () => void }) {
-  const { habits, log, today, error, reload, setError } = useHabits();
+  const { habits, log, targets, today, error, reload, setError } = useHabits();
   const { checkins } = useCheckinData();
   const { activities } = useTimetable();
   const blocksOf = (h: Habit) => checkins.filter(k => k.habit_id === h.id);
@@ -51,6 +51,10 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
     void run(async () => { await habitsApi.set(day, habit.id, state); pushUndo(`${state ? "Ticked" : "Cleared"} ${habit.name} on ${dayLabel(day)}`, async () => { await habitsApi.set(day, habit.id, restore); announceHabits(); }, async () => { await habitsApi.set(day, habit.id, state); announceHabits(); }); });
   };
   const toggle = (day: string, h: Habit) => setCell(day, h, nextState(log.get(logKey(day, h.id))?.state));
+  const setTargets = (next: Targets, label: string) => {
+    const was = loadTargets();
+    void run(async () => { saveTargets(next); pushUndo(label, async () => saveTargets(was), async () => saveTargets(next)); });
+  };
   const addHabit = () => void run(async () => {
     const [n, m, t] = [name, mask, type]; const made = await habitsApi.add(n, m, t); setName(""); setMask(127);
     let id = made.id; // adding the same name again brings the same habit (and its history) back
@@ -80,10 +84,20 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
   // ---- numbers ----
   const scheduled = list.filter(h => appliesOn(h, today));
   const doneToday = scheduled.filter(h => log.get(logKey(today, h.id))?.state === "done").length;
-  const share = scheduled.length ? doneToday / scheduled.length : 0;
+  const needed = progressOn(list, log, today, targets).total;
+  const share = needed ? Math.min(doneToday / needed, 1) : 0;
+  const usual = usualOn(targets, today);
+  const usingTargets = targets.usual.some(u => u.n > 0) || Object.values(targets.days).some(n => n > 0);
+  const choices = (current: number) => Array.from({ length: Math.max(list.length, current) }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>);
+  /** One day's own number: the usual one, every habit, or a number. */
+  const daySelect = (day: string, label: string) => {
+    const own = targets.days[day], plain = usualOn(targets, day);
+    return <select aria-label={label} disabled={disabled} value={own === undefined ? "" : String(own)} onChange={e => setTargets(withDay(targets, day, e.target.value === "" ? null : Number(e.target.value)), `Target for ${dayLabel(day)}`)}>
+      <option value="">Usual ({plain || "every habit"})</option><option value="0">Every habit</option>{choices(targetOn(targets, day))}</select>;
+  };
   const circ = 2 * Math.PI * 40;
-  const stats = rangeStats(list, log, today, range);
-  const weeks = weekBlocks(list, log, today, 8);
+  const stats = rangeStats(list, log, today, range, targets);
+  const weeks = weekBlocks(list, log, today, 8, targets);
   const lay = heatLayout(range);
   const shown = Math.min(31 * 12, 14 + 30 * extra);
   const tableDays = Array.from({ length: shown }, (_, i) => addDays(today, -i));
@@ -98,10 +112,10 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
 
     <section className="hx-rise hx-card hx-today" style={{ animationDelay: "120ms" }} aria-label="Today">
       <div className="hx-today-left">
-        <div className="hx-ring"><svg width="96" height="96" viewBox="0 0 96 96" fill="none" role="img" aria-label={`${doneToday} of ${scheduled.length} habits done today`}><circle cx="48" cy="48" r="40" stroke="var(--line)" strokeWidth="8" /><circle cx="48" cy="48" r="40" stroke="var(--accent)" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(share * circ).toFixed(1)} ${circ.toFixed(1)}`} transform="rotate(-90 48 48)" className="hx-ring-arc" /></svg>
-          <div className="hx-num hx-ring-num">{doneToday}/{scheduled.length}</div></div>
+        <div className="hx-ring"><svg width="96" height="96" viewBox="0 0 96 96" fill="none" role="img" aria-label={`${doneToday} of ${needed} habits done today`}><circle cx="48" cy="48" r="40" stroke="var(--line)" strokeWidth="8" /><circle cx="48" cy="48" r="40" stroke="var(--accent)" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(share * circ).toFixed(1)} ${circ.toFixed(1)}`} transform="rotate(-90 48 48)" className="hx-ring-arc" /></svg>
+          <div className="hx-num hx-ring-num">{doneToday}/{needed}</div></div>
         <div className="hx-today-text"><span className="hx-mono">TODAY</span><span className="hx-today-date">{dayLabel(today)}</span>
-          {scheduled.length > 0 && doneToday === scheduled.length && <span className="hx-mono hx-alldone"><span className="hx-dot hx-ping" />ALL DONE</span>}</div>
+          {needed > 0 && doneToday >= needed && <span className="hx-mono hx-alldone"><span className="hx-dot hx-ping" />{doneToday === scheduled.length ? "ALL DONE" : "TARGET MET"}</span>}</div>
       </div>
       <div className="hx-circles">
         {habits === null && <span className="hint">Loading…</span>}
@@ -111,6 +125,12 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
           return <button key={h.id} type="button" className="hx-circle-btn" aria-pressed={on} aria-label={(on ? "Mark not done: " : "Mark done: ") + h.name} disabled={disabled} onClick={() => setCell(today, h, on ? null : "done")}>
             <span className={"hx-circle" + (on ? " on" : "")}>{on && <Check size={22} className="hx-pop" />}</span><span className={"hx-circle-name" + (on ? " on" : "")}>{h.name}</span></button>; })}
       </div>
+      {list.length > 0 && <div className="hx-target" role="group" aria-label="Habits needed for 100%">
+        <span className="hx-mono">NEEDED FOR 100%</span>
+        <label>Today {daySelect(today, "Needed today")}</label>
+        <label>Usually <select aria-label="Usually needed" disabled={disabled} value={String(usual)} onChange={e => setTargets(withUsual(targets, today, Number(e.target.value)), "Usual target")}>
+          <option value="0">Every habit</option>{choices(usual)}</select></label>
+      </div>}
     </section>
 
     <section className="hx-rise hx-card hx-streaks" style={{ animationDelay: "210ms" }} aria-label="Streaks">
@@ -119,7 +139,7 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
           <div className="hx-seg" role="group" aria-label="Range">{([7, 30, 90] as const).map(v => <button key={v} type="button" className={range === v ? "on" : ""} aria-pressed={range === v} onClick={() => { setRange(v); setSweep(s => 1 - s); }}>{v}D</button>)}</div></div></div>
       <div className="hx-tiles">
         <div className="hx-tile hx-lift"><div className="hx-num hx-big">{pct(stats.completion)}</div><div className="hx-mono">COMPLETION · ALL HABITS</div></div>
-        <div className="hx-tile hx-lift"><div className="hx-num hx-big">{stats.fullDays} / {range}</div><div className="hx-mono">FULL DAYS · EVERY HABIT</div></div>
+        <div className="hx-tile hx-lift"><div className="hx-num hx-big">{stats.fullDays} / {range}</div><div className="hx-mono">FULL DAYS · {usingTargets ? "TARGET MET" : "EVERY HABIT"}</div></div>
         <div className="hx-tile hx-lift"><div className="hx-num hx-big">{stats.activeDays} / {range}</div><div className="hx-mono">DAYS WITH A TICK</div></div>
       </div>
       <div className="hx-weekly"><div className="hx-mono">WEEKLY COMPLETION · 8 WEEKS</div>
@@ -143,7 +163,7 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
         {histOpen && <div className="hx-seg" role="group" aria-label="View"><button type="button" className={tab === "table" ? "on" : ""} aria-pressed={tab === "table"} onClick={() => setTab("table")}>Table</button><button type="button" className={tab === "month" ? "on" : ""} aria-pressed={tab === "month"} onClick={() => setTab("month")}>Month</button></div>}</div>
       {histOpen && tab === "table" && <div className="hx-table-wrap">
         <div className="hx-trow hx-thead" role="row"><span className="hx-day-col">DAY</span>{list.map(h => <span key={h.id} className="hx-cellcol">{h.name}</span>)}<span className="hx-prog-col">PROGRESS</span></div>
-        {tableDays.map(day => { const p = progressOn(list, log, day), isToday = day === today;
+        {tableDays.map(day => { const p = progressOn(list, log, day, targets), isToday = day === today;
           return <div key={day} className={"hx-trow" + (isToday ? " today" : "")} role="row"><span className="hx-day-col"><b>{dayLabel(day)}</b></span>
             {list.map(h => { const s = log.get(logKey(day, h.id))?.state, on = s === "done";
               return <span key={h.id} className="hx-cellcol"><button type="button" className={"hx-tick" + (on ? " on" : "") + (s === "no_answer" ? " na" : "")} disabled={disabled} aria-pressed={on} aria-label={`${h.name} on ${dayLabel(day)}: ${on ? "done" : s === "no_answer" ? "no answer" : "not done"}`} title={s === "no_answer" ? "No answer to the pop-up. Click to mark it done." : "Click to tick or clear this day"} onClick={() => toggle(day, h)}>{on && <Check size={14} stroke={3} />}</button></span>; })}
@@ -153,10 +173,11 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
       {histOpen && tab === "month" && <div className="hx-month-wrap">
         <div className="hx-month-nav"><button type="button" className="hx-btn small" aria-label="Previous month" onClick={() => setMonth(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }))}>‹</button><strong>{MONTHS[month.m]} {month.y}</strong><button type="button" className="hx-btn small" aria-label="Next month" onClick={() => setMonth(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }))}>›</button></div>
         <div className="hx-month" role="grid" aria-label={`${MONTHS[month.m]} ${month.y}`}>{WEEKDAYS.map(d => <span key={d} className="hx-mono" role="columnheader">{d.toUpperCase()}</span>)}
-          {grid.flat().map(c => { const future = c.day > today, p = progressOn(list, log, c.day);
+          {grid.flat().map(c => { const future = c.day > today, p = progressOn(list, log, c.day, targets);
             return c.inMonth ? <button key={c.day} type="button" role="gridcell" className={"hx-mcell" + (future ? " future" : "") + (c.day === today ? " today" : "") + (picked === c.day ? " picked" : "")} disabled={future} aria-label={`${dayLabel(c.day)}: ${p.total ? `${p.done} of ${p.total} done` : "no habits count"}`} onClick={() => setPicked(picked === c.day ? null : c.day)}>
               {!future && <span className="hx-mfill hx-gy" style={{ height: (p.pct ?? 0) + "%" }} />}<span className="hx-mday">{parseDay(c.day).getDate()}</span>{!future && p.total > 0 && <span className="hx-mono hx-mfrac">{p.done}/{p.total}</span>}</button> : <span key={c.day} role="gridcell" className="hx-mcell blank" aria-hidden="true" />; })}</div>
         {picked && <div className="hx-daypanel" role="group" aria-label={"Habits on " + dayLabel(picked)}><h3>{dayLabel(picked)}</h3>
+          {list.some(h => appliesOn(h, picked)) && <div className="hx-dayrow"><span>Needed for 100%</span>{daySelect(picked, "Needed on " + dayLabel(picked))}</div>}
           {list.filter(h => appliesOn(h, picked)).map(h => { const on = log.get(logKey(picked, h.id))?.state === "done";
             return <div key={h.id} className="hx-dayrow"><span>{h.name}</span><button type="button" className={"hx-tick" + (on ? " on" : "")} disabled={disabled} aria-pressed={on} aria-label={`${h.name} on ${dayLabel(picked)}: ${on ? "done" : "not done"}`} onClick={() => toggle(picked, h)}>{on && <Check size={14} stroke={3} />}</button></div>; })}
           {!list.some(h => appliesOn(h, picked)) && <p className="hint">No habit counts on this day.</p>}</div>}

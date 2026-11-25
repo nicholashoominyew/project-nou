@@ -27,7 +27,7 @@ if (typeof Blob.prototype.text !== "function") Blob.prototype.text = function ()
 const TODAY = new Date(); const pad = (n: number) => String(n).padStart(2, "0"); const day = (offset = 0) => { const d = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() + offset); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const habit = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health", ...extra });
 const sent = (command: string) => calls.filter(c => c.command === command);
-beforeEach(() => { clearUndo(); db.checkins = []; db.activities = []; calls.length = 0; db.habits = [habit("h1", "Exercise"), habit("h2", "Anki")]; db.log = []; db.pending = []; db.fail = {}; });
+beforeEach(() => { localStorage.clear(); clearUndo(); db.checkins = []; db.activities = []; calls.length = 0; db.habits = [habit("h1", "Exercise"), habit("h2", "Anki")]; db.log = []; db.pending = []; db.fail = {}; });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const page = async () => { render(<Habits />); await screen.findByRole("region", { name: "Today" }); await screen.findByRole("region", { name: "Streaks" }); };
 const openHistory = async () => { fireEvent.click(screen.getByRole("button", { name: /^History/ })); return await screen.findByRole("group", { name: "View" }); };
@@ -234,5 +234,21 @@ describe("Undo and import", () => {
     expect(await screen.findByText(/Imported 3 ticks and 1 new habit. 0 days you had already logged were kept/)).toBeTruthy();
     send("not json"); expect((await screen.findByRole("alert")).textContent).toMatch(/not a habit history file/);
     send(JSON.stringify([{ day: "2026-01-01" }])); await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/needs day, habit and done/)); expect(sent("habit_import_cmd")).toHaveLength(1);
+  });
+});
+
+describe("how many habits make 100%", () => {
+  const choose = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  it("uses the usual number, lets one day differ, and can go back", async () => {
+    db.habits = ["a", "b", "c", "d", "e", "f"].map(n => habit(n, n.toUpperCase()));
+    db.log = ["a", "b", "c", "d"].map(id => ({ day: day(), habit_id: id, state: "done", answered_at: null, source: "manual" }));
+    await page();
+    const today = screen.getByRole("region", { name: "Today" });
+    expect(within(today).getByText("4/6")).toBeTruthy();
+    choose("Usually needed", "5"); expect(await within(today).findByText("4/5")).toBeTruthy(); expect(within(today).queryByText("TARGET MET")).toBeNull();
+    choose("Needed today", "4"); expect(await within(today).findByText("4/4")).toBeTruthy(); expect(within(today).getByText("TARGET MET")).toBeTruthy();
+    choose("Needed today", ""); expect(await within(today).findByText("4/5")).toBeTruthy();
+    await undoLatest(); expect(await within(today).findByText("4/4")).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("nou-habit-target")!)).toEqual({ usual: [{ from: day(), n: 5 }], days: { [day()]: 4 } });
   });
 });

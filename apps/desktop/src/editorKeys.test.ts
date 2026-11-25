@@ -35,9 +35,9 @@ describe("no flicker while typing (stylesheet rules)", () => {
     expect(styles).not.toContain("button:disabled { opacity: .5; cursor: not-allowed; }");
     expect(styles).not.toContain(".tree-toggle:disabled{opacity:0}");
   });
-  it("databases span the page: the block fills the text column and extends into the margins", () => {
+  it("databases line up with the page: the block fills the text column and no further", () => {
     expect(styles).toContain('.bn-block-content[data-content-type="nouDatabase"]{display:block;width:100%;max-width:none}');
-    expect(styles).toContain(".db-block{width:calc(100% + 2*(var(--doc-pad,52px) - 16px));margin-inline:calc(16px - var(--doc-pad,52px))");
+    expect(styles).toContain(".db-block{width:100%;margin-inline:0");
     expect(styles).toMatch(/\.db-scroll,\.db-board,\.db-tl-scroll\{overflow-x:auto/);
   });
   it("indenting a block with Tab animates 3x faster than BlockNote's default 0.2s", () => {

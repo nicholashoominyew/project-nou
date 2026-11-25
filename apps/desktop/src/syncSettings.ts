@@ -8,7 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 export const SHARED_SETTINGS = [
   "nou-theme", "nou-swatch", "nou-tile", "nou-home-layout", "nou-countdowns", "nou-clocks", "nou-zones", "nou-weather-places", "nou-sun-place", "nou-sun-custom",
   "nou-files-view", "nou-timetable-reminders", "nou-menu-hint", "nou-menu-icon", "nou-menu-row", "nou-menu-search", "nou-inbox-page", "nou-resurface-snoozed", "nou-collapsed",
-  "nou-last-highlight", "nou-chat-seen", "nou-embed-hosts",
+  "nou-last-highlight", "nou-chat-seen", "nou-embed-hosts", "nou-habit-target",
 ] as const;
 
 const read = (key: string): string | null => { try { return localStorage.getItem(key); } catch { return null; } };

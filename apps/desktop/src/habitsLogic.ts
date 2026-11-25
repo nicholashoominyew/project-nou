@@ -25,10 +25,27 @@ export const startDay = (h: Habit) => { const d = new Date(h.created_at); return
 /** Does the habit count on this day? It must have started, and the day's weekday must be one it applies to. */
 export const appliesOn = (h: Habit, day: string) => startDay(h) <= day && (h.days & (1 << weekdayOfDay(day))) !== 0;
 
-export function progressOn(habits: Habit[], log: LogMap, day: string): { done: number; total: number; pct: number | null } {
+// ---- how many habits a day needs for 100% ----
+/** The usual number (each change counts from its day on) and the days given a number of their own. 0 means every habit that counts that day. */
+export type Targets = { usual: { from: string; n: number }[]; days: Record<string, number> };
+export const NO_TARGETS: Targets = { usual: [], days: {} };
+export const usualOn = (t: Targets, day: string) => t.usual.reduce((found, u) => (u.from <= day ? u.n : found), 0);
+export const targetOn = (t: Targets, day: string) => t.days[day] ?? usualOn(t, day);
+/** A new usual number from `today` on; earlier days keep what they had. */
+export const withUsual = (t: Targets, today: string, n: number): Targets => ({ ...t, usual: [...t.usual.filter(u => u.from < today), { from: today, n }] });
+/** One day's own number, or (null) back to the usual one. */
+export function withDay(t: Targets, day: string, n: number | null): Targets {
+  const days = { ...t.days };
+  if (n === null) delete days[day]; else days[day] = n;
+  return { ...t, days };
+}
+
+/** `done` is what was ticked; `total` is what the day needs for 100% (never more than the habits that count), so `done` can exceed it. */
+export function progressOn(habits: Habit[], log: LogMap, day: string, targets: Targets = NO_TARGETS): { done: number; total: number; pct: number | null } {
   const list = habits.filter(h => appliesOn(h, day));
   const done = list.filter(h => log.get(logKey(day, h.id))?.state === "done").length;
-  return { done, total: list.length, pct: list.length ? Math.round((done / list.length) * 100) : null };
+  const want = targetOn(targets, day), total = want ? Math.min(want, list.length) : list.length;
+  return { done, total, pct: total ? Math.round((Math.min(done, total) / total) * 100) : null };
 }
 
 /**
@@ -114,21 +131,21 @@ export function habitRate(h: Habit, log: LogMap, today: string, n: number): numb
   return total ? done / total : null;
 }
 /** Completion over all habits (ticks out of the habit-days that counted), full days (every habit that counted was done) and days with at least one tick, over the last `n` days. */
-export function rangeStats(habits: Habit[], log: LogMap, today: string, n: number): { completion: number | null; fullDays: number; activeDays: number; days: number } {
+export function rangeStats(habits: Habit[], log: LogMap, today: string, n: number, targets: Targets = NO_TARGETS): { completion: number | null; fullDays: number; activeDays: number; days: number } {
   let done = 0, total = 0, full = 0, active = 0;
   for (const day of lastDays(today, n)) {
-    const p = progressOn(habits, log, day); done += p.done; total += p.total;
-    if (p.total > 0 && p.done === p.total) full++;
+    const p = progressOn(habits, log, day, targets); done += Math.min(p.done, p.total); total += p.total; // extras on one day do not make up for another
+    if (p.total > 0 && p.done >= p.total) full++;
     if (habits.some(h => isDone(h, log, day))) active++;
   }
   return { completion: total ? done / total : null, fullDays: full, activeDays: active, days: n };
 }
 /** The last `blocks` blocks of 7 days (the newest ends today): completion of each, labelled W-7 ... W-1 and NOW. */
-export function weekBlocks(habits: Habit[], log: LogMap, today: string, blocks = 8): { pct: number | null; label: string }[] {
+export function weekBlocks(habits: Habit[], log: LogMap, today: string, blocks = 8, targets: Targets = NO_TARGETS): { pct: number | null; label: string }[] {
   const out = [];
   for (let b = 0; b < blocks; b++) {
     let done = 0, total = 0;
-    for (let i = 0; i < 7; i++) { const p = progressOn(habits, log, addDays(today, -7 * (blocks - 1 - b) - 6 + i)); done += p.done; total += p.total; }
+    for (let i = 0; i < 7; i++) { const p = progressOn(habits, log, addDays(today, -7 * (blocks - 1 - b) - 6 + i), targets); done += Math.min(p.done, p.total); total += p.total; }
     out.push({ pct: total ? done / total : null, label: b === blocks - 1 ? "NOW" : "W-" + (blocks - 1 - b) });
   }
   return out;

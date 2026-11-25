@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CHECKINS_CHANGED, habitsApi, HABITS_CHANGED, todayLocal } from "./habitsApi";
+import { CHECKINS_CHANGED, habitsApi, HABITS_CHANGED, loadTargets, todayLocal } from "./habitsApi";
 import { indexLog, type Checkin, type CheckinEvent, type Habit, type LogEntry, type LogMap } from "./habitsLogic";
 
 /** The habits, their whole log and the open pop-ups, read again whenever anything changes them. */
@@ -9,7 +9,9 @@ export function useHabits() {
   const [pending, setPending] = useState<CheckinEvent[]>([]);
   const [error, setError] = useState("");
   const [today, setToday] = useState(todayLocal);
+  const [targets, setTargets] = useState(loadTargets);
   const load = useCallback(async () => {
+    setTargets(loadTargets());
     try {
       const day = todayLocal(); setToday(day);
       const [h, l, p] = await Promise.all([habitsApi.list(), habitsApi.log("2000-01-01", day), habitsApi.pending()]);
@@ -23,7 +25,7 @@ export function useHabits() {
     return () => { window.removeEventListener(HABITS_CHANGED, load); window.clearInterval(id); };
   }, [load]);
   const log: LogMap = indexLog(entries);
-  return { habits, entries, log, pending, today, error, reload: load, setError };
+  return { habits, entries, log, pending, targets, today, error, reload: load, setError };
 }
 
 /** The habits and the timetable check-ins, for the timetable page (the editor's check-in setting and the bell on a block). Read again when either changes. */

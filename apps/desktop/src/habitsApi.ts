@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { now } from "./timetable/clock";
-import { localDay, type Checkin, type CheckinEvent, type Habit, type LogEntry } from "./habitsLogic";
+import { localDay, NO_TARGETS, type Checkin, type CheckinEvent, type Habit, type LogEntry, type Targets } from "./habitsLogic";
 
 /** Sent after anything that changes habits, their log or the check-ins, so every open screen reads again. */
 export const HABITS_CHANGED = "nou-habits-changed";
@@ -13,6 +13,19 @@ export const nowSecs = () => Math.floor(now().getTime() / 1000);
 export const TEST_CHECKIN = "nou-test-checkin";
 export const testCheckin = (habit: { id: string; name: string }) => { try { window.dispatchEvent(new CustomEvent(TEST_CHECKIN, { detail: { id: habit.id, name: habit.name } })); } catch { /* only a request */ } };
 export const todayLocal = () => localDay(now());
+/** A preference like the others in SHARED_SETTINGS, so a sync carries it. */
+export const TARGET_KEY = "nou-habit-target";
+export function loadTargets(): Targets {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TARGET_KEY) || "null") as Partial<Targets> | null;
+    const ok = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0;
+    return {
+      usual: (Array.isArray(raw?.usual) ? raw.usual : []).filter(u => typeof u?.from === "string" && ok(u.n)).sort((a, b) => a.from.localeCompare(b.from)),
+      days: Object.fromEntries(Object.entries(raw?.days ?? {}).filter(([, n]) => ok(n))),
+    };
+  } catch { return NO_TARGETS; }
+}
+export function saveTargets(t: Targets) { localStorage.setItem(TARGET_KEY, JSON.stringify(t)); announceHabits(); }
 export type ImportRow = { day: string; habit: string; done: boolean };
 
 export const habitsApi = {

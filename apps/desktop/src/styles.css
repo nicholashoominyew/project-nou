@@ -445,17 +445,19 @@ body:has(.shell.focus) .focus-exit:hover,body:has(.shell.focus) .focus-exit:focu
 .db-peek-prop .db-input{padding:6px 8px}.db-peek-prop .db-input:hover{background:var(--hover)}.db-peek-prop .db-select>summary{padding:6px 8px;border-radius:4px}.db-peek-prop .db-select>summary:hover{background:var(--hover)}
 .db-peek-rule{border:0;border-top:1px solid var(--line);margin:14px 0}
 
-/* Databases span the whole page. The block used to shrink to its content (so board/gallery looked narrow); it now fills the
-   text column and extends into the page margins, leaving a 16px gutter. Anything wider than that pans with a scrollbar. */
+/* Databases fill the text column, with the same left and right edges as the title and the text. The block used to shrink to its
+   content (so board/gallery looked narrow). Anything wider than the column pans with a scrollbar. */
 .document{--doc-pad:52px}
 @media(max-width:850px){.document{--doc-pad:32px}}
 .bn-block-content[data-content-type="nouDatabase"]{display:block;width:100%;max-width:none}
-.db-block{width:calc(100% + 2*(var(--doc-pad,52px) - 16px));margin-inline:calc(16px - var(--doc-pad,52px));max-width:none;min-width:0}
+.db-block{width:100%;margin-inline:0;max-width:none;min-width:0}
+/* the title, first tab, first tool and New row start on that same edge */
+.db-block .db-name{padding-inline:0}.db-block .db-tabs>button:first-child,.db-block .db-toolbar-row>:first-child,.db-block .db-toolbar-row>:first-child>summary,.db-block .db-new-row{padding-left:0}
 .db,.db-scroll,.db-board,.db-tl-scroll{min-width:0}
 .db-scroll,.db-board,.db-tl-scroll{overflow-x:auto;scrollbar-width:thin;scrollbar-gutter:stable}
 .db-scroll::-webkit-scrollbar,.db-board::-webkit-scrollbar,.db-tl-scroll::-webkit-scrollbar{height:10px}
 .db-scroll::-webkit-scrollbar-thumb,.db-board::-webkit-scrollbar-thumb,.db-tl-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
-@media print{.db-block{width:auto;margin-inline:0}}
+@media print{.db-block{width:auto}}
 
 /* Row handles (+ and drag grip), place cells and the map search box */
 .db-title-cell{position:relative;padding-left:46px}

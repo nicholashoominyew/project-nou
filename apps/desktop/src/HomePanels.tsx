@@ -454,8 +454,8 @@ export function CalendarWidget({ ctx }: { ctx: HomeContext }) {
     return groupByDay([...daily, ...ends, ...rows]);
   }, [ctx.pages, counts, rows]);
   // Habits: each day's bubble is coloured by the share of that day's habits that were done (red low, green high), and the selected day shows a progress bar.
-  const { habits, log } = useHabits();
-  const habitDay = (day: string) => (habits?.length ? progressOn(habits, log, day) : { done: 0, total: 0, pct: null as number | null });
+  const { habits, log, targets } = useHabits();
+  const habitDay = (day: string) => (habits?.length ? progressOn(habits, log, day, targets) : { done: 0, total: 0, pct: null as number | null });
   const weeks = useMemo(() => monthGrid(cursor.y, cursor.m), [cursor]);
   const shift = (n: number) => setCursor(c => { const d = new Date(c.y, c.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
   const title = new Date(cursor.y, cursor.m, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });

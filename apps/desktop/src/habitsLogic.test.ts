@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { heatCells, heatLayout, habitRate, rangeStats, weekBlocks, addDays, answerSplit, appliesOn, activeCheckins, blockRunning, indexLog, localDay, maskLabel, maskToggle, monthGrid, parseDay, progressOn, slotRange, streaks, totalsPerHabit, weekdayOfDay, weeklyTrend, type Checkin, type Habit, type LogEntry, type LogState } from "./habitsLogic";
+import { NO_TARGETS, targetOn, withDay, withUsual, heatCells, heatLayout, habitRate, rangeStats, weekBlocks, addDays, answerSplit, appliesOn, activeCheckins, blockRunning, indexLog, localDay, maskLabel, maskToggle, monthGrid, parseDay, progressOn, slotRange, streaks, totalsPerHabit, weekdayOfDay, weeklyTrend, type Checkin, type Habit, type LogEntry, type LogState } from "./habitsLogic";
 
 const habit = (id: string, over: Partial<Habit> = {}): Habit => ({ id, name: id, days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health", ...over });
 const entry = (day: string, habit_id: string, state: LogState = "done"): LogEntry => ({ day, habit_id, state, answered_at: null, source: "manual" });
@@ -126,5 +126,29 @@ describe("the redesigned page's numbers", () => {
     const thirty = heatCells(hs[0], log(), T, 30); expect(thirty[0].state).toBe("pad"); // 2026-10-27 is a Tuesday: one blank above it (Monday)
     expect(thirty.filter(c => c.state === "pad")).toHaveLength(1); expect(thirty).toHaveLength(31); expect(thirty[1].day).toBe("2026-10-27");
     const b = heatCells(hs[1], log(), T, 7); expect(b.filter(c => c.state === "off").map(c => weekdayOfDay(c.day))).toEqual([5, 6]); // not a day for this habit
+  });
+});
+
+describe("daily targets", () => {
+  const habits = ["a", "b", "c", "d", "e", "f"].map(id => ({ id, name: id, days: 127, sort_order: 0, created_at: "2026-01-01T12:00:00.000Z", category: "Health" }));
+  const ticked = (day: string, n: number) => habits.slice(0, n).map(h => ({ day, habit_id: h.id, state: "done" as const, answered_at: null, source: "manual" }));
+  const log = indexLog([...ticked("2026-03-01", 6), ...ticked("2026-03-02", 4), ...ticked("2026-03-03", 6)]);
+  it("keeps what earlier days needed when the usual number changes", () => {
+    let t = withUsual(NO_TARGETS, "2026-03-02", 5);
+    expect(progressOn(habits, log, "2026-03-01", t).total).toBe(6);
+    expect(progressOn(habits, log, "2026-03-02", t)).toEqual({ done: 4, total: 5, pct: 80 });
+    t = withUsual(t, "2026-03-03", 4);
+    expect(progressOn(habits, log, "2026-03-02", t).total).toBe(5);
+    expect(progressOn(habits, log, "2026-03-03", t)).toEqual({ done: 6, total: 4, pct: 100 });
+  });
+  it("lets one day differ, never asks for more than count that day, and does not carry extras over", () => {
+    const t = withDay(withUsual(NO_TARGETS, "2026-03-01", 5), "2026-03-02", 4);
+    expect(progressOn(habits, log, "2026-03-02", t).pct).toBe(100);
+    expect(progressOn(habits.slice(0, 3), log, "2026-03-02", t).total).toBe(3);
+    expect(targetOn(withDay(t, "2026-03-02", null), "2026-03-02")).toBe(5);
+    const empty = withDay(t, "2026-03-02", 5); // 6 of 5, then 4 of 5, then 6 of 5
+    const stats = rangeStats(habits, log, "2026-03-03", 3, empty);
+    expect(stats.completion).toBeCloseTo(14 / 15);
+    expect(stats.fullDays).toBe(2);
   });
 });

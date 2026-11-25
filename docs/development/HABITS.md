@@ -26,6 +26,9 @@ The check-in pop-up follows the reference: CHECK-IN label with time and block na
 ### Older description of the page
 Today card, waiting pop-ups, history (table / month), charts, **Your habits**: drag the six dots (or press the up or down arrow on them) to reorder; click a habit to open its window (current and longest streak, last 30 days, totals, a 35-day strip, rename, type, days it counts, delete). "Import history…" brings in a JSON history file.
 
+## How many habits make 100%
+Under the Today circles, **Needed for 100%** has two choices. **Usually** is the number every day needs (or *Every habit*, the default); changing it counts from today, and earlier days keep what they had. **Today** gives one day its own number; for a past day use History, Month, then click the day. A day never needs more habits than count that day, and ticks beyond the target do not make up for another day. The ring, history, month, weekly bars, completion tiles and the Home calendar follow it; each habit's own rate and streak do not. It is a preference (`nou-habit-target`) that a sync carries; it is not in the database tables.
+
 ## Import file
 `{"rows":[{"day":"YYYY-MM-DD","habit":"Exercise","done":true}]}` (or a bare array). Ticks only are stored, nothing existing is overwritten, and every habit in the file counts from the earliest day in it.
 
