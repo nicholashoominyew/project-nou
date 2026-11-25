@@ -26,6 +26,9 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
   const [keepCurrent, setKeepCurrent] = useState("");
   // Set when the review below was opened by the OneDrive sync: run after a successful restore so the sync remembers it is up to date.
   const afterRestore = useRef<(() => Promise<void>) | undefined>(undefined);
+  // The review opens far below the button that asked for it (several screens, from the sync), so it is brought into view; otherwise it looks as if nothing happened.
+  const review = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (preview) review.current?.scrollIntoView?.({ block: "center" }); }, [preview]);
 
   async function refresh() {
     const s = await invoke<Status>("backup_status"); setStatus(s);
@@ -100,7 +103,7 @@ export default function BackupPanel({ onClose, onBusyChange }: { onClose: () => 
         {versions.map(b => <div className="backup-version" key={b.path}><span>{date(b)} · {b.pages} pages · {Math.ceil((b.manifest.bytes+(b.manifest.files?.bytes??0)) / 1024)} KB<small>{b.manifest.id}</small></span><button onClick={() => void run(() => prepare(b.path))}>Verify & review</button></div>)}
         {!!status?.rollback.length && <div><h3>Undo a restore</h3><p className="hint">These copies stay on this PC. NOU saves one just before every restore and before a database upgrade; review one to go back.</p>
           {status.rollback.map(b => <div className="backup-version" key={b.path}><span>{date(b)} · {b.pages} pages<small>{b.path}</small></span><button onClick={() => void run(() => prepare(b.path))}>Review rollback</button></div>)}</div>}
-        {preview && <div className="restore-preview" role="region" aria-label="Restore review">
+        {preview && <div ref={review} className="restore-preview" role="region" aria-label="Restore review">
           <h3>Review the replacement</h3><p>{date(preview.backup)} · {preview.backup.pages} pages including Trash · schema {preview.backup.manifest.schema}</p>
           <p>Verified staged package: <code>{preview.backup.path}</code></p><p>SHA-256: <code>{preview.backup.manifest.sha256}</code></p><p>{preview.backup.manifest.files?"Notes + uploaded files":"Notes only — legacy package"}</p>
           <p>Your current database will be preserved in local rollback storage. Neither your original backup nor its older versions will be deleted.</p>
