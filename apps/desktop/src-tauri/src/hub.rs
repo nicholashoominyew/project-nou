@@ -127,7 +127,7 @@ fn chat_get(c: &Connection, id: i64) -> Result<InhouseChat, String> {
 }
 /// The chats, most recently used first.
 pub fn chats_list(c: &Connection) -> Result<Vec<InhouseChat>, String> {
-    let mut s = c.prepare("SELECT id FROM inhouse_chats ORDER BY updated_at DESC, id DESC").map_err(e)?;
+    let mut s = c.prepare("SELECT id FROM inhouse_chats ORDER BY updated_at DESC, (SELECT COALESCE(MAX(m.id),0) FROM inhouse_messages m WHERE m.chat_id=inhouse_chats.id) DESC, id DESC" /* two chats can share a timestamp on a coarse clock (Windows): the one with the newest message wins */).map_err(e)?;
     let ids = s.query_map([], |r| r.get::<_, i64>(0)).map_err(e)?.collect::<rusqlite::Result<Vec<_>>>().map_err(e)?;
     ids.into_iter().map(|id| chat_get(c, id)).collect()
 }
@@ -437,6 +437,8 @@ mod tests {
         assert_eq!(inhouse_list(&c, None, None, 50).unwrap().len(), 6, "no chat given: every chat");
         inhouse_post_owner(&c, other.id, "latest").unwrap(); // the last message decides, whatever the clock resolution
         assert_eq!(chats_list(&c).unwrap()[0].id, other.id, "the most recently used chat comes first");
+        c.execute("UPDATE inhouse_chats SET updated_at='2026-01-01T00:00:00.000Z'", []).unwrap(); // every chat on the very same instant, as on a coarse clock
+        assert_eq!(chats_list(&c).unwrap()[0].id, other.id, "with equal timestamps the chat with the newest message still comes first");
         assert_eq!(chat_rename(&c, other.id, " Plan ").unwrap().title, "Plan"); assert!(chat_rename(&c, other.id, "  ").is_err() && chat_rename(&c, 999, "x").is_err());
         // Clearing one chat leaves the others, its name and its place in the list.
         assert_eq!(inhouse_clear(&c, 1).unwrap(), 3);
