@@ -25,3 +25,6 @@ apps/desktop/src-tauri/tauri.signing.local.json
 *.p12
 *.key
 *.noubackup
+
+# local MCP gateway settings (they hold secrets)
+nou-gateway.local.json

@@ -1,0 +1,17 @@
+{
+  "name": "nou-mcp-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Authenticated, loopback-only Streamable HTTP MCP gateway in front of NOU's local API",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node gateway.mjs",
+    "test": "node --test --test-timeout=30000 test/gateway.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  }
+}

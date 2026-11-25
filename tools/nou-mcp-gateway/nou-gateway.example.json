@@ -1,0 +1,10 @@
+{
+  "gatewayToken": "",
+  "nouToken": "",
+  "nouApiUrl": "http://127.0.0.1:47651",
+  "host": "127.0.0.1",
+  "port": 47660,
+  "allowedHosts": [],
+  "allowedOrigins": [],
+  "allowHubWrites": false
+}
