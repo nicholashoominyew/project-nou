@@ -1,6 +1,6 @@
 import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, SunArc, TasksWidget, TeachingWidget, WeatherWidget, type WeatherStore } from "./HomePanels";
+import { daysUntil, GoalsWidget, CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, SunArc, TasksWidget, TeachingWidget, WeatherWidget, type WeatherStore } from "./HomePanels";
 import { Flip } from "./HomeBits";
 import { dayKey } from "./timeLogic";
 
@@ -375,4 +375,20 @@ describe("the sun is the settings button", () => {
     fireEvent.click(dot);
     expect(screen.getByRole("group", { name: "Daylight arc place" }).className).toMatch(/sun-menu to-(left|right)/);
   });
+});
+
+describe("goals", () => {
+  const h = (id: string, name: string) => ({ id, name, days: 127, sort_order: 0, created_at: new Date(2020, 0, 1, 12).toISOString(), category: "Health" });
+  it("counts whole calendar days to the exam, whatever the clock says, and does not go below zero", () => {
+    expect(daysUntil("2026-11-25", "2027-07-04")).toBe(221); expect(daysUntil("2027-07-04", "2027-07-04")).toBe(0); expect(daysUntil("2027-07-05", "2027-07-04")).toBe(-1); expect(daysUntil("2026-03-28", "2026-03-30")).toBe(2); // across a clock change
+  });
+  it("shows the N3 countdown, the live Japanese and Anki streaks, and the coding goal", async () => {
+    const t = new Date(); const day = (n: number) => { const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    hab.habits = [h("j", "Japanese"), h("a", "Anki")]; hab.log = [0, 1, 2].map(n => ({ day: day(n), habit_id: "j", state: "done", answered_at: null, source: "manual" })).concat([{ day: day(1), habit_id: "a", state: "done", answered_at: null, source: "manual" }]);
+    render(<GoalsWidget today={day(0)} />);
+    const jlpt = await screen.findByRole("group", { name: "JLPT N3" }); expect(jlpt.textContent).toMatch(/EXAM 4 JUL 2027/); expect(within(jlpt).getByLabelText(/days to go|Exam date has passed/)).toBeTruthy();
+    const streaks = screen.getByLabelText("Study streaks"); await waitFor(() => expect(streaks.textContent).toMatch(/3JAPANESE · DAY STREAK/)); expect(streaks.textContent).toMatch(/1ANKI · DAY STREAK/);
+    expect(screen.getByRole("group", { name: "Python, C# and JavaScript basics" }).textContent).toMatch(/DUE FEB 2027/);
+  });
+  it("shows a dash instead of a streak when there is no such habit", async () => { hab.habits = []; render(<GoalsWidget today="2026-11-25" />); await waitFor(() => expect(screen.getByLabelText("Study streaks").textContent).toMatch(/–JAPANESE/)); });
 });

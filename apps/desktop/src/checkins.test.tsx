@@ -53,7 +53,8 @@ describe("check-in pop-ups", () => {
     expect(sent("checkin_event_show_cmd").map(c => [c.args.checkinId, c.args.day, c.args.block])).toEqual([["k1", "2026-11-23", "Shower + Breakfast"], ["k2", "2026-11-23", "Shower + Breakfast"]]);
     expect(sent("checkin_event_show_cmd")[0].args.until).toBe(Math.floor(at(5, 30).getTime() / 1000)); // it lasts at least until the block ends
     const exercise = await screen.findByRole("alertdialog", { name: "Check-in: Exercise" }); const anki = await screen.findByRole("alertdialog", { name: "Check-in: Anki" });
-    expect(within(exercise).getByText(/05:00–05:30/)).toBeTruthy(); expect(within(anki).getByText("CHECK-IN · 05:00")).toBeTruthy();
+    expect(within(exercise).getByText("Shower + Breakfast")).toBeTruthy(); expect(within(anki).getByText("CHECK-IN · 05:00")).toBeTruthy();
+    expect(within(exercise).getByText("Did you start Exercise?")).toBeTruthy(); expect(within(exercise).getByText("START ONLY · NO CHECK-OUT")).toBeTruthy(); expect(within(exercise).getByText("NEXT · 05:30 SIDE PROJECTS")).toBeTruthy();
     await waitFor(() => expect(h.sent).toHaveLength(2));
     expect(h.sent.map(n => [n.title, n.actionTypeId, n.extra])).toEqual([["Check-in: Exercise", "nou-checkin", { checkinId: "k1", day: "2026-11-23" }], ["Check-in: Anki", "nou-checkin", { checkinId: "k2", day: "2026-11-23" }]]);
     expect(h.sent[0].body).toBe("Shower + Breakfast · 05:00–05:30. Did you do it?");
@@ -70,11 +71,11 @@ describe("check-in pop-ups", () => {
     cleanup(); h.calls.length = 0; h.shown = []; h.pending = []; h.checkins = [k("other-day", "h1", { weekday: 1 }), k("other-week", "h1", { variant: "A" })];
     await mount(at(5, 10)); expect(sent("checkin_event_show_cmd")).toHaveLength(0);
   });
-  it("one tap on Checked in answers it, and the card goes; there is no Skipping and no way to hide it", async () => {
+  it("one tap on Yes, started answers it, and the card goes; there is no Skip and no way to hide it", async () => {
     await mount(at(5, 0, 3));
     const exercise = await screen.findByRole("alertdialog", { name: "Check-in: Exercise" });
-    expect(screen.queryByRole("button", { name: /skipping/i })).toBeNull(); expect(screen.queryByRole("button", { name: /hide/i })).toBeNull();
-    fireEvent.click(within(exercise).getByRole("button", { name: "Checked in" }));
+    expect(screen.queryByRole("button", { name: /skip/i })).toBeNull(); expect(screen.queryByRole("button", { name: /hide/i })).toBeNull();
+    fireEvent.click(within(exercise).getByRole("button", { name: "Yes, started" }));
     await waitFor(() => expect(sent("checkin_event_answer_cmd")[0].args).toMatchObject({ checkinId: "k1", day: "2026-11-23", answer: "done" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "Check-in: Exercise" })).toBeNull());
     expect(screen.getByRole("alertdialog", { name: "Check-in: Anki" })).toBeTruthy(); // the other habit still waits

@@ -15,7 +15,12 @@ A permanent **Habits** screen (sidebar). Habits are also **activities in the Lif
 - Unanswered, the pop-up becomes **No answer** (not done) two hours after it was first shown, or when the block ends if that is later. A pop-up that expires while NOU is closed is not logged, so the day can be ticked by hand.
 - Ticking on the Habits page closes the pop-up.
 
-## Habits page
+## Habits page (redesign)
+Top to bottom: header with Import history; **Today** (a 96px ring with done/scheduled, one 56px circle per habit that counts today, no Skip: anything not done by the end of the day is not done); **Streaks** (7D / 30D / 90D, three tiles, the 8-week chart made of blocks of 7 days ending today, and a card per habit with its rate, streak and heatmap; tap a card to focus it); **History** (closed at first; Table with 14 days and "Show 30 more days", or Month); **Your habits** (closed at first; drag handle, weekday chips, delete, and the New habit form). Rates, tiles and bars count only the days a habit applied (it had started, and the weekday chip was on).
+The heatmap is one row of 44px squares for 7D, a weekday grid of 24px for 30D and 14px for 90D, padded so the first day sits on its weekday row (Monday first). Motion is CSS only and is off under reduced motion. Fonts are bundled (Barlow Condensed for the big numbers). Home has a **Goals** card (JLPT N3 countdown to 4 Jul 2027, live Japanese and Anki streaks, the coding goal due Feb 2027); the Teaching card shows the author and a "Try today" line when the Teachings database has Author and How to apply columns.
+The check-in pop-up follows the reference: CHECK-IN label with time and block name, the habit name in condensed capitals, one **Yes, started** button, and a footer with START ONLY · NO CHECK-OUT and the next block.
+
+### Older description of the page
 Today card, waiting pop-ups, history (table / month), charts, **Your habits**: drag the six dots (or press the up or down arrow on them) to reorder; click a habit to open its window (current and longest streak, last 30 days, totals, a 35-day strip, rename, type, days it counts, delete). "Import history…" brings in a JSON history file.
 
 ## Import file

@@ -100,3 +100,47 @@ export const WEEK_MASK_ALL = 127;
 export const maskHas = (mask: number, weekday: number) => (mask & (1 << weekday)) !== 0;
 export const maskToggle = (mask: number, weekday: number) => mask ^ (1 << weekday);
 export const maskLabel = (mask: number) => (mask === 127 ? "every day" : mask === 31 ? "weekdays" : mask === 96 ? "weekends" : WEEKDAYS.filter((_, i) => maskHas(mask, i)).join(", "));
+
+// ---- the redesigned Habits page ----
+/** The last `n` days ending at `today`, oldest first. */
+export const lastDays = (today: string, n: number): string[] => Array.from({ length: n }, (_, i) => addDays(today, i - n + 1));
+const isDone = (h: Habit, log: LogMap, day: string) => log.get(logKey(day, h.id))?.state === "done";
+/**
+ * A habit's rate over the last `n` days: days done out of the days it counted (it had started and the weekday was one it applies to). A habit that counted on no day in the range has no rate (null).
+ */
+export function habitRate(h: Habit, log: LogMap, today: string, n: number): number | null {
+  let done = 0, total = 0;
+  for (const day of lastDays(today, n)) { if (!appliesOn(h, day)) continue; total++; if (isDone(h, log, day)) done++; }
+  return total ? done / total : null;
+}
+/** Completion over all habits (ticks out of the habit-days that counted), full days (every habit that counted was done) and days with at least one tick, over the last `n` days. */
+export function rangeStats(habits: Habit[], log: LogMap, today: string, n: number): { completion: number | null; fullDays: number; activeDays: number; days: number } {
+  let done = 0, total = 0, full = 0, active = 0;
+  for (const day of lastDays(today, n)) {
+    const p = progressOn(habits, log, day); done += p.done; total += p.total;
+    if (p.total > 0 && p.done === p.total) full++;
+    if (habits.some(h => isDone(h, log, day))) active++;
+  }
+  return { completion: total ? done / total : null, fullDays: full, activeDays: active, days: n };
+}
+/** The last `blocks` blocks of 7 days (the newest ends today): completion of each, labelled W-7 ... W-1 and NOW. */
+export function weekBlocks(habits: Habit[], log: LogMap, today: string, blocks = 8): { pct: number | null; label: string }[] {
+  const out = [];
+  for (let b = 0; b < blocks; b++) {
+    let done = 0, total = 0;
+    for (let i = 0; i < 7; i++) { const p = progressOn(habits, log, addDays(today, -7 * (blocks - 1 - b) - 6 + i)); done += p.done; total += p.total; }
+    out.push({ pct: total ? done / total : null, label: b === blocks - 1 ? "NOW" : "W-" + (blocks - 1 - b) });
+  }
+  return out;
+}
+/** How the calendar heatmap is drawn for a range: 7 days is one row of big squares, 30 a weekday grid of medium ones, 90 a weekday grid of small ones. */
+export function heatLayout(n: number): { size: number; gap: number; rows: number; radius: number } {
+  return n <= 7 ? { size: 44, gap: 8, rows: 1, radius: 12 } : n <= 30 ? { size: 24, gap: 5, rows: 7, radius: 6 } : { size: 14, gap: 4, rows: 7, radius: 3 };
+}
+export type HeatCell = { day: string; state: "pad" | "done" | "missed" | "off"; today: boolean };
+/** The cells of one habit's heatmap, in column order. With a weekday grid the first column is padded so the first day sits on its real weekday row (Monday is the first row). */
+export function heatCells(h: Habit, log: LogMap, today: string, n: number): HeatCell[] {
+  const days = lastDays(today, n), pad = heatLayout(n).rows === 1 ? 0 : weekdayOfDay(days[0]);
+  return [...Array.from({ length: pad }, (): HeatCell => ({ day: "", state: "pad", today: false })),
+    ...days.map((day): HeatCell => ({ day, today: day === today, state: isDone(h, log, day) ? "done" : appliesOn(h, day) ? "missed" : "off" }))];
+}

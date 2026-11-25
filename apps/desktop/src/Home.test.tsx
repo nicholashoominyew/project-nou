@@ -72,7 +72,7 @@ describe("Home", () => {
     expect([...cols[0].querySelectorAll(".home-card")].map(c => c.getAttribute("aria-label"))).toEqual(["Calendar", "Teaching of the day"]);
     expect([...cols[1].querySelectorAll(".home-card")].map(c => c.getAttribute("aria-label"))).toEqual(["Clocks", "Today's tasks", "Weather"]);
     const rows = container.querySelectorAll(".home-row");
-    expect([...rows[0].querySelectorAll(".home-card")].map(c => c.getAttribute("aria-label"))).toEqual(["Year, quarter, month and day", "Countdowns", "Waiting for approval"]);
+    expect([...rows[0].querySelectorAll(".home-card")].map(c => c.getAttribute("aria-label"))).toEqual(["Year, quarter, month and day", "Countdowns", "Goals", "Waiting for approval"]);
     expect([...rows[1].querySelectorAll(".home-card")].map(c => c.getAttribute("aria-label"))).toEqual(["Recently edited", "Favorites", "Worth revisiting"]);
   });
   it("the gear opens a panel that holds AI access, and Done closes it", () => {
@@ -159,7 +159,7 @@ describe("Home", () => {
     await screen.findByLabelText("Favorites");
     const dot = (title: string) => within(screen.getByLabelText(title)).getByRole("heading", { level: 2 }).querySelector(".state-dot")!;
     for (const live of ["Waiting for approval", "Recently edited", "Favorites", "Clocks", "Today's tasks", "Year, quarter, month and day"]) expect(dot(live).className).toContain("live");
-    for (const idle of ["Worth revisiting", "Daily page", "Weather", "Countdowns", "Calendar", "Teaching of the day"]) expect(dot(idle).className).not.toContain("live");
-    expect(container.querySelectorAll(".state-dot").length).toBe(12);
+    for (const idle of ["Worth revisiting", "Daily page", "Weather", "Countdowns", "Goals", "Calendar", "Teaching of the day"]) expect(dot(idle).className).not.toContain("live");
+    expect(container.querySelectorAll(".state-dot").length).toBe(13);
   });
 });

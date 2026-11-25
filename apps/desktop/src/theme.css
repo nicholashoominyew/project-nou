@@ -965,3 +965,9 @@ details.recovery-card.backup-more{padding:12px 16px}
 .embed-grip{margin-left:auto;background:transparent;border:0;color:var(--muted);cursor:ns-resize;font-size:16px}
 .embed-hosts{list-style:none;margin:8px 0;padding:0;display:grid;gap:4px}
 .approval-embed{margin:8px 0}
+
+/* Home: Goals card and the Teaching "try today" line */
+.goal{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}.goal:last-child{border-bottom:0}
+.goal-name{font-size:15px;font-weight:600}.goal-num{display:flex;align-items:baseline;gap:6px}.goal-num b{font-family:"Barlow Condensed",var(--font-body);font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
+.goal-streaks{display:flex;gap:16px;flex-wrap:wrap;padding:8px 0 10px;border-bottom:1px solid var(--line)}.goal-streak{display:flex;flex-direction:column}.goal-streak b{font-family:"Barlow Condensed",var(--font-body);font-size:30px;line-height:1.05}
+.teach-try{margin:10px 0 0;font-size:14px}

@@ -4,7 +4,7 @@ import { Icon } from "./Icons";
 import type { PageInfo } from "./EditorContext";
 import Approvals from "./Approvals";
 import { CardHead, StateDot } from "./HomeBits";
-import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, SunArc, TasksWidget, TeachingWidget, WeatherWidget, useWeatherStore, type WeatherStore } from "./HomePanels";
+import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidget, SunArc, TasksWidget, GoalsWidget, TeachingWidget, WeatherWidget, useWeatherStore, type WeatherStore } from "./HomePanels";
 import NowCard from "./timetable/NowCard";
 import { editsPerDay, staleFraction } from "./homeLogic";
 import { localDate, readSnoozed, reasonText, snooze, visible, SNOOZE_KEY, SNOOZE_DAYS, type Resurfaced } from "./resurface";
@@ -96,6 +96,7 @@ export const HOME_WIDGETS: HomeWidget[] = [
   { id: "weather", title: "Weather", slot: "right", bare: true, render: ctx => <WeatherWidget store={ctx.weather} /> },
   { id: "periods", title: "Year, quarter, month and day", live: true, slot: "row1", render: () => <PeriodsWidget /> },
   { id: "countdowns", title: "Countdowns", slot: "row1", render: () => <CountdownWidget /> },
+  { id: "goals", title: "Goals", slot: "row1", render: ctx => <GoalsWidget today={ctx.today} /> },
   { id: "approvals", title: "Waiting for approval", live: true, slot: "row1", hint: "AI tools can ask; only you can approve", render: ctx => <Approvals disabled={ctx.disabled} refresh={ctx.refresh} /> },
   { id: "recent", title: "Recently edited", live: true, slot: "row2", render: ctx => <RecentWidget ctx={ctx} /> },
   { id: "favorites", title: "Favorites", live: true, slot: "row2", render: ctx => <FavoritesWidget ctx={ctx} /> },

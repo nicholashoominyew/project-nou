@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { announceHabits, CHECKINS_CHANGED, habitsApi, HABITS_CHANGED } from "./habitsApi";
 import { activeCheckins, appliesOn, blockRunning, slotRange, slotTime, type Checkin, type CheckinEvent, type Habit } from "./habitsLogic";
 import { now } from "./timetable/clock";
-import { names, SLOTS_PER_DAY } from "./timetable/schedule";
+import { clock as hhmm, eventAt, names, SLOTS_PER_DAY } from "./timetable/schedule";
 import { useTimetable } from "./timetable/useTimetable";
 
 const msg = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^Error: /, "");
@@ -41,7 +41,7 @@ export async function notifyCheckin(ev: CheckinEvent): Promise<boolean> {
   } catch { return false; }
 }
 
-export type CheckinPopupState = { visible: CheckinEvent[]; errors: Record<string, string>; answer: (ev: CheckinEvent) => Promise<void> };
+export type CheckinPopupState = { visible: CheckinEvent[]; errors: Record<string, string>; answer: (ev: CheckinEvent) => Promise<void>; /** What the timetable has right after this check-in's block, like "05:30 PROJECT BLOCK", or "" when nothing is planned. */ next: (ev: CheckinEvent) => string };
 
 /**
  * Mounted once for the whole app. Every few seconds it looks at the clock. While a check-in's timetable block is running and the habit is not ticked yet, there is a pop-up
@@ -111,17 +111,25 @@ export function useCheckinPopups(): CheckinPopupState {
     return () => { gone = true; clearInterval(id); off?.(); onAnswerFromNotification = null; document.removeEventListener("visibilitychange", resume); window.removeEventListener("focus", resume); window.removeEventListener("nou-sim-changed", resume); window.removeEventListener(CHECKINS_CHANGED, changed); window.removeEventListener("nou-timetable-changed", changed); window.removeEventListener(HABITS_CHANGED, changed); window.removeEventListener(HABITS_CHANGED, habitsChanged); };
   }, [check, loadCheckins, loadPending]);
 
-  return { visible: pending.filter(e => blockRunning(e, clock)), errors, answer };
+  const next = useCallback((ev: CheckinEvent) => {
+    const { timeline, activities } = latest.current; const [y, m, d] = ev.day.split("-").map(Number);
+    const after = eventAt(timeline, new Date(y, m - 1, d, 0, ev.end_slot * 30)); // the event that is on at the moment this block ends
+    return after && after.ids.length ? `${hhmm(after.start)} ${names(after.ids, activities)}`.toUpperCase() : "";
+  }, []);
+  return { visible: pending.filter(e => blockRunning(e, clock)), errors, answer, next };
 }
 
-/** The pop-ups themselves: one card per open check-in, with one tap to say Checked in. It stays for the whole block until ticked. */
+/** The pop-ups themselves: one card per open check-in, with one tap to say it started. It stays for the whole block until ticked, and nothing is asked when a block ends. */
 export function CheckinPopups({ state }: { state: CheckinPopupState }) {
   if (!state.visible.length) return null;
   return <div className="checkin-stack" aria-label="Check-ins">
-    {state.visible.map(ev => <section key={keyOf(ev)} className="checkin-pop" role="alertdialog" aria-label={`Check-in: ${ev.habit}`}>
-      <div className="checkin-pop-head"><div><span className="checkin-pop-kicker">CHECK-IN · {slotTime(ev.start_slot)}</span><span className="checkin-pop-name">{ev.habit}</span><span className="checkin-pop-range">{ev.block ? ev.block + " · " : ""}{slotRange(ev.start_slot, ev.end_slot)}</span></div></div>
-      {state.errors[keyOf(ev)] && <span className="checkin-err" role="alert">{state.errors[keyOf(ev)]}</span>}
-      <div className="checkin-pop-actions"><button type="button" className="yes" onClick={() => void state.answer(ev)}>Checked in</button></div>
-    </section>)}
+    {state.visible.map(ev => { const next = state.next(ev);
+      return <section key={keyOf(ev)} className="checkin-pop hx-pop-card" role="alertdialog" aria-label={`Check-in: ${ev.habit}`}>
+        <div className="hx-mono hx-pop-top"><span><i className="hx-blink" />CHECK-IN · {slotTime(ev.start_slot)}</span><span>{ev.block || slotRange(ev.start_slot, ev.end_slot)}</span></div>
+        <div><div className="hx-pop-name">{ev.habit}</div><div className="hx-pop-q">Did you start {ev.habit}?</div></div>
+        {state.errors[keyOf(ev)] && <span className="checkin-err" role="alert">{state.errors[keyOf(ev)]}</span>}
+        <button type="button" className="hx-pop-yes" onClick={() => void state.answer(ev)}>Yes, started</button>
+        <div className="hx-mono hx-pop-foot"><span>START ONLY · NO CHECK-OUT</span>{next && <span>NEXT · {next}</span>}</div>
+      </section>; })}
   </div>;
 }

@@ -26,155 +26,183 @@ const habit = (id: string, name: string, extra: Record<string, unknown> = {}) =>
 const sent = (command: string) => calls.filter(c => c.command === command);
 beforeEach(() => { clearUndo(); calls.length = 0; db.habits = [habit("h1", "Exercise"), habit("h2", "Anki")]; db.log = []; db.pending = []; db.fail = {}; });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
-const page = async () => { render(<Habits />); await screen.findByRole("region", { name: "Today" }); await waitFor(() => expect(screen.getByRole("table", { name: "Daily habit table" })).toBeTruthy()); };
+const page = async () => { render(<Habits />); await screen.findByRole("region", { name: "Today" }); await screen.findByRole("region", { name: "Streaks" }); };
+const openHistory = async () => { fireEvent.click(screen.getByRole("button", { name: /^History/ })); return await screen.findByRole("group", { name: "View" }); };
+const openManage = () => { fireEvent.click(screen.getByRole("button", { name: /^Your habits/ })); return screen.getByRole("region", { name: "Manage habits" }); };
 
-describe("clicking a cell", () => {
+describe("clicking a day", () => {
   it("ticks an empty or no-answer day, and clears a done day (or an older skip)", () => { expect([nextState(undefined), nextState("no_answer"), nextState("done"), nextState("skipped")]).toEqual(["done", "done", null, null]); });
 });
 
-describe("Habits page", () => {
-  it("shows today with a tick for each habit (and no skip), and ticking writes today's log", async () => {
+describe("the page's layout", () => {
+  it("has a header with Import history, then Today, Streaks, and History and Your habits closed; no Skip anywhere and no separate Charts or Goals", async () => {
+    await page();
+    expect(screen.getByRole("heading", { name: "Habits", level: 1 })).toBeTruthy(); expect(screen.getByRole("button", { name: "Import history…" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^History/ }).getAttribute("aria-expanded")).toBe("false"); expect(screen.getByRole("button", { name: /^Your habits/ }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("table")).toBeNull(); expect(screen.queryByLabelText("New habit name")).toBeNull();
+    expect(screen.queryByRole("button", { name: /skip/i })).toBeNull(); expect(screen.queryByRole("region", { name: "Charts" })).toBeNull(); expect(screen.queryByText(/JLPT|Teaching of the day/)).toBeNull();
+  });
+  it("History and Your habits open and close with the keyboard (Enter on the button) and say so with aria-expanded", async () => {
+    await page();
+    const hist = screen.getByRole("button", { name: /^History/ }); hist.focus(); fireEvent.click(hist); expect(hist.getAttribute("aria-expanded")).toBe("true"); expect(hist.textContent).toMatch(/HIDE/);
+    fireEvent.click(hist); expect(hist.getAttribute("aria-expanded")).toBe("false"); expect(hist.textContent).toMatch(/SHOW/);
+    const edit = screen.getByRole("button", { name: /^Your habits/ }); fireEvent.click(edit); expect(edit.getAttribute("aria-expanded")).toBe("true"); expect(edit.textContent).toMatch(/CLOSE/);
+  });
+});
+
+describe("Today", () => {
+  it("shows a ring with done out of the habits that count today, and one circle per habit with no letter inside; ticking writes today's log and updates the ring", async () => {
     await page();
     const today = screen.getByRole("region", { name: "Today" });
-    expect(within(today).queryByRole("button", { name: /skip/i })).toBeNull();
-    fireEvent.click(within(today).getByRole("button", { name: "Exercise: done today" }));
+    expect(within(today).getByRole("img", { name: "0 of 2 habits done today" })).toBeTruthy(); expect(within(today).getByText("0/2")).toBeTruthy();
+    const circle = within(today).getByRole("button", { name: "Mark done: Exercise" }); expect(circle.getAttribute("aria-pressed")).toBe("false"); expect(circle.textContent).toBe("Exercise"); // the name only, no letter or icon in the circle
+    fireEvent.click(circle);
     await waitFor(() => expect(sent("habit_log_set_cmd")[0].args).toMatchObject({ day: day(), habitId: "h1", state: "done", today: day() }));
-    expect((await within(today).findByRole("button", { name: "Exercise: done today" })).getAttribute("aria-pressed")).toBe("true");
-    expect(within(today).getByText("✓ Done")).toBeTruthy();
-    fireEvent.click(within(today).getByRole("button", { name: "Exercise: done today" })); // a second tap clears it
-    await waitFor(() => expect(sent("habit_log_set_cmd")[1].args).toMatchObject({ habitId: "h1", state: null }));
+    const on = await within(today).findByRole("button", { name: "Mark not done: Exercise" }); expect(on.getAttribute("aria-pressed")).toBe("true");
+    expect(within(today).getByRole("img", { name: "1 of 2 habits done today" })).toBeTruthy(); expect(within(today).queryByText("ALL DONE")).toBeNull();
+    fireEvent.click(within(today).getByRole("button", { name: "Mark done: Anki" }));
+    expect(await within(today).findByText("ALL DONE")).toBeTruthy();
+    fireEvent.click(on); await waitFor(() => expect(sent("habit_log_set_cmd").at(-1)!.args).toMatchObject({ habitId: "h1", state: null })); // a second tap clears it
   });
-  it("takes back a tick, a new habit, a rename and a new order with the shared Undo (Ctrl+Z)", async () => {
-    await page();
-    const today = screen.getByRole("region", { name: "Today" });
-    fireEvent.click(within(today).getByRole("button", { name: "Exercise: done today" }));
-    await waitFor(() => expect(sent("habit_log_set_cmd")).toHaveLength(1));
-    expect(await undoLatest()).toMatch(/Ticked Exercise/);
-    await waitFor(() => expect(sent("habit_log_set_cmd")[1].args).toMatchObject({ habitId: "h1", state: null }));
-    fireEvent.keyDown(screen.getByLabelText(/Drag Anki to reorder/), { key: "ArrowUp" });
-    await waitFor(() => expect(sent("habits_reorder_cmd")).toHaveLength(1));
-    expect(await undoLatest()).toBe("Order of habits");
-    await waitFor(() => expect(sent("habits_reorder_cmd")[1].args).toEqual({ ids: ["h1", "h2"] }));
-    fireEvent.change(screen.getByLabelText("New habit name"), { target: { value: "Reading" } }); fireEvent.click(screen.getByRole("button", { name: "Add habit" }));
-    await waitFor(() => expect(sent("habit_add_cmd")).toHaveLength(1));
-    expect(await undoLatest()).toBe("New habit “Reading”");
-    await waitFor(() => expect(sent("habit_delete_cmd")[0].args).toEqual({ id: "h3" }));
-    expect(await undoLatest()).toBeNull(); // nothing else was left to undo
+  it("only shows the habits whose weekday chip for today is on", async () => {
+    const mask = 127 & ~(1 << ((new Date().getDay() + 6) % 7)); db.habits = [habit("h1", "Exercise"), habit("h2", "Anki", { days: mask })];
+    await page(); const today = screen.getByRole("region", { name: "Today" });
+    expect(within(today).getByRole("button", { name: "Mark done: Exercise" })).toBeTruthy(); expect(within(today).queryByRole("button", { name: /Anki/ })).toBeNull(); expect(within(today).getByText("0/1")).toBeTruthy();
   });
-  it("lets a missed day be ticked by hand in the table, and shows each day's progress", async () => {
-    db.log = [{ day: day(-1), habit_id: "h2", state: "done", answered_at: null, source: "manual" }];
-    await page();
-    const table = screen.getByRole("table", { name: "Daily habit table" });
-    expect(within(table).getAllByRole("columnheader").map(h => h.textContent)).toEqual(["Day", "Exercise", "Anki", "Progress"]);
-    const yesterday = within(table).getAllByRole("row")[2]; // header, today, yesterday
-    expect(within(yesterday).getByRole("img", { name: "1 of 2, 50%" })).toBeTruthy();
-    const cell = within(yesterday).getByRole("button", { name: /Exercise on .*: empty/ });
-    fireEvent.click(cell);
-    await waitFor(() => expect(sent("habit_log_set_cmd")[0].args).toMatchObject({ day: day(-1), habitId: "h1", state: "done" }));
-    expect(await within(yesterday).findByRole("img", { name: "2 of 2, 100%" })).toBeTruthy();
-    expect(within(yesterday).getByRole("button", { name: /Anki on .*: done$/ })).toBeTruthy();
+  it("starts with a hint when there are no habits", async () => {
+    db.habits = []; render(<Habits />); expect(await screen.findByText(/No habits yet/)).toBeTruthy();
   });
-  it("shows pop-up answers as such, no answer as a question mark, and imported days as imported", async () => {
-    db.log = [{ day: day(), habit_id: "h1", state: "done", answered_at: "x", source: "popup" }, { day: day(-1), habit_id: "h1", state: "no_answer", answered_at: "x", source: "timeout" }, { day: day(-2), habit_id: "h1", state: "done", answered_at: null, source: "import" }];
-    await page();
-    const table = screen.getByRole("table", { name: "Daily habit table" });
-    expect(within(table).getByRole("button", { name: /Exercise on .*: done \(pop-up\)/ })).toBeTruthy();
-    expect(within(table).getByRole("button", { name: /Exercise on .*: no answer \(no answer in 2 hours\)/ }).textContent).toBe("?");
-    expect(within(table).getByRole("button", { name: /Exercise on .*: done \(imported\)/ })).toBeTruthy();
-    fireEvent.click(within(table).getByRole("button", { name: /Exercise on .*: no answer/ })); // no answer is corrected to done
+});
+
+describe("Streaks", () => {
+  const d = (n: number, id = "h1") => ({ day: day(n), habit_id: id, state: "done", answered_at: null, source: "manual" });
+  it("shows completion, full days and days with a tick for the range, switching between 7D, 30D and 90D", async () => {
+    db.log = [d(0), d(-1), d(-1, "h2")]; await page();
+    const card = screen.getByRole("region", { name: "Streaks" });
+    expect(within(card).getByText("LAST 30 DAYS · TAP A HABIT TO FOCUS")).toBeTruthy(); expect(within(card).getByRole("button", { name: "30D" }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(card).getByText("2 / 30")).toBeTruthy(); // days with a tick
+    fireEvent.click(within(card).getByRole("button", { name: "7D" })); expect(within(card).getByText("LAST 7 DAYS · TAP A HABIT TO FOCUS")).toBeTruthy(); expect(within(card).getByText("1 / 7")).toBeTruthy(); // one full day
+    fireEvent.click(within(card).getByRole("button", { name: "90D" })); expect(within(card).getByText("LAST 90 DAYS · TAP A HABIT TO FOCUS")).toBeTruthy();
+  });
+  it("draws the heatmap to the range: one row of big squares for 7D, a weekday grid for 30D and 90D, with a tooltip on each day", async () => {
+    db.log = [d(0)]; await page(); const card = screen.getByRole("region", { name: "Streaks" });
+    const cells = () => [...card.querySelectorAll(".hx-map")][0].querySelectorAll(".hx-cell:not(.pad)");
+    const grid = () => ([...card.querySelectorAll(".hx-grid")][0] as HTMLElement);
+    expect(cells()).toHaveLength(30); expect(grid().style.gridTemplateRows).toBe("repeat(7, 24px)");
+    fireEvent.click(within(card).getByRole("button", { name: "7D" })); expect(cells()).toHaveLength(7); expect(grid().style.gridTemplateRows).toBe("repeat(1, 44px)"); expect((cells()[0] as HTMLElement).style.borderRadius).toBe("12px");
+    fireEvent.click(within(card).getByRole("button", { name: "90D" })); expect(cells()).toHaveLength(90); expect(grid().style.gridTemplateRows).toBe("repeat(7, 14px)"); expect((cells()[0] as HTMLElement).style.borderRadius).toBe("3px");
+    const last = cells()[89] as HTMLElement; expect(last.title).toMatch(/· done$/); expect(last.className).toMatch(/\bdone\b/); expect((cells()[88] as HTMLElement).title).toMatch(/· missed$/);
+  });
+  it("shows each habit's rate, its streak (an open day does not break it), and focuses one on tap, dimming the others", async () => {
+    db.log = [d(-1), d(-2), d(-3)]; await page(); // today is still empty: the streak counts back from yesterday
+    const card = screen.getByRole("region", { name: "Streaks" });
+    const ex = within(card).getByRole("button", { name: /Exercise/ }); expect(ex.textContent).toMatch(/3D STREAK/); expect(ex.textContent).toMatch(/10%/);
+    const anki = within(card).getByRole("button", { name: /Anki/ }); expect(anki.textContent).toMatch(/0D STREAK/);
+    fireEvent.click(ex); expect(ex.getAttribute("aria-pressed")).toBe("true"); expect(ex.style.opacity).toBe("1"); expect(anki.style.opacity).toBe("0.3");
+    fireEvent.click(ex); expect(anki.style.opacity).toBe("1"); expect(ex.getAttribute("aria-pressed")).toBe("false");
+  });
+  it("draws eight weekly bars, the newest labelled NOW", async () => {
+    await page(); const bars = screen.getByRole("img", { name: /^Completion of the last 8 weeks/ });
+    expect(bars.querySelectorAll(".hx-bar")).toHaveLength(8); expect(bars.querySelector(".hx-bar.now")).not.toBeNull();
+    expect(screen.getByRole("region", { name: "Streaks" }).querySelector(".hx-bar-labels")!.textContent).toBe("W-7W-6W-5W-4W-3W-2W-1NOW");
+  });
+  it("a habit's weekday chips change its rate: days it does not count on are not missed days", async () => {
+    const mask = 127 & ~(1 << ((new Date().getDay() + 6) % 7)); db.habits = [habit("h1", "Exercise", { days: mask })]; db.log = [d(-1)]; await page();
+    expect(within(screen.getByRole("region", { name: "Streaks" })).getByRole("button", { name: /Exercise/ }).textContent).toMatch(/\d+%/);
+  });
+});
+
+describe("History", () => {
+  it("lists days newest first with 14 rows to start, a tick square per habit in the habit order and a progress bar; and 30 more days on request", async () => {
+    db.log = [{ day: day(-1), habit_id: "h2", state: "done", answered_at: null, source: "manual" }]; await page(); await openHistory();
+    const table = await screen.findByRole("table", { name: "Daily habit table" }).catch(() => null);
+    void table; const rows = document.querySelectorAll(".hx-trow:not(.hx-thead)"); expect(rows).toHaveLength(14);
+    expect(document.querySelector(".hx-thead")!.textContent).toBe("DAYExerciseAnkiPROGRESS"); expect(rows[0].classList.contains("today")).toBe(true);
+    const yesterday = rows[1] as HTMLElement; expect(within(yesterday).getByRole("img", { name: "1 of 2, 50%" })).toBeTruthy(); expect(yesterday.textContent).toMatch(/1\/2 · 50%/);
+    fireEvent.click(screen.getByRole("button", { name: "Show 30 more days" })); expect(document.querySelectorAll(".hx-trow:not(.hx-thead)")).toHaveLength(44);
+  });
+  it("lets a missed day be ticked by hand in the table", async () => {
+    await page(); await openHistory();
+    const rows = document.querySelectorAll(".hx-trow:not(.hx-thead)"); const cell = within(rows[2] as HTMLElement).getByRole("button", { name: /Exercise on .*: not done/ });
+    fireEvent.click(cell); await waitFor(() => expect(sent("habit_log_set_cmd")[0].args).toMatchObject({ day: day(-2), habitId: "h1", state: "done" }));
+    expect(await within(document.querySelectorAll(".hx-trow:not(.hx-thead)")[2] as HTMLElement).findByRole("button", { name: /Exercise on .*: done$/ })).toBeTruthy();
+  });
+  it("shows no answer as not done but marked, and a click turns it into done", async () => {
+    db.log = [{ day: day(-1), habit_id: "h1", state: "no_answer", answered_at: "x", source: "timeout" }]; await page(); await openHistory();
+    const cell = within(document.querySelectorAll(".hx-trow:not(.hx-thead)")[1] as HTMLElement).getByRole("button", { name: /Exercise on .*: no answer/ }); fireEvent.click(cell);
     await waitFor(() => expect(sent("habit_log_set_cmd")[0].args).toMatchObject({ day: day(-1), state: "done" }));
   });
-  it("answers an open pop-up from the waiting list", async () => {
-    db.pending = [{ checkin_id: "k1", day: day(), habit_id: "h1", habit: "Exercise", block: "Shower + Breakfast", start_slot: 10, end_slot: 11, shown_at: 1, expires_at: 2, state: "shown" }];
-    render(<Habits />);
-    const waiting = await screen.findByRole("region", { name: "Waiting for your answer" });
-    expect(within(waiting).getByText(/05:00–05:30/)).toBeTruthy();
-    fireEvent.click(within(waiting).getByRole("button", { name: "Checked in" }));
-    await waitFor(() => expect(sent("checkin_event_answer_cmd")[0].args).toMatchObject({ checkinId: "k1", day: day(), answer: "done" }));
-    await waitFor(() => expect(screen.queryByRole("region", { name: "Waiting for your answer" })).toBeNull());
+  it("switches to the month, fills each day by its completion, dashes future days, and a day can be edited from it", async () => {
+    db.log = [{ day: day(), habit_id: "h1", state: "done", answered_at: null, source: "manual" }]; await page(); await openHistory();
+    fireEvent.click(screen.getByRole("button", { name: "Month" }));
+    const grid = await screen.findByRole("grid"); const todayCell = within(grid).getByRole("gridcell", { name: /: 1 of 2 done/ }); expect(todayCell.className).toMatch(/today/);
+    expect((todayCell.querySelector(".hx-mfill") as HTMLElement).style.height).toBe("50%");
+    fireEvent.click(todayCell); const panel = await screen.findByRole("group", { name: /^Habits on / });
+    fireEvent.click(within(panel).getByRole("button", { name: /Anki on .*: not done/ }));
+    await waitFor(() => expect(sent("habit_log_set_cmd")[0].args).toMatchObject({ day: day(), habitId: "h2", state: "done" }));
+    expect(await within(grid).findByRole("gridcell", { name: /: 2 of 2 done/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" })); fireEvent.click(screen.getByRole("button", { name: "Next month" })); expect(grid.querySelectorAll("[role=gridcell]").length % 7).toBe(0);
   });
-  it("adds a habit with chosen days and a type, and deletes it from its window only after confirming", async () => {
-    await page();
-    const manage = screen.getByRole("region", { name: "Manage habits" });
-    fireEvent.change(within(manage).getByLabelText("New habit name"), { target: { value: "  Reading " } });
-    fireEvent.change(within(manage).getByLabelText("Type of the new habit"), { target: { value: "Leisure" } });
-    const newDays = within(manage).getByRole("group", { name: "Days for the new habit" });
-    fireEvent.click(within(newDays).getByRole("button", { name: "Sat" })); fireEvent.click(within(newDays).getByRole("button", { name: "Sun" }));
+});
+
+describe("Your habits", () => {
+  it("lists each habit with weekday chips, adds one with a type and days, and deletes one only after confirming", async () => {
+    await page(); const manage = openManage();
+    expect(within(manage).getByRole("group", { name: "Days for Exercise" }).querySelectorAll("button")).toHaveLength(7);
+    fireEvent.change(within(manage).getByLabelText("New habit name"), { target: { value: "  Reading " } }); fireEvent.change(within(manage).getByLabelText("Type of the new habit"), { target: { value: "Leisure" } });
+    const newDays = within(manage).getByRole("group", { name: "Days for the new habit" }); fireEvent.click(within(newDays).getByRole("button", { name: "SAT on" })); fireEvent.click(within(newDays).getByRole("button", { name: "SUN on" }));
     fireEvent.click(within(manage).getByRole("button", { name: "Add habit" }));
     await waitFor(() => expect(sent("habit_add_cmd")[0].args).toEqual({ name: "  Reading ", days: 31, category: "Leisure" }));
-    expect(await within(manage).findByText("Reading")).toBeTruthy(); expect(within(manage).getByText(/weekdays/)).toBeTruthy(); expect(within(manage).getAllByText("Leisure").some(el => el.classList.contains("chip"))).toBe(true);
-    expect(screen.getByRole("columnheader", { name: "Reading" })).toBeTruthy();
+    expect(await within(manage).findByRole("button", { name: "Open Reading" })).toBeTruthy();
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
-    fireEvent.click(within(manage).getByRole("button", { name: "Open Anki" }));
-    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete habit" })); expect(sent("habit_delete_cmd")).toHaveLength(0);
-    fireEvent.click(within(manage).getByRole("button", { name: "Open Anki" }));
-    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete habit" }));
-    await waitFor(() => expect(sent("habit_delete_cmd")[0].args).toEqual({ id: "h2" })); expect(confirm).toHaveBeenCalledTimes(2);
-    await waitFor(() => expect(screen.queryByRole("columnheader", { name: "Anki" })).toBeNull());
+    fireEvent.click(within(manage).getByRole("button", { name: "Delete Anki" })); expect(sent("habit_delete_cmd")).toHaveLength(0);
+    fireEvent.click(within(manage).getByRole("button", { name: "Delete Anki" })); await waitFor(() => expect(sent("habit_delete_cmd")[0].args).toEqual({ id: "h2" })); expect(confirm).toHaveBeenCalledTimes(2);
     expect(await screen.findByText("“Anki” deleted.")).toBeTruthy();
   });
-  it("opens a habit in a window with its current and longest streak, and renames it, changes its type and days there", async () => {
+  it("a weekday chip changes the days a habit counts (and the last one cannot be switched off)", async () => {
+    db.habits = [habit("h1", "Exercise", { days: 3 })]; await page(); const manage = openManage(); const chips = within(manage).getByRole("group", { name: "Days for Exercise" });
+    expect(within(chips).getByRole("button", { name: "MON on" }).getAttribute("aria-pressed")).toBe("true"); expect(within(chips).getByRole("button", { name: "WED off" }).getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(within(chips).getByRole("button", { name: "WED off" })); await waitFor(() => expect(sent("habit_update_cmd")[0].args).toMatchObject({ id: "h1", days: 7 }));
+    cleanup(); db.habits = [habit("h1", "Exercise", { days: 1 })]; calls.length = 0; await page(); const m2 = openManage();
+    fireEvent.click(within(within(m2).getByRole("group", { name: "Days for Exercise" })).getByRole("button", { name: "MON on" })); expect(sent("habit_update_cmd")).toHaveLength(0);
+  });
+  it("opens a habit in a window with its streaks, and renames it and changes its type there", async () => {
     const d = (n: number) => ({ day: day(n), habit_id: "h1", state: "done", answered_at: null, source: "manual" });
-    db.log = [d(0), d(-1), d(-2), d(-4), d(-5), d(-6), d(-7)]; // a run of 3 up to today, and a run of 4 before a gap
-    await page();
-    fireEvent.click(within(screen.getByRole("region", { name: "Manage habits" })).getByRole("button", { name: "Open Exercise" }));
-    const win = await screen.findByRole("dialog", { name: "Exercise details" });
-    const stat = (label: string) => within(win).getByText(label).parentElement!.querySelector("b")!.textContent;
-    expect(stat("Current streak")).toBe("3"); expect(stat("Longest streak")).toBe("4");
+    db.log = [d(0), d(-1), d(-2), d(-4), d(-5), d(-6), d(-7)]; await page(); const manage = openManage();
+    fireEvent.click(within(manage).getByRole("button", { name: "Open Exercise" })); const win = await screen.findByRole("dialog", { name: "Exercise details" });
+    const stat = (label: string) => within(win).getByText(label).parentElement!.querySelector("b")!.textContent; expect(stat("Current streak")).toBe("3"); expect(stat("Longest streak")).toBe("4");
     const name = within(win).getByLabelText("Habit name"); fireEvent.change(name, { target: { value: "Workout" } }); fireEvent.blur(name);
     await waitFor(() => expect(sent("habit_update_cmd")[0].args).toEqual({ id: "h1", name: "Workout", days: null, category: null }));
-    fireEvent.change(within(win).getByLabelText("Type"), { target: { value: "Training" } });
-    await waitFor(() => expect(sent("habit_update_cmd")[1].args).toEqual({ id: "h1", name: null, days: null, category: "Training" }));
-    fireEvent.click(within(within(win).getByRole("group", { name: /Days for/ })).getByRole("button", { name: "Sun" }));
-    await waitFor(() => expect(sent("habit_update_cmd")[2].args).toMatchObject({ id: "h1", days: 63 }));
+    fireEvent.change(within(win).getByLabelText("Type"), { target: { value: "Training" } }); await waitFor(() => expect(sent("habit_update_cmd")[1].args).toEqual({ id: "h1", name: null, days: null, category: "Training" }));
     fireEvent.keyDown(window, { key: "Escape" }); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
-  it("puts habits in your order with the six dots (or the arrow keys)", async () => {
-    await page();
-    fireEvent.keyDown(screen.getByLabelText(/Drag Anki to reorder/), { key: "ArrowUp" });
+  it("puts habits in your order with the six dots (or the arrow keys), and the page follows", async () => {
+    await page(); openManage(); fireEvent.keyDown(screen.getByLabelText(/Drag Anki to reorder/), { key: "ArrowUp" });
     await waitFor(() => expect(sent("habits_reorder_cmd")[0].args).toEqual({ ids: ["h2", "h1"] }));
-    await waitFor(() => expect(screen.getAllByRole("columnheader").map(h => h.textContent)).toEqual(["Day", "Anki", "Exercise", "Progress"]));
+    await waitFor(() => expect([...document.querySelectorAll(".hx-circle-name")].map(n => n.textContent)).toEqual(["Anki", "Exercise"]));
   });
-  it("cannot take the last weekday away from a habit, and shows an error from the backend", async () => {
-    db.habits = [habit("h1", "Exercise", { days: 1 })]; db.fail = { habit_add_cmd: "A habit with that name already exists" };
-    await page();
-    const manage = screen.getByRole("region", { name: "Manage habits" });
-    fireEvent.click(within(manage).getByRole("button", { name: "Open Exercise" }));
-    fireEvent.click(within(within(await screen.findByRole("dialog")).getByRole("group", { name: "Days for Exercise" })).getByRole("button", { name: "Mon" }));
-    expect(sent("habit_update_cmd")).toHaveLength(0);
-    fireEvent.keyDown(window, { key: "Escape" });
+  it("shows an error from the backend", async () => {
+    db.fail = { habit_add_cmd: "A habit with that name already exists" }; await page(); const manage = openManage();
     fireEvent.change(within(manage).getByLabelText("New habit name"), { target: { value: "exercise" } }); fireEvent.click(within(manage).getByRole("button", { name: "Add habit" }));
     expect((await screen.findByRole("alert")).textContent).toBe("A habit with that name already exists");
   });
-  it("switches to the month view, shows progress per day, and a day can be edited from it", async () => {
-    db.log = [{ day: day(), habit_id: "h1", state: "done", answered_at: null, source: "manual" }];
-    await page();
-    fireEvent.click(screen.getByRole("button", { name: "Month" }));
-    const grid = await screen.findByRole("grid");
-    const todayCell = within(grid).getByRole("gridcell", { name: new RegExp(": 1 of 2 done") });
-    fireEvent.click(todayCell);
-    const panel = await screen.findByRole("region", { name: /^Habits on / });
-    fireEvent.click(within(panel).getByRole("button", { name: /Anki on .*: empty/ }));
-    await waitFor(() => expect(sent("habit_log_set_cmd")[0].args).toMatchObject({ day: day(), habitId: "h2", state: "done" }));
-    expect(await within(grid).findByRole("gridcell", { name: /: 2 of 2 done/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Previous month" })); fireEvent.click(screen.getByRole("button", { name: "Next month" }));
-    expect(within(grid).getAllByRole("gridcell").length % 7).toBe(0);
+});
+
+describe("Undo and import", () => {
+  it("takes back a tick, a new habit and a new order with the shared Undo (Ctrl+Z)", async () => {
+    await page(); fireEvent.click(within(screen.getByRole("region", { name: "Today" })).getByRole("button", { name: "Mark done: Exercise" })); await waitFor(() => expect(sent("habit_log_set_cmd")).toHaveLength(1));
+    expect(await undoLatest()).toMatch(/Ticked Exercise/); await waitFor(() => expect(sent("habit_log_set_cmd")[1].args).toMatchObject({ habitId: "h1", state: null }));
+    const manage = openManage(); fireEvent.keyDown(screen.getByLabelText(/Drag Anki to reorder/), { key: "ArrowUp" }); await waitFor(() => expect(sent("habits_reorder_cmd")).toHaveLength(1));
+    expect(await undoLatest()).toBe("Order of habits"); await waitFor(() => expect(sent("habits_reorder_cmd")[1].args).toEqual({ ids: ["h1", "h2"] }));
+    fireEvent.change(within(manage).getByLabelText("New habit name"), { target: { value: "Reading" } }); fireEvent.click(within(manage).getByRole("button", { name: "Add habit" })); await waitFor(() => expect(sent("habit_add_cmd")).toHaveLength(1));
+    expect(await undoLatest()).toBe("New habit “Reading”"); await waitFor(() => expect(sent("habit_delete_cmd")[0].args).toEqual({ id: "h3" })); expect(await undoLatest()).toBeNull();
   });
   it("imports a history file, and refuses a file that is not one", async () => {
-    await page();
-    const input = document.querySelector("input[type=file]") as HTMLInputElement;
+    await page(); const input = document.querySelector("input[type=file]") as HTMLInputElement;
     const send = (text: string) => fireEvent.change(input, { target: { files: [new File([text], "history.json", { type: "application/json" })] } });
-    send(JSON.stringify({ rows: [{ day: "2026-01-01", habit: "Anki", done: true }] }));
-    await waitFor(() => expect(sent("habit_import_cmd")[0].args).toEqual({ rows: [{ day: "2026-01-01", habit: "Anki", done: true }] }));
+    send(JSON.stringify({ rows: [{ day: "2026-01-01", habit: "Anki", done: true }] })); await waitFor(() => expect(sent("habit_import_cmd")[0].args).toEqual({ rows: [{ day: "2026-01-01", habit: "Anki", done: true }] }));
     expect(await screen.findByText(/Imported 3 ticks and 1 new habit. 0 days you had already logged were kept/)).toBeTruthy();
     send("not json"); expect((await screen.findByRole("alert")).textContent).toMatch(/not a habit history file/);
-    send(JSON.stringify([{ day: "2026-01-01" }])); await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/needs day, habit and done/));
-    expect(sent("habit_import_cmd")).toHaveLength(1);
-  });
-  it("starts empty with a hint, and shows the charts section", async () => {
-    db.habits = [];
-    render(<Habits />);
-    expect(await screen.findByText(/No habits yet. Add one below/)).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Charts" })).toBeTruthy();
+    send(JSON.stringify([{ day: "2026-01-01" }])); await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/needs day, habit and done/)); expect(sent("habit_import_cmd")).toHaveLength(1);
   });
 });

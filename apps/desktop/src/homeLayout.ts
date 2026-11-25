@@ -40,7 +40,7 @@ export const DEFAULT_LAYOUT_KEY = "nou-home-layout";
 export const HOME_WIDGET_INFO: { id: string; title: string }[] = [
   { id: "now", title: "Now" }, { id: "daily", title: "Daily page" }, { id: "calendar", title: "Calendar" }, { id: "teaching", title: "Teaching of the day" },
   { id: "clocks", title: "Clocks" }, { id: "tasks", title: "Today's tasks" }, { id: "weather", title: "Weather" }, { id: "periods", title: "Year, quarter, month and day" },
-  { id: "countdowns", title: "Countdowns" }, { id: "approvals", title: "Waiting for approval" }, { id: "recent", title: "Recently edited" }, { id: "favorites", title: "Favorites" },
+  { id: "countdowns", title: "Countdowns" }, { id: "goals", title: "Goals" }, { id: "approvals", title: "Waiting for approval" }, { id: "recent", title: "Recently edited" }, { id: "favorites", title: "Favorites" },
   { id: "resurface", title: "Worth revisiting" },
 ];
 export const HOME_WIDGET_IDS = HOME_WIDGET_INFO.map(w => w.id);

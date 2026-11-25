@@ -1,7 +1,7 @@
 import { useReorder, GRIP } from "./Reorder";
 import { pushUndo } from "./undo";
 import { useHabits } from "./useHabits";
-import { progressOn } from "./habitsLogic";
+import { progressOn, streaks } from "./habitsLogic";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icons";
@@ -358,7 +358,7 @@ export function TasksWidget({ disabled }: { disabled?: boolean }) {
 
 // ---- teaching of the day: from a database called Teachings ----------------------------------------------------------
 type Db = { title: string; properties: { id: string; name: string; type: string; options?: { id: string; name: string }[] }[]; rows: { id: string; title: string; values: Record<string, unknown> }[] };
-type Teaching = { text: string; theme: string; source: string };
+type Teaching = { text: string; theme: string; source: string; author: string; apply: string };
 const prop = (db: Db, names: string[], types: string[]) => db.properties.find(p => names.includes(p.name.trim().toLowerCase()) && types.includes(p.type));
 function valueOf(p: Db["properties"][number] | undefined, v: unknown): string {
   if (!p || v == null) return "";
@@ -377,8 +377,8 @@ export function TeachingWidget({ today }: { today: string }) {
         const brief = (Array.isArray(list) ? list : []).find(d => d.title.trim().toLowerCase() === "teachings");
         const db = brief ? await invoke<Db | null>("get_database", { pageId: brief.id }) : null;
         if (!db) { if (!off) setItems([]); return; }
-        const body = prop(db, ["teaching", "text", "quote", "note"], ["text"]), theme = prop(db, ["theme"], ["select", "multi_select", "text"]), src = prop(db, ["book", "source"], ["select", "text", "url"]);
-        const all = db.rows.map(r => ({ text: (valueOf(body, r.values?.[body?.id ?? ""]) || r.title || "").trim(), theme: valueOf(theme, r.values?.[theme?.id ?? ""]), source: valueOf(src, r.values?.[src?.id ?? ""]) })).filter(t => t.text);
+        const body = prop(db, ["teaching", "text", "quote", "note"], ["text"]), theme = prop(db, ["theme"], ["select", "multi_select", "text"]), src = prop(db, ["book", "source"], ["select", "text", "url"]), who = prop(db, ["author"], ["select", "text"]), how = prop(db, ["how to apply", "try today", "apply"], ["text"]);
+        const all = db.rows.map(r => ({ text: (valueOf(body, r.values?.[body?.id ?? ""]) || r.title || "").trim(), theme: valueOf(theme, r.values?.[theme?.id ?? ""]), source: valueOf(src, r.values?.[src?.id ?? ""]), author: valueOf(who, r.values?.[who?.id ?? ""]), apply: valueOf(how, r.values?.[how?.id ?? ""]) })).filter(t => t.text);
         if (!off) setItems(pickForDay(all, today, 5));
       } catch { if (!off) setItems([]); }
     })();
@@ -392,7 +392,30 @@ export function TeachingWidget({ today }: { today: string }) {
     {items === null && <p className="hint">Loading…</p>}
     {items && !cur && <p className="hint">One teaching appears here each day. Make a database called Teachings with a Theme and a Book column and add rows to it.</p>}
     {cur && <><p className="teach-text">{cur.text}</p>
-      <div className="teach-meta">{cur.theme && <span className="chip">{cur.theme}</span>}<span className="mono-note">{[cur.source, (at + 1) + " OF " + items!.length].filter(Boolean).join(" · ")}</span></div></>}
+      <div className="teach-meta">{cur.theme && <span className="chip">{cur.theme}</span>}<span className="mono-note">{[cur.source, cur.author, (at + 1) + " OF " + items!.length].filter(Boolean).join(" · ")}</span></div>
+      {cur.apply && <p className="teach-try"><span className="mono-note">TRY TODAY</span> {cur.apply}</p>}</>}
+  </>;
+}
+
+// ---- goals ----------------------------------------------------------------------------------------------------------
+/** Whole days from one calendar day to another (both written YYYY-MM-DD), counted on calendar days so a clock change cannot move it. */
+export function daysUntil(from: string, to: string): number { const t = (d: string) => { const [y, m, dd] = d.split("-").map(Number); return Date.UTC(y, m - 1, dd); }; return Math.round((t(to) - t(from)) / 86400000); }
+export const GOALS = { jlpt: { title: "JLPT N3", date: "2027-07-04", label: "4 Jul 2027" }, coding: { title: "Python, C# and JavaScript basics", label: "Feb 2027" } } as const;
+export function GoalsWidget({ today }: { today: string }) {
+  const { habits, log } = useHabits();
+  const left = daysUntil(today, GOALS.jlpt.date);
+  const streak = (name: string) => { const h = (habits ?? []).find(x => x.name.trim().toLowerCase() === name); return h ? streaks(h, log, today).current : null; };
+  const jp = streak("japanese"), anki = streak("anki");
+  return <>
+    <div className="goal" role="group" aria-label={GOALS.jlpt.title}>
+      <div><div className="goal-name">{GOALS.jlpt.title}</div><span className="mono-note">{left >= 0 ? "EXAM " + GOALS.jlpt.label.toUpperCase() : "EXAM WAS " + GOALS.jlpt.label.toUpperCase()}</span></div>
+      <div className="goal-num" aria-label={left >= 0 ? left + " days to go" : "Exam date has passed"}><b>{Math.max(0, left)}</b><span className="mono-note">DAYS</span></div>
+    </div>
+    <div className="goal-streaks" aria-label="Study streaks">
+      <span className="goal-streak"><b>{jp ?? "–"}</b><span className="mono-note">JAPANESE · DAY STREAK</span></span>
+      <span className="goal-streak"><b>{anki ?? "–"}</b><span className="mono-note">ANKI · DAY STREAK</span></span>
+    </div>
+    <div className="goal" role="group" aria-label={GOALS.coding.title}><div><div className="goal-name">{GOALS.coding.title}</div><span className="mono-note">DUE {GOALS.coding.label.toUpperCase()}</span></div></div>
   </>;
 }
 

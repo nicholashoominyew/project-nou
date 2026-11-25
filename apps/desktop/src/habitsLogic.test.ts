@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, answerSplit, appliesOn, activeCheckins, blockRunning, indexLog, localDay, maskLabel, maskToggle, monthGrid, parseDay, progressOn, slotRange, streaks, totalsPerHabit, weekdayOfDay, weeklyTrend, type Checkin, type Habit, type LogEntry, type LogState } from "./habitsLogic";
+import { heatCells, heatLayout, habitRate, rangeStats, weekBlocks, addDays, answerSplit, appliesOn, activeCheckins, blockRunning, indexLog, localDay, maskLabel, maskToggle, monthGrid, parseDay, progressOn, slotRange, streaks, totalsPerHabit, weekdayOfDay, weeklyTrend, type Checkin, type Habit, type LogEntry, type LogState } from "./habitsLogic";
 
 const habit = (id: string, over: Partial<Habit> = {}): Habit => ({ id, name: id, days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health", ...over });
 const entry = (day: string, habit_id: string, state: LogState = "done"): LogEntry => ({ day, habit_id, state, answered_at: null, source: "manual" });
@@ -96,5 +96,35 @@ describe("which check-ins are running", () => {
     const ev = { day: "2026-11-23", start_slot: 10, end_slot: 11 };
     expect(blockRunning(ev, at(5, 0))).toBe(true); expect(blockRunning(ev, at(5, 30))).toBe(false); expect(blockRunning(ev, at(4, 59))).toBe(false);
     expect(blockRunning(ev, new Date(2026, 10, 24, 5, 10).getTime())).toBe(false);
+  });
+});
+
+describe("the redesigned page's numbers", () => {
+  const T = "2026-11-25"; // a Wednesday
+  const hs = [habit("a"), habit("b", { days: 31 })]; // b counts Monday to Friday only
+  const days = (n: number) => Array.from({ length: n }, (_, i) => addDays(T, -i));
+  it("a rate is days done out of days the habit counted, and none when it counted on no day", () => {
+    const l = log(entry(T, "a"), entry(addDays(T, -1), "a"));
+    expect(habitRate(hs[0], l, T, 4)).toBe(0.5); expect(habitRate(hs[0], l, T, 7)).toBeCloseTo(2 / 7);
+    const weekend = habit("w", { days: 96 }); expect(habitRate(weekend, l, T, 2)).toBeNull(); // Tue and Wed are not weekend days
+    expect(habitRate(habit("late", { created_at: new Date(2026, 10, 24, 12).toISOString() }), log(), T, 30)).toBe(0); // only 2 days counted, none done
+  });
+  it("completion, full days and days with a tick follow each habit's schedule", () => {
+    const l = log(...days(3).flatMap(d => [entry(d, "a"), entry(d, "b")]), entry(addDays(T, -3), "a")); // Wed, Tue, Mon: both; Sun: a only (b does not count on Sunday)
+    expect(rangeStats(hs, l, T, 4)).toEqual({ completion: 1, fullDays: 4, activeDays: 4, days: 4 });
+    expect(rangeStats(hs, log(entry(T, "a")), T, 2)).toEqual({ completion: 0.25, fullDays: 0, activeDays: 1, days: 2 });
+    expect(rangeStats([], log(), T, 7).completion).toBeNull();
+  });
+  it("the weekly chart is eight blocks of seven days ending today, labelled NOW and W-1 to W-7", () => {
+    const l = log(...days(7).map(d => entry(d, "a")));
+    const w = weekBlocks([hs[0]], l, T, 8); expect(w).toHaveLength(8); expect(w.map(x => x.label)).toEqual(["W-7", "W-6", "W-5", "W-4", "W-3", "W-2", "W-1", "NOW"]);
+    expect(w[7].pct).toBe(1); expect(w[6].pct).toBe(0);
+  });
+  it("the heatmap layout changes with the range, and a weekday grid is padded so the first day is on its weekday row", () => {
+    expect([7, 30, 90].map(n => heatLayout(n))).toEqual([{ size: 44, gap: 8, rows: 1, radius: 12 }, { size: 24, gap: 5, rows: 7, radius: 6 }, { size: 14, gap: 4, rows: 7, radius: 3 }]);
+    const seven = heatCells(hs[0], log(entry(T, "a")), T, 7); expect(seven).toHaveLength(7); expect(seven.at(-1)).toMatchObject({ day: T, state: "done", today: true }); expect(seven[0].state).toBe("missed");
+    const thirty = heatCells(hs[0], log(), T, 30); expect(thirty[0].state).toBe("pad"); // 2026-10-27 is a Tuesday: one blank above it (Monday)
+    expect(thirty.filter(c => c.state === "pad")).toHaveLength(1); expect(thirty).toHaveLength(31); expect(thirty[1].day).toBe("2026-10-27");
+    const b = heatCells(hs[1], log(), T, 7); expect(b.filter(c => c.state === "off").map(c => weekdayOfDay(c.day))).toEqual([5, 6]); // not a day for this habit
   });
 });
