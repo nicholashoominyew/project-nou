@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import EmbedView from "./Embed";
+import EmbedView from "./EmbedView";
 import { writeExtraHosts } from "./embed";
 
 const { calls, files } = vi.hoisted(() => ({ calls: [] as { command: string; args: any }[], files: {} as Record<string, string> }));

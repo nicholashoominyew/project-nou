@@ -14,7 +14,7 @@ import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "@fontsource/barlow-condensed/700.css";
-import "./habits.css";
+import "./habitsPage.css";
 import "./theme.css";
 
 // Do NOT wrap <App /> in <React.StrictMode>. In development StrictMode mounts, unmounts and re-mounts

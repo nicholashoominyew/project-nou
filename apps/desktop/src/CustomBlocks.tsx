@@ -34,7 +34,7 @@ export const bookmarkBlock=createReactBlockSpec({type:"nouBookmark",propSchema:{
 import Database from "./DatabaseView";
 import FlowchartView from "./FlowchartView";
 import {boxColor} from "./blockOps";
-import EmbedView from "./Embed";
+import EmbedView from "./EmbedView";
 import {DEFAULT_HEIGHT} from "./embed";
 const MIN_IMAGE_WIDTH=80;
 function useBlobUrl(id:string){

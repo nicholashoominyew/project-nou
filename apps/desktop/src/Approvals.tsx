@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { keep } from "./stable";
 import { OP_LABELS, applyProposal, canApply, describeProposal, parseAppendEmbed, parseAttachHtml, type Proposal } from "./gatewayApply";
-import EmbedView from "./Embed";
+import EmbedView from "./EmbedView";
 
 /** Show a value exactly as the client sent it, truncated for display only. Nothing here is rendered as HTML. */
 function shown(value: unknown): string {
