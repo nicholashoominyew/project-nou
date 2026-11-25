@@ -1,4 +1,4 @@
 import {BlockNoteSchema,defaultBlockSpecs} from "@blocknote/core";
-import {pageBlock,bookmarkBlock,imageBlock,pdfBlock,fileBlock,databaseBlock,linkedTodoBlock,flowchartBlock,columnsBlock} from "./CustomBlocks";
+import {pageBlock,bookmarkBlock,imageBlock,pdfBlock,fileBlock,databaseBlock,linkedTodoBlock,flowchartBlock,columnsBlock,embedBlock} from "./CustomBlocks";
 const {image:_image,video:_video,audio:_audio,file:_file,...textBlocks}=defaultBlockSpecs;
-export const noteSchema=BlockNoteSchema.create({blockSpecs:{...textBlocks,nouPage:pageBlock(),nouBookmark:bookmarkBlock(),nouImage:imageBlock(),nouPdf:pdfBlock(),nouFile:fileBlock(),nouDatabase:databaseBlock(),nouLinkedTodo:linkedTodoBlock(),nouFlowchart:flowchartBlock(),nouColumns:columnsBlock()}});
+export const noteSchema=BlockNoteSchema.create({blockSpecs:{...textBlocks,nouPage:pageBlock(),nouBookmark:bookmarkBlock(),nouImage:imageBlock(),nouPdf:pdfBlock(),nouFile:fileBlock(),nouDatabase:databaseBlock(),nouLinkedTodo:linkedTodoBlock(),nouFlowchart:flowchartBlock(),nouColumns:columnsBlock(),nouEmbed:embedBlock()}});

@@ -42,6 +42,8 @@ it("tracks images, PDFs and other dropped files as note attachments and rejects 
     { type: "paragraph", children: [{ type: "nouPdf", props: { fileId: b } }, { type: "nouFile", props: { fileId: c } }, { type: "nouFile", props: { fileId: c } }] },
   ]).sort()).toEqual([a, b, c]);
   expect(() => blockAttachmentIds([{ type: "nouFile", props: { fileId: "../../secret" } }])).toThrow(/Invalid attachment reference/);
+  expect(blockAttachmentIds([{ type: "nouEmbed", props: { url: "https://claude.ai/a", fileId: "" } }, { type: "nouEmbed", props: { mode: "snapshot", fileId: "d".repeat(64) } }])).toEqual(["d".repeat(64)]); // a live embed holds no file
+  expect(() => blockAttachmentIds([{ type: "nouEmbed", props: { fileId: "../../secret" } }])).toThrow(/Invalid attachment reference/);
 });
 
 it("collects page-link targets from nested blocks without duplicates, ignoring other blocks", () => {

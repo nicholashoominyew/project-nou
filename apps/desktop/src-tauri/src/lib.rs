@@ -25,6 +25,7 @@ mod hub;
 mod runner;
 mod habits;
 mod appsettings;
+mod embeds;
 mod sync;
 #[cfg(test)]
 mod recovery_tests;

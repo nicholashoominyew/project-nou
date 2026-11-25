@@ -9,7 +9,7 @@ use tauri::State;
 use uuid::Uuid;
 
 pub const SCOPES: [&str; 13] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write", "inhouse:read", "inhouse:write", "timetable:read", "timetable:write", "home:write"];
-pub const OPS: [&str; 12] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder"];
+pub const OPS: [&str; 14] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder", "append_embed", "attach_html"];
 const MAX_PENDING_PER_TOKEN: i64 = 50;
 const MAX_PAYLOAD: usize = 60_000;
 const EXPIRY: &str = "-7 days";
@@ -97,6 +97,7 @@ pub fn propose(c: &Connection, secret: &str, op: &str, payload: &Value, summary:
     if !OPS.contains(&op) { return Err(format!("Unsupported operation: {op}")); }
     if !who.scopes.iter().any(|s| s == scope_for(op)) { return Err(format!("This token lacks the {} scope", scope_for(op))); }
     if !payload.is_object() { return Err("The payload must be a JSON object".into()); }
+    crate::embeds::validate_request(c, op, payload)?;
     let body = payload.to_string();
     if body.len() > MAX_PAYLOAD { return Err("The payload is too large".into()); }
     let summary = summary.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -352,5 +353,17 @@ mod tests {
         assert!(propose(&c, &notes.secret, "habit_add", &json!({ "name": "Reading" }), "x").unwrap_err().contains("timetable:write"));
         assert!(propose(&c, &notes.secret, "todo_reorder", &json!({ "order": ["Call Sam"] }), "Reorder").is_ok());
         assert!(propose(&c, &tt.secret, "todo_reorder", &json!({ "order": ["Call Sam"] }), "x").unwrap_err().contains("notes:write"));
+    }
+
+    #[test]
+    fn embed_requests_are_checked_before_they_are_queued_and_use_the_notes_scope() {
+        let c = fresh(); let notes = token(&c, &["notes:write"]); let tt = token(&c, &["timetable:write"]);
+        let ok = json!({ "page": "p1", "url": "https://claude.ai/artifact/abc", "title": "Chart" });
+        assert!(propose(&c, &notes.secret, "append_embed", &ok, "Show the chart").is_ok());
+        assert!(propose(&c, &tt.secret, "append_embed", &ok, "x").unwrap_err().contains("notes:write"));
+        assert!(propose(&c, &notes.secret, "append_embed", &json!({ "page": "p1", "url": "http://claude.ai/a" }), "x").unwrap_err().contains("https"));
+        assert!(propose(&c, &notes.secret, "append_embed", &json!({ "page": "p1", "url": "https://evil.example/a" }), "x").unwrap_err().contains("not on the list"));
+        assert!(propose(&c, &notes.secret, "attach_html", &json!({ "page": "p1", "title": "T", "html": "<p>hi</p>" }), "Attach").is_ok());
+        let pending: i64 = c.query_row("SELECT COUNT(*) FROM proposals WHERE status='pending'", [], |r| r.get(0)).unwrap(); assert_eq!(pending, 2, "refused requests are never queued");
     }
 }

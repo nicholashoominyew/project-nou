@@ -37,8 +37,11 @@ export async function appendBlocksToNote(pageId: string, blocks: NewBlock[]): Pr
 
     const existing = new Set<string>();
     for (const b of walk(ed.document as readonly AnyBlock[])) if (b.type === "checkListItem") existing.add(normal(blocksToPlainText([b])));
-    const fresh = blocks.filter(b => b.type === "raw" || b.type !== "checkListItem" || !existing.has(normal(b.text)));
-    if (!fresh.length) return { changed: false, message: "That to-do is already on the page, so nothing was added" };
+    const embedded = new Set<string>();
+    for (const b of walk(ed.document as readonly AnyBlock[])) if (b.type === "nouEmbed" && typeof b.props?.url === "string" && b.props.url) embedded.add(b.props.url);
+    const isEmbed = (b: NewBlock) => b.type === "raw" && (b.block as AnyBlock)?.type === "nouEmbed";
+    const fresh = blocks.filter(b => isEmbed(b) ? !embedded.has(String(((b as { block: AnyBlock }).block.props ?? {}).url ?? "") || "\u0000") : b.type === "raw" || b.type !== "checkListItem" || !existing.has(normal(b.text)));
+    if (!fresh.length) return { changed: false, message: blocks.some(isEmbed) ? "That page is already embedded here, so nothing was added" : "That to-do is already on the page, so nothing was added" };
 
     const partial = fresh.map(b => b.type === "raw" ? b.block : b.type === "checkListItem"
       ? { type: "checkListItem", props: { checked: !!b.checked }, content: [{ type: "text", text: b.text, styles: {} }] }

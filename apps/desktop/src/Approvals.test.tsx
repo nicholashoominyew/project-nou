@@ -8,10 +8,13 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: a
   if (command === "gateway_list_proposals") return state.list;
   if (command === "gateway_decide") { if (state.failDecide) throw new Error(state.failDecide); state.list = state.list.filter(p => p.id !== args.id); return {}; }
   if (command === "create_page") return { id: "new-page" };
+  if (command === "upload_attachment_bytes") return { id: "f".repeat(64), name: "x.html", mime: "text/html", bytes: 1 };
+  if (command === "gateway_mark_applied") return {};
 } }));
+const appended: any[] = []; vi.mock("./noteAppend", () => ({ appendBlocksToNote: async (page: string, blocks: any[]) => { appended.push({ page, blocks }); return { changed: true, message: "Added 1 block" }; } }));
 vi.mock("./richUpdate", () => ({ newRichUpdate: async () => [1] }));
 const proposal = (extra: object = {}) => ({ id: "p1", token_id: "t", token_name: "Claude", op: "create_page", payload: { title: "Ideas" }, summary: "Totally harmless page", status: "pending", created_at: "x", decided_at: null, applied_at: null, result: null, ...extra });
-beforeEach(() => { calls.length = 0; state.list = [proposal()]; state.failDecide = ""; });
+beforeEach(() => { appended.length = 0; calls.length = 0; state.list = [proposal()]; state.failDecide = ""; });
 
 describe("Approvals", () => {
   it("shows the exact operation and fields, and labels the clients own description as unverified", async () => {
@@ -77,5 +80,33 @@ describe("Approvals", () => {
     state.list = [];
     render(<Approvals disabled={false} refresh={async () => {}} />);
     expect(await screen.findByText(/Nothing waiting/)).toBeTruthy();
+  });
+  it("shows an embed request as a card and loads nothing until asked; approving it adds the block through the normal path", async () => {
+    state.list = [proposal({ id: "e1", op: "append_embed", payload: { page: "p1", url: "https://claude.ai/artifact/abc", title: "Chart" }, summary: "Show my chart" })];
+    const { container } = render(<Approvals disabled={false} refresh={async () => {}} />);
+    const card = await screen.findByLabelText("Embed a page in a note");
+    expect(within(card).getByText(/will be embedded at the end of the note/)).toBeTruthy();
+    const preview = within(card).getByLabelText("Preview of the embed"); expect(within(preview).getByText("https://claude.ai/artifact/abc")).toBeTruthy(); expect(container.querySelector("iframe")).toBeNull();
+    fireEvent.click(within(card).getByRole("button", { name: "Approve and apply" }));
+    await waitFor(() => expect(appended).toHaveLength(1)); expect(appended[0].blocks[0].block.props).toMatchObject({ url: "https://claude.ai/artifact/abc", mode: "live" });
+    expect(calls.find(c => c.command === "gateway_mark_applied")!.args).toMatchObject({ id: "e1", ok: true });
+  });
+  it("shows a snapshot request's page in a no-network frame, and rejecting it stores nothing", async () => {
+    state.list = [proposal({ id: "e2", op: "attach_html", payload: { page: "p1", title: "Chart", html: "<p>Hi there</p>" }, summary: "Attach it" })];
+    const { container } = render(<Approvals disabled={false} refresh={async () => {}} />);
+    const card = await screen.findByLabelText("Attach an HTML page to a note");
+    const frame = await waitFor(() => { const f = container.querySelector("iframe"); expect(f).not.toBeNull(); return f!; });
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts"); expect(frame.getAttribute("srcdoc")).toContain("Hi there"); expect(frame.getAttribute("srcdoc")).toMatch(/connect-src 'none'/);
+    fireEvent.click(within(card).getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(calls.some(c => c.command === "gateway_decide" && c.args.approve === false)).toBe(true));
+    expect(calls.some(c => c.command === "upload_attachment_bytes")).toBe(false); expect(appended).toEqual([]);
+  });
+  it("a request for a site that is not allowed still shows its raw fields but no preview, and cannot add anything", async () => {
+    state.list = [proposal({ id: "e3", op: "append_embed", payload: { page: "p1", url: "https://evil.example/x" }, summary: "x" })];
+    const { container } = render(<Approvals disabled={false} refresh={async () => {}} />);
+    const card = await screen.findByLabelText("Embed a page in a note");
+    expect(container.querySelector("iframe")).toBeNull(); expect(within(card).queryByLabelText("Preview of the embed")).toBeNull(); expect(within(card).getByText("https://evil.example/x")).toBeTruthy();
+    fireEvent.click(within(card).getByRole("button", { name: "Approve and apply" }));
+    await waitFor(() => expect(calls.find(c => c.command === "gateway_mark_applied")?.args).toMatchObject({ ok: false })); expect(appended).toEqual([]);
   });
 });

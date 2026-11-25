@@ -34,6 +34,8 @@ export const bookmarkBlock=createReactBlockSpec({type:"nouBookmark",propSchema:{
 import Database from "./DatabaseView";
 import FlowchartView from "./FlowchartView";
 import {boxColor} from "./blockOps";
+import EmbedView from "./Embed";
+import {DEFAULT_HEIGHT} from "./embed";
 const MIN_IMAGE_WIDTH=80;
 function useBlobUrl(id:string){
  const [url,setUrl]=useState("");const [error,setError]=useState("");
@@ -139,4 +141,17 @@ function ColumnsHeader({block,editor}:{block:{id:string};editor:any}){
 }
 export const columnsBlock=createReactBlockSpec({type:"nouColumns",propSchema:{},content:"none"},{
  render:({block,editor})=><ColumnsHeader block={block} editor={editor}/>
+});
+
+/**
+ * An embedded page: a live frame of an allowed https page (a Claude artifact, for example), or a snapshot (an .html file stored with the page). `url`, `title`, `height` (pixels),
+ * `mode` ("live" or "snapshot") and, for a snapshot, `fileId` (the stored file). Pages that forbid framing show as a card with "Open in new tab".
+ */
+export const embedBlock=createReactBlockSpec({type:"nouEmbed",propSchema:{url:{default:""},title:{default:""},height:{default:DEFAULT_HEIGHT},mode:{default:"live",values:["live","snapshot"] as const},fileId:{default:""}},content:"none"},{
+ render:({block,editor})=>{
+  const context=useEditorFeatures();
+  return <EmbedView url={block.props.url} title={block.props.title} height={block.props.height} mode={block.props.mode} fileId={block.props.fileId} editable={editor.isEditable} onError={context.onError}
+   onChange={patch=>editor.updateBlock(block,{props:patch} as never)}
+   onAttach={async file=>{const info=await context.uploadFile(file);editor.updateBlock(block,{props:{fileId:info.id,mode:"snapshot",title:block.props.title||file.name.replace(/\.html?$/i,"")}} as never)}}/>;
+ }
 });

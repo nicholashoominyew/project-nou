@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { keep } from "./stable";
-import { OP_LABELS, applyProposal, canApply, describeProposal, type Proposal } from "./gatewayApply";
+import { OP_LABELS, applyProposal, canApply, describeProposal, parseAppendEmbed, parseAttachHtml, type Proposal } from "./gatewayApply";
+import EmbedView from "./Embed";
 
 /** Show a value exactly as the client sent it, truncated for display only. Nothing here is rendered as HTML. */
 function shown(value: unknown): string {
   const s = typeof value === "string" ? value : JSON.stringify(value);
   return s.length > 400 ? s.slice(0, 400) + "… (" + s.length + " characters)" : s;
+}
+
+/** What an embed request would add: a snapshot is shown (it has no network and no access to NOU); a live page is only loaded when you ask, never just because a request arrived. */
+function EmbedPreview({ p }: { p: Proposal }) {
+  const [live, setLive] = useState(false);
+  try {
+    if (p.op === "attach_html") { const a = parseAttachHtml(p.payload); return <div className="approval-embed" aria-label="Preview of the page"><EmbedView url="" title={a.title} height={Math.min(a.height, 360)} mode="snapshot" fileId="x" html={a.html} editable={false} /></div>; }
+    if (p.op === "append_embed") { const e = parseAppendEmbed(p.payload); return <div className="approval-embed" aria-label="Preview of the embed">
+      {live ? <EmbedView url={e.url} title={e.title} height={Math.min(e.height, 360)} mode="live" fileId="" editable={false} />
+        : <div className="embed-card"><strong>{e.title || e.host}</strong><code className="embed-url">{e.url}</code><div className="embed-actions"><button type="button" onClick={() => setLive(true)}>Load a live preview</button></div></div>}</div>; }
+  } catch { /* a badly shaped request shows only its raw fields below */ }
+  return null;
 }
 
 /**
@@ -45,6 +58,7 @@ export default function Approvals({ disabled, refresh }: { disabled: boolean; re
     {items.map(p => <article key={p.id} className="approval" aria-label={OP_LABELS[p.op] ?? p.op}>
       <header><strong>{OP_LABELS[p.op] ?? p.op}</strong><span className="hint">from {p.token_name}</span></header>
       {describeProposal(p.op, p.payload) && <p className="approval-what"><strong>If you approve: </strong>{describeProposal(p.op, p.payload)}</p>}
+      {(p.op === "append_embed" || p.op === "attach_html") && <EmbedPreview p={p} />}
       <dl className="approval-fields">{Object.entries(p.payload).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{shown(v)}</dd></div>)}</dl>
       <blockquote className="approval-claim"><span className="hint">Their description (not verified):</span> {p.summary}</blockquote>
       <div className="approval-actions">

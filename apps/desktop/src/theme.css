@@ -949,3 +949,19 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .mcal-habits{display:flex;align-items:center;gap:10px;margin:8px 0 2px;font-size:13px}.mcal-habits .mini-bar{flex:1;min-width:60px}
 .backup-more>summary{cursor:pointer;font-weight:600;padding:6px 0}.backup-more[open]>summary{margin-bottom:8px}
 details.recovery-card.backup-more{padding:12px 16px}
+
+/* Embedded pages */
+.embed-block{margin:6px 0;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+.embed-bar{display:flex;flex-wrap:wrap;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);align-items:center}
+.embed-bar input[type=text],.embed-bar input:not([type]){flex:1;min-width:140px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+.embed-bar button,.embed-card button{min-height:30px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px;cursor:pointer}
+.embed-mode{display:inline-flex;gap:0}.embed-mode button:first-child{border-radius:8px 0 0 8px}.embed-mode button:last-child{border-radius:0 8px 8px 0;border-left:0}.embed-mode button.on{background:var(--active,var(--line))}
+.embed-frame{display:block;width:100%;border:0;background:#fff}
+.embed-card{display:grid;gap:6px;padding:16px}.embed-card p{margin:0;color:var(--muted);font-size:14px}.embed-url{font-size:12px;overflow-wrap:anywhere;color:var(--muted)}
+.embed-actions{display:flex;flex-wrap:wrap;gap:8px}.embed-actions button:disabled{opacity:.5;cursor:not-allowed}
+.embed-note{padding:16px;margin:0}
+.embed-foot{display:flex;align-items:center;gap:8px;padding:4px 10px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+.embed-link{background:transparent;border:0;color:var(--accent);padding:0;cursor:pointer;font:inherit;text-decoration:underline}
+.embed-grip{margin-left:auto;background:transparent;border:0;color:var(--muted);cursor:ns-resize;font-size:16px}
+.embed-hosts{list-style:none;margin:8px 0;padding:0;display:grid;gap:4px}
+.approval-embed{margin:8px 0}

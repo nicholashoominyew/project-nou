@@ -9,6 +9,7 @@ import {Icon} from "./Icons";
 import {getDefaultReactSlashMenuItems,SideMenuController,SuggestionMenuController} from "@blocknote/react";
 import {NouSideMenu,PageIdContext} from "./NouSideMenu";
 import {namedPastes,pastedImages} from "./pasteImages";
+import {embeddableUrl} from "./embed";
 import {blockAttachmentIds,documentAttachmentIds,documentLinkedTodoIds,documentPageLinkIds,recoveryData} from "./noteTransfer";
 import { invoke } from "@tauri-apps/api/core";
 import { newRichUpdate } from "./richUpdate";
@@ -124,6 +125,13 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     catch(e){context.onError(e)}
   }
   const pageItems=(query:string)=>filterSuggestionItems(context.pages.map(page=>({title:page.title,icon:<Icon name="mention" size={18}/>,aliases:[],group:"Pages",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouPage",props:{pageId:page.id,label:page.title,iconSize:"medium",style:"line"}} as never)})),query).slice(0,12);
+  /** A web address of an allowed site pasted onto an empty line becomes an embed (anything else pastes as usual). Returns true when it did. */
+  function pasteEmbed(e:React.ClipboardEvent):boolean{
+   const text=e.clipboardData.getData("text/plain").trim();if(!text||/\s/.test(text))return false;const url=embeddableUrl(text);if(!url)return false;
+   const cursor=editor.getTextCursorPosition().block as {id:string;type:string;content?:unknown};
+   if(cursor.type!=="paragraph"||blocksToPlainText([cursor as never]).trim()!=="")return false;
+   e.preventDefault();e.stopPropagation();editor.updateBlock(cursor as never,{type:"nouEmbed",props:{url,title:"",mode:"live"},content:undefined} as never);return true;
+  }
   const items=()=>[...getDefaultReactSlashMenuItems(editor),
     {title:"Page",icon:<Icon name="subpage" size={18}/>,aliases:["page","subpage"],group:"NOU",onItemClick:()=>void create("page")},
     {title:"Database",icon:<Icon name="database" size={18}/>,aliases:["database","table","board","calendar","timeline","gallery","list","chart","map"],group:"NOU",onItemClick:()=>void create("database")},
@@ -132,6 +140,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
     {title:"3 columns",icon:<Icon name="columns" size={18}/>,aliases:["columns","column","side by side","3 column"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouColumns",children:[{type:"paragraph"},{type:"paragraph"},{type:"paragraph"}]} as never)},
     {title:"Flowchart",icon:<Icon name="flowchart" size={18}/>,aliases:["flowchart","diagram","chart","flow","process"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouFlowchart",props:{data:""}} as never)},
     {title:"Linked to-do",icon:<Icon name="checklist" size={18}/>,aliases:["[]","[ ]","linked","shared","todo","to-do","checklist","task"],group:"NOU",onItemClick:()=>void newLinkedTodo()},
+    {title:"Embed",icon:<Icon name="link" size={18}/>,aliases:["embed","iframe","artifact","claude","live","snapshot"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouEmbed",props:{url:"",title:"",mode:"live"}} as never)},
     {title:"Bookmark",icon:<Icon name="bookmark" size={18}/>,aliases:["bookmark","link"],group:"NOU",onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:"nouBookmark"})},
     {title:"Image",icon:<Icon name="image" size={18}/>,aliases:["image","photo","upload"],group:"NOU",onItemClick:()=>void create("image")},
     {title:"PDF",icon:<Icon name="pdf" size={18}/>,aliases:["pdf","document","upload"],group:"NOU",onItemClick:()=>void create("pdf")},
@@ -140,7 +149,7 @@ function RichEditor({ session, pageId, disabled, onChange }: { session: Session;
   return <div className={"editor-drop"+(over?" over":"")} onKeyDown={e=>{if(shouldTrapTab(e))e.preventDefault()}} onKeyDownCapture={e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateBlock()}else if(isHighlightShortcut(e)){e.preventDefault();applyHighlight()}}}
     onDragOverCapture={e=>{if(hasFiles(e)){e.preventDefault();e.dataTransfer.dropEffect=disabled?"none":"copy";setOver(!disabled)}}}
     onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOver(false)}}
-    onPasteCapture={e=>{const images=pastedImages(e.clipboardData);if(!images.length)return;e.preventDefault();e.stopPropagation();if(disabled)return;void insertPasted(images)}}
+    onPasteCapture={e=>{if(!disabled&&!pending&&pasteEmbed(e))return;const images=pastedImages(e.clipboardData);if(!images.length)return;e.preventDefault();e.stopPropagation();if(disabled)return;void insertPasted(images)}}
     onDropCapture={e=>{if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();setOver(false);if(disabled)return;const files=Array.from(e.dataTransfer.files);if(files.length)void insertDropped(files,e.clientX,e.clientY)}}>
   <PageIdContext.Provider value={pageId}><BlockNoteView editor={editor} theme={context.theme} editable={!disabled&&!pending} slashMenu={false} sideMenu={false} onChange={() => onChange(blocksToPlainText(editor.document),blockAttachmentIds(editor.document))}>
     <SuggestionMenuController triggerCharacter="/" getItems={async query=>{const linked=wantsExistingDatabases(query)?await linkedDatabaseItems():[];const todos=wantsExistingTodos(query)?await linkedTodoItems():[];return filterSuggestionItems([...items(),...linked,...todos],query)}}/>

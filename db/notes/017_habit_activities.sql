@@ -17,7 +17,7 @@ UPDATE linked_todos SET sort_order=(SELECT COUNT(*) FROM linked_todos o WHERE o.
 CREATE TABLE proposals_new (
  id TEXT PRIMARY KEY,
  token_id TEXT NOT NULL REFERENCES api_tokens(id) ON DELETE RESTRICT,
- op TEXT NOT NULL CHECK(op IN ('create_page','append_text','rename_page','create_row','set_value','add_checklist_item','timetable_set_block','timetable_add_activity','home_set_widgets','habit_add','habit_tick','todo_reorder')),
+ op TEXT NOT NULL CHECK(op IN ('create_page','append_text','rename_page','create_row','set_value','add_checklist_item','timetable_set_block','timetable_add_activity','home_set_widgets','habit_add','habit_tick','todo_reorder','append_embed','attach_html')),
  payload TEXT NOT NULL CHECK(json_valid(payload) AND length(payload)<=65536),
  summary TEXT NOT NULL CHECK(length(summary) BETWEEN 1 AND 500),
  dedupe_key TEXT NOT NULL CHECK(length(dedupe_key)=64),

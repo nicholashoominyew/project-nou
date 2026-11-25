@@ -89,4 +89,22 @@ describe("appendBlocksToNote", () => {
     expect(await appendBlocksToNote("p1", [])).toEqual({ changed: false, message: "Nothing to add" });
     expect(calls.length).toBe(0);
   });
+  it("adds an embed block with all its fields to the real note schema, keeps it searchable, and does not add the same address twice", async () => {
+    const block = { type: "nouEmbed", props: { url: "https://claude.ai/artifact/abc", title: "Chart", height: 600, mode: "live", fileId: "" } };
+    const out = await appendBlocksToNote("p1", [{ type: "raw", block }]);
+    expect(out).toEqual({ changed: true, message: "Added 1 block" });
+    const embeds = savedBlocks().filter(b => b.type === "nouEmbed");
+    expect(embeds).toHaveLength(1); expect(embeds[0].props).toEqual(block.props);
+    expect(textOf(embeds[0])).toBe("Chart https://claude.ai/artifact/abc");
+    const save = calls.filter(c => c.command === "save_note").at(-1)!; expect(save.args.attachmentIds).toEqual([]); expect(save.args.plainText).toContain("https://claude.ai/artifact/abc");
+    const again = await appendBlocksToNote("p1", [{ type: "raw", block }]);
+    expect(again).toEqual({ changed: false, message: "That page is already embedded here, so nothing was added" }); expect(savedBlocks().filter(b => b.type === "nouEmbed")).toHaveLength(1);
+    const other = await appendBlocksToNote("p1", [{ type: "raw", block: { ...block, props: { ...block.props, url: "https://claude.ai/artifact/def" } } }]); expect(other.changed).toBe(true);
+  });
+  it("a snapshot embed keeps its stored file in the note's attachment list, so the file is not thrown away", async () => {
+    const fileId = "e".repeat(64);
+    await appendBlocksToNote("p1", [{ type: "raw", block: { type: "nouEmbed", props: { url: "", title: "Saved", height: 480, mode: "snapshot", fileId } } }]);
+    expect(calls.filter(c => c.command === "save_note").at(-1)!.args.attachmentIds).toEqual([fileId]);
+    const snap = savedBlocks().find(b => b.type === "nouEmbed")!; expect(snap.props).toMatchObject({ mode: "snapshot", fileId });
+  });
 });

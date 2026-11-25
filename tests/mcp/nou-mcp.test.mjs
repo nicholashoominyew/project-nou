@@ -240,3 +240,19 @@ test("habit and task tools: reads need the timetable and notes read scopes, prop
   const bad = await call("nou_propose_habit_tick", { habit: "Exercise", day: "2026-11-20", done: true, bogus: 1 });
   assert.match(bad.result.content[0].text, /Unknown argument: bogus/); assert.equal(seen.length, 3, "a badly shaped request is never sent (the app also re-checks every field when it is approved)");
 });
+
+test("embed tools are proposals under the notes scope, tell the bot when to use them, and send op, payload and a readable summary", async () => {
+  seen.length = 0;
+  const tool = (n) => TOOLS.find((x) => x.name === n);
+  assert.equal(tool("nou_propose_append_embed").needs, "notes:write"); assert.equal(tool("nou_propose_attach_html").needs, "notes:write");
+  assert.match(tool("nou_propose_append_embed").description, /claude\.ai itself currently refuses/); assert.match(tool("nou_propose_append_embed").description, /nou_propose_attach_html/); assert.match(tool("nou_propose_attach_html").description, /no network/);
+  assert.match(tool("nou_propose_append_text").description, /nou_propose_append_embed/, "the plain-text tool points at the embed tools");
+  assert.deepEqual(Object.keys(tool("nou_propose_append_text").schema.properties).sort(), ["page", "summary", "text"], "the plain-text tool takes the same arguments as before");
+  await call("nou_propose_append_embed", { page: "p1", url: "https://claude.ai/artifact/abc", title: "Chart", height: 600 });
+  assert.deepEqual(seen[0].body, { op: "append_embed", payload: { page: "p1", url: "https://claude.ai/artifact/abc", title: "Chart", height: 600 }, summary: "Embed “Chart” in a note" });
+  await call("nou_propose_attach_html", { page: "p1", title: "Chart", html: "<p>hi</p>" });
+  assert.deepEqual(seen[1].body, { op: "attach_html", payload: { page: "p1", title: "Chart", html: "<p>hi</p>" }, summary: "Attach the HTML page “Chart” to a note" });
+  const bad = await call("nou_propose_append_embed", { page: "p1", url: "https://claude.ai/a", bogus: 1 });
+  assert.match(bad.result.content[0].text, /Unknown argument: bogus/); assert.equal(seen.length, 2);
+  assert.ok(TOOLS.every((x) => !/approve|apply|decide|delete/.test(x.name)), "still only proposals");
+});

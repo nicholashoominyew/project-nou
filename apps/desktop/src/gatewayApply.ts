@@ -5,6 +5,7 @@ import { DEFAULT_LAYOUT_KEY, HOME_LAYOUT_EVENT, HOME_NEVER_HIDDEN, HOME_WIDGET_I
 import { addActivity, restoreCells, saveRange } from "./timetable/useTimetable";
 import { announceHabits, habitsApi, todayLocal } from "./habitsApi";
 import { HABIT_TYPES, WEEKDAYS } from "./habitsLogic";
+import { allowedHosts, clampHeight, hostAllowed, MAX_HEIGHT, MAX_HTML, MIN_HEIGHT, parseEmbedUrl } from "./embed";
 
 /** One request from an outside client, as the gateway stores it. Never trust its shape: every field is re-checked here. */
 export type Proposal = {
@@ -20,9 +21,10 @@ export const OP_LABELS: Record<string, string> = {
   append_text: "Add text to a page", add_checklist_item: "Add a checklist item",
   timetable_set_block: "Change the Life Timetable", timetable_add_activity: "Add a timetable activity", home_set_widgets: "Show or hide Home sections",
   habit_add: "Add a habit", habit_tick: "Tick a habit for a day", todo_reorder: "Reorder Today's tasks",
+  append_embed: "Embed a page in a note", attach_html: "Attach an HTML page to a note",
 };
 /** Operations the app can apply today. The others can be viewed and rejected but not approved. */
-export const APPLICABLE_OPS = ["create_page", "rename_page", "set_value", "create_row", "append_text", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder"] as const;
+export const APPLICABLE_OPS = ["create_page", "rename_page", "set_value", "create_row", "append_text", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder", "append_embed", "attach_html"] as const;
 /** An open copy of the page reloads itself, so an approved change shows up without reopening the page. */
 function announceNoteChanged(pageId: string) { try { window.dispatchEvent(new CustomEvent("nou:note-changed", { detail: pageId })); } catch { /* only a refresh hint */ } }
 export const canApply = (op: string) => (APPLICABLE_OPS as readonly string[]).includes(op);
@@ -93,6 +95,28 @@ export function parseTodoOrder(d: Record<string, unknown>): TodoOrder {
   if (!order.length || order.some(t => typeof t !== "string" || !t.trim() || t.length > 500) || new Set(order.map(t => norm(t as string))).size !== order.length) throw new Error("order must be different task texts, each once");
   return { order: order as string[] };
 }
+
+// ---- embedded pages ----
+export type AppendEmbed = { page: string; url: string; host: string; title: string; height: number };
+const optHeight = (v: unknown) => { if (v === undefined) return 480; if (typeof v !== "number" || !Number.isInteger(v) || v < MIN_HEIGHT || v > MAX_HEIGHT) throw new Error(`The height must be a whole number from ${MIN_HEIGHT} to ${MAX_HEIGHT}`); return v; };
+const optTitle = (v: unknown, required: boolean) => { if (v === undefined && !required) return ""; if (typeof v !== "string" || (required && !v.trim()) || v.length > 200 || /[\u0000-\u001f]/.test(v)) throw new Error(required ? "A title of 1 to 200 characters is required" : "The title must be text of at most 200 characters"); return v.trim(); };
+/** Check an "embed a page" request: the note, an https address on the allowed list, an optional title and height. Nothing is trusted. */
+export function parseAppendEmbed(d: Record<string, unknown>, hosts: readonly string[] = allowedHosts()): AppendEmbed {
+  if (!id(d.page)) throw new Error("The page id is invalid");
+  if (typeof d.url !== "string") throw new Error("The address is missing");
+  const u = parseEmbedUrl(d.url);
+  if (!hostAllowed(u.host, hosts)) throw new Error(`${u.host} is not on your list of embeddable sites. Add it in Settings, Embedded pages, then ask again.`);
+  return { page: d.page as string, url: u.href, host: u.host, title: optTitle(d.title, false), height: optHeight(d.height) };
+}
+export type AttachHtml = { page: string; title: string; html: string; height: number };
+/** Check an "attach an HTML page" request: the note, a title, and the page's HTML (kept as a static copy, never run with network access). */
+export function parseAttachHtml(d: Record<string, unknown>): AttachHtml {
+  if (!id(d.page)) throw new Error("The page id is invalid");
+  const title = optTitle(d.title, true);
+  if (typeof d.html !== "string" || !d.html.trim()) throw new Error("The page's HTML is missing");
+  if (new TextEncoder().encode(d.html).length > MAX_HTML) throw new Error(`The HTML is larger than ${MAX_HTML} bytes. Embed the page by its address instead.`);
+  return { page: d.page as string, title, html: d.html, height: optHeight(d.height) };
+}
 const titleOf = (id: string) => HOME_WIDGET_INFO.find(w => w.id === id)?.title ?? id;
 /** One plain sentence about what approving would do, for the approval card. Null when the request is not one of these or is badly shaped (the card then shows the raw fields). */
 export function describeProposal(op: string, d: Record<string, unknown>): string | null {
@@ -102,6 +126,8 @@ export function describeProposal(op: string, d: Record<string, unknown>): string
       return `In week ${b.weeks.join(" and ")}, on ${b.days.map(x => DAY_SHORT[x]).join(", ")}, ${slotTime(b.start)}–${slotTime(b.end)} will be ${b.names.length ? "set to " + b.names.join(" + ") : "emptied"}, replacing what is there now.`;
     }
     if (op === "timetable_add_activity") return text(d.name, 80) && CATEGORIES.includes(d.category as string) ? `A new activity “${(d.name as string).trim()}” (${d.category}) will be added to your list. It is not placed on any day.` : null;
+    if (op === "append_embed") { const e = parseAppendEmbed(d); return `${e.title ? "“" + e.title + "” (" : "("}${e.host}) will be embedded at the end of the note, ${e.height} pixels tall. It shows live when you are online; if the site refuses to be shown inside NOU you get a card with “Open in new tab”.`; }
+    if (op === "attach_html") { const a = parseAttachHtml(d); return `“${a.title}” will be saved with the note as a static copy (${new TextEncoder().encode(a.html).length} bytes) and shown at the end of the note. It works offline, runs in a frame with no network and no access to NOU, and will not update.`; }
     if (op === "habit_add") { const h = parseHabitAdd(d); return `A new habit “${h.name}” (${h.category}, ${h.days === 127 ? "every day" : WEEKDAYS.filter((_, i) => h.days & (1 << i)).join(", ")}) will be added. It also appears in the Life Timetable's activities, but is not placed on any day.`; }
     if (op === "habit_tick") { const t = parseHabitTick(d); return `“${t.habit}” will be marked ${t.done ? "done" : "not done (cleared)"} on ${t.day}.`; }
     if (op === "todo_reorder") { const t = parseTodoOrder(d); return `Today's tasks will start with, in this order: ${t.order.map(x => "“" + x.trim() + "”").join(", ")}. The rest keep their order after them.`; }
@@ -190,6 +216,20 @@ export async function applyProposal(p: Pick<Proposal, "op" | "payload">): Promis
         localStorage.setItem(DEFAULT_LAYOUT_KEY, JSON.stringify(layout));
         try { window.dispatchEvent(new Event(HOME_LAYOUT_EVENT)); } catch { /* only a refresh hint */ }
         return { ok: true, result: `Home: ${[c.show.length ? "showed " + c.show.join(", ") : "", c.hide.length ? "hid " + c.hide.join(", ") : ""].filter(Boolean).join("; ")}` };
+      }
+      case "append_embed": {
+        const e = parseAppendEmbed(d);
+        const out = await appendBlocksToNote(e.page, [{ type: "raw", block: { type: "nouEmbed", props: { url: e.url, title: e.title, height: clampHeight(e.height), mode: "live", fileId: "" } } }]);
+        if (out.changed) announceNoteChanged(e.page);
+        return { ok: true, result: out.message };
+      }
+      case "attach_html": {
+        const a = parseAttachHtml(d);
+        const name = (a.title.replace(/[^\w .-]+/g, "").trim().slice(0, 60) || "page") + ".html";
+        const info = await invoke<{ id: string; name: string }>("upload_attachment_bytes", new TextEncoder().encode(a.html), { headers: { "x-file-name": encodeURIComponent(name) } });
+        const out = await appendBlocksToNote(a.page, [{ type: "raw", block: { type: "nouEmbed", props: { url: "", title: a.title, height: clampHeight(a.height), mode: "snapshot", fileId: info.id } } }]);
+        if (out.changed) announceNoteChanged(a.page);
+        return { ok: true, result: out.message + " (saved copy of “" + a.title + "”)" };
       }
       case "habit_add": {
         const h = parseHabitAdd(d);
