@@ -590,6 +590,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .tt-check{display:flex;align-items:center;gap:8px;font-size:14px;min-height:28px}
 .tt-reminder-settings,.embed-settings{margin-top:10px;max-width:760px}
 .tt-lead input{width:64px;margin:0 6px}
+/* Fields on the Settings cards use the app's own surfaces, not the browser's grey boxes. */
+.settings-card input:not([type=checkbox]){box-sizing:border-box;min-height:34px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:inherit;font-size:13px}
+.settings-card input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}.settings-card input:disabled{opacity:.5}.settings-card input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
+.embed-settings form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tt-lead{display:flex;align-items:center;flex-wrap:wrap;font-size:14px;margin-top:6px}
 .tt-sim{border:1px solid var(--line);border-radius:8px;margin:8px 0;padding:8px 10px}
 .tt-sim legend{font:600 11px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 4px}
 @media (max-width:760px){.document.tt-screen{padding:24px 16px 48px}.tt-title{font-size:32px}.tt-card{padding:16px}}

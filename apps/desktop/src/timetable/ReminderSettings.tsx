@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "../Icons";
 import { isSimulated, now, simulate, simulationAllowed } from "./clock";
 import { readReminderSettings, writeReminderSettings } from "./reminders";
 
@@ -12,7 +13,7 @@ export default function ReminderSettings() {
   const [, redraw] = useState(0);
   const save = (next: typeof s) => { setS(next); writeReminderSettings(next); };
   return <section className="settings-card tt-reminder-settings" aria-label="Timetable reminders">
-    <span className="settings-icon" aria-hidden="true">🔔</span>
+    <span className="settings-icon" aria-hidden="true"><Icon name="bell" size={20} /></span>
     <div className="settings-text">
       <h2>Timetable reminders</h2>
       <p>Get a notice shortly before the next event in your Life Timetable starts. It appears in the app and as a Windows notification.</p>

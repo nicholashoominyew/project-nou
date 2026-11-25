@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "./Icons";
 import { DEFAULT_EMBED_HOSTS, parseEmbedUrl, readExtraHosts, writeExtraHosts } from "./embed";
 import { saveSettingsSnapshot } from "./syncSettings";
 
@@ -15,7 +16,7 @@ export default function EmbedSettings() {
     catch (e) { setError(String(e instanceof Error ? e.message : e)); }
   }
   return <section className="settings-card embed-settings" aria-label="Embedded pages">
-    <span className="settings-icon" aria-hidden="true">🔗</span>
+    <span className="settings-icon" aria-hidden="true"><Icon name="globe" size={20} /></span>
     <div className="settings-text">
       <h2>Embedded pages</h2>
       <p>Pages from these sites can be shown inside a note (type /embed, or paste an address onto an empty line). Other sites are shown as a link. A site can still refuse to be shown inside NOU; then you get a card with “Open in new tab”.</p>
