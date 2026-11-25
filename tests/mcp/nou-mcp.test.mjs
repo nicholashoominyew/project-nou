@@ -222,3 +222,21 @@ test("timetable and Home requests are sent as op, payload and a readable summary
   const odd = await call("nou_propose_timetable_set_block", { weeks: "A", days: "Mon", start: "09:00", end: "10:00", activities: "Work" });
   assert.ok(odd.result, "a badly shaped argument still reaches the app, which re-checks every field and refuses it");
 });
+
+test("habit and task tools: reads need the timetable and notes read scopes, proposals the timetable and notes write scopes, and they are sent as op, payload and summary", async () => {
+  seen.length = 0;
+  const tool = (n) => TOOLS.find((x) => x.name === n);
+  assert.equal(tool("nou_habits_read").needs, "timetable:read"); assert.equal(tool("nou_todos_read").needs, "notes:read");
+  assert.equal(tool("nou_propose_habit_add").needs, "timetable:write"); assert.equal(tool("nou_propose_habit_tick").needs, "timetable:write"); assert.equal(tool("nou_propose_todo_reorder").needs, "notes:write");
+  await call("nou_habits_read", {}); await call("nou_todos_read", {});
+  assert.deepEqual(seen.map((x) => x.url), ["/v1/habits", "/v1/todos"]);
+  seen.length = 0;
+  await call("nou_propose_habit_add", { name: "Reading", category: "Leisure", days: ["Mon", "Tue"] });
+  assert.deepEqual(seen[0].body, { op: "habit_add", payload: { name: "Reading", category: "Leisure", days: ["Mon", "Tue"] }, summary: "Add the habit “Reading”" });
+  await call("nou_propose_habit_tick", { habit: "Exercise", day: "2026-11-20", done: true });
+  assert.deepEqual(seen[1].body, { op: "habit_tick", payload: { habit: "Exercise", day: "2026-11-20", done: true }, summary: "Tick “Exercise” on 2026-11-20" });
+  await call("nou_propose_todo_reorder", { order: ["Pay rent", "Call Sam"] });
+  assert.deepEqual(seen[2].body, { op: "todo_reorder", payload: { order: ["Pay rent", "Call Sam"] }, summary: "Reorder Today's tasks" });
+  const bad = await call("nou_propose_habit_tick", { habit: "Exercise", day: "2026-11-20", done: true, bogus: 1 });
+  assert.match(bad.result.content[0].text, /Unknown argument: bogus/); assert.equal(seen.length, 3, "a badly shaped request is never sent (the app also re-checks every field when it is approved)");
+});

@@ -47,6 +47,15 @@ pub fn handle(c: &Connection, req: &ApiRequest, port: u16) -> ApiResponse {
             if let Err(r) = needs(&who, "timetable:read") { return r; }
             match crate::timetable::summary(c) { Ok(v) => data(v), Err(_) => fail(500, "The timetable could not be read") }
         }
+        // Habits (name, type, days and how many of the last 14 days were done) and Today's tasks (text and whether done, in the owner's order): read-only, no ids.
+        ("GET", ["v1", "habits"]) => {
+            if let Err(r) = needs(&who, "timetable:read") { return r; }
+            match crate::habits::summary(c) { Ok(v) => data(v), Err(_) => fail(500, "The habits could not be read") }
+        }
+        ("GET", ["v1", "todos"]) => {
+            if let Err(r) = needs(&who, "notes:read") { return r; }
+            match crate::todos::list(c, "") { Ok(v) => data(json!(v.iter().map(|t| json!({ "text": t.text(), "done": t.checked() })).collect::<Vec<_>>())), Err(_) => fail(500, "The tasks could not be read") }
+        }
         ("GET", ["v1", "search"]) => {
             if let Err(r) = needs(&who, "notes:read") { return r; }
             let q = req.query.get("q").map(|s| s.trim()).unwrap_or("");
@@ -637,5 +646,20 @@ mod hub_tests {
         let data = &r.body["data"]; assert!(data["activities"].as_array().unwrap().len() > 3 && data["weeks"]["A"]["mon"].is_array() && data["weeks"]["B"]["sun"].is_array());
         assert!(!data.to_string().contains("\"id\""), "no ids in the listing");
         assert_eq!(call(&c, "POST", "/v1/timetable", &reader, Some(json!({}))).status, 404, "it can only be read");
+    }
+
+    #[test]
+    fn habits_and_tasks_can_be_read_with_the_timetable_and_notes_read_scopes_without_ids() {
+        let c = fresh(); let tt = secret(&c, "Claude", &["timetable:read"]); let notes = secret(&c, "Notes", &["notes:read"]);
+        crate::habits::habit_add(&c, "Reading", Some(31), Some("Leisure")).unwrap();
+        crate::todos::create(&c, "Call Sam").unwrap(); crate::todos::create(&c, "Water plants").unwrap();
+        assert_eq!(call(&c, "GET", "/v1/habits", &notes, None).status, 403); assert_eq!(call(&c, "GET", "/v1/todos", &tt, None).status, 403);
+        let h = call(&c, "GET", "/v1/habits", &tt, None); assert_eq!(h.status, 200);
+        let row = &h.body["data"].as_array().unwrap().iter().find(|x| x["name"] == "Reading").unwrap().clone();
+        assert_eq!((row["type"].clone(), row["days"].clone(), row["done_last_14_days"].clone()), (json!("Leisure"), json!(["Mon", "Tue", "Wed", "Thu", "Fri"]), json!(0)));
+        assert!(!h.body["data"].to_string().contains("\"id\""));
+        let t = call(&c, "GET", "/v1/todos", &notes, None); assert_eq!(t.status, 200);
+        assert_eq!(t.body["data"], json!([{ "text": "Call Sam", "done": false }, { "text": "Water plants", "done": false }]));
+        assert_eq!(call(&c, "POST", "/v1/habits", &tt, Some(json!({}))).status, 404, "read only");
     }
 }

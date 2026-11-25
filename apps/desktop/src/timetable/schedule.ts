@@ -6,7 +6,7 @@ export const WEEK_SLOTS = SLOTS_PER_DAY * 7;
 export const CATEGORIES = ["Work", "Training", "Leisure", "Health", "Travel", "Chores", "Rest"] as const;
 export type Category = (typeof CATEGORIES)[number];
 export type Variant = "A" | "B";
-export interface Activity { id: string; name: string; category: Category; colour: string | null; remind: boolean; sort_order: number }
+export interface Activity { id: string; name: string; category: Category; colour: string | null; remind: boolean; sort_order: number; /** Set when the activity is a habit (managed on the Habits page); its check-in comes at the start of its blocks. */ habit_id?: string | null }
 export interface SlotRow { variant: Variant; weekday: number; slot_index: number; activity_id: string }
 /** One sorted list of activity ids per slot, indexed weekday * 48 + slot. */
 export type Grid = string[][];

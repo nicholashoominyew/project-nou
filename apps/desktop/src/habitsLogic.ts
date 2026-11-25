@@ -1,5 +1,7 @@
 // Pure rules for the Habits page and the timetable check-in pop-ups. Days are the device's local calendar days written "2026-11-24"; nothing here reads the clock.
-export type Habit = { id: string; name: string; days: number; sort_order: number; created_at: string };
+export type Habit = { id: string; name: string; days: number; sort_order: number; created_at: string; category: string };
+/** The habit types are the timetable's categories, so a habit's blocks take that colour. */
+export const HABIT_TYPES = ["Training", "Health", "Work", "Leisure", "Chores", "Travel", "Rest"] as const;
 export type LogState = "done" | "skipped" | "no_answer";
 export type LogEntry = { day: string; habit_id: string; state: LogState; answered_at: string | null; source: string };
 export type Checkin = { id: string; habit_id: string; weekday: number; start_slot: number; end_slot: number; variant: "A" | "B" };
@@ -81,15 +83,18 @@ export function monthGrid(year: number, month: number): { day: string; inMonth: 
   return Array.from({ length: cells.length / 7 }, (_, w) => cells.slice(w * 7, w * 7 + 7));
 }
 
-/** Check-ins whose block has just started, as seen by a page that kept running: the start instant is after the previous look and not after now, and the two looks are close together (a longer gap means NOU was asleep or closed, and that start is ignored). */
-export const MAX_GAP_MS = 2 * 60 * 1000;
-export function dueCheckins(checkins: Checkin[], prevMs: number | null, nowMs: number, variant: "A" | "B"): (Checkin & { day: string })[] {
-  if (prevMs === null || nowMs <= prevMs || nowMs - prevMs > MAX_GAP_MS) return [];
-  const now = new Date(nowMs), day = localDay(now), weekday = weekdayOfDay(day);
-  return checkins.filter(k => k.variant === variant && k.weekday === weekday).filter(k => {
-    const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, k.start_slot * 30).getTime();
-    return prevMs < at && at <= nowMs;
-  }).map(k => ({ ...k, day }));
+/**
+ * Check-ins whose block is running at this moment (from its start up to, not including, its end), for today. A pop-up stays up for the whole block until the habit is ticked,
+ * so this is a plain "is it running now" test: it does not matter when NOU was opened, and nothing is replayed after the block is over.
+ */
+export function activeCheckins(checkins: Checkin[], nowMs: number, variant: "A" | "B"): (Checkin & { day: string })[] {
+  const now = new Date(nowMs), day = localDay(now), weekday = weekdayOfDay(day), minute = now.getHours() * 60 + now.getMinutes();
+  return checkins.filter(k => k.variant === variant && k.weekday === weekday && k.start_slot * 30 <= minute && minute < k.end_slot * 30).map(k => ({ ...k, day }));
+}
+/** Is a shown pop-up's block still running? (It disappears when the block ends, and stays on the Habits page until answered.) */
+export function blockRunning(ev: Pick<CheckinEvent, "day" | "start_slot" | "end_slot">, nowMs: number): boolean {
+  const now = new Date(nowMs); if (localDay(now) !== ev.day) return false;
+  const minute = now.getHours() * 60 + now.getMinutes(); return ev.start_slot * 30 <= minute && minute < ev.end_slot * 30;
 }
 export const WEEK_MASK_ALL = 127;
 export const maskHas = (mask: number, weekday: number) => (mask & (1 << weekday)) !== 0;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addDays, answerSplit, appliesOn, dueCheckins, indexLog, localDay, maskLabel, maskToggle, monthGrid, parseDay, progressOn, slotRange, streaks, totalsPerHabit, weekdayOfDay, weeklyTrend, type Checkin, type Habit, type LogEntry, type LogState } from "./habitsLogic";
+import { addDays, answerSplit, appliesOn, activeCheckins, blockRunning, indexLog, localDay, maskLabel, maskToggle, monthGrid, parseDay, progressOn, slotRange, streaks, totalsPerHabit, weekdayOfDay, weeklyTrend, type Checkin, type Habit, type LogEntry, type LogState } from "./habitsLogic";
 
-const habit = (id: string, over: Partial<Habit> = {}): Habit => ({ id, name: id, days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), ...over });
+const habit = (id: string, over: Partial<Habit> = {}): Habit => ({ id, name: id, days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health", ...over });
 const entry = (day: string, habit_id: string, state: LogState = "done"): LogEntry => ({ day, habit_id, state, answered_at: null, source: "manual" });
 const log = (...e: LogEntry[]) => indexLog(e);
 
@@ -72,29 +72,29 @@ describe("the month calendar", () => {
   });
 });
 
-describe("which check-ins are due", () => {
-  const monday = new Date(2026, 10, 23); // Monday 23 Nov 2026
-  const at = (h: number, m = 0, s = 0) => new Date(2026, 10, 23, h, m, s).getTime();
+describe("which check-ins are running", () => {
+  const at = (h: number, m = 0, s = 0) => new Date(2026, 10, 23, h, m, s).getTime(); // Monday 23 Nov 2026
   const k = (id: string, over: Partial<Checkin> = {}): Checkin => ({ id, habit_id: "h", weekday: 0, start_slot: 10, end_slot: 11, variant: "A", ...over });
-  void monday;
-  it("a block that starts between two looks is due once, and both habits of one block are due together", () => {
-    const list = [k("workout"), k("anki"), k("late", { start_slot: 12 })];
-    expect(dueCheckins(list, at(4, 59, 58), at(5, 0, 3), "A").map(x => x.id)).toEqual(["workout", "anki"]);
-    expect(dueCheckins(list, at(5, 0, 3), at(5, 0, 8), "A")).toEqual([]); // the next look: already past
-    expect(dueCheckins(list, at(4, 59, 58), at(5, 0, 3), "A")[0].day).toBe("2026-11-23");
+  it("is on from the start of the block until just before its end, and both habits of one block are on together", () => {
+    const list = [k("workout"), k("anki")];
+    expect(activeCheckins(list, at(4, 59, 59), "A")).toEqual([]);
+    expect(activeCheckins(list, at(5, 0, 0), "A").map(x => x.id)).toEqual(["workout", "anki"]);
+    expect(activeCheckins(list, at(5, 29, 59), "A").length).toBe(2); // still on for the whole block
+    expect(activeCheckins(list, at(5, 30, 0), "A")).toEqual([]); // 05:30 is the end: nothing at the end
+    expect(activeCheckins(list, at(5, 10), "A")[0].day).toBe("2026-11-23");
   });
-  it("only the right weekday and week count, and never the end of a block", () => {
-    expect(dueCheckins([k("a", { weekday: 1 })], at(4, 59, 58), at(5, 0, 3), "A")).toEqual([]); expect(dueCheckins([k("a", { variant: "B" })], at(4, 59, 58), at(5, 0, 3), "A")).toEqual([]);
-    expect(dueCheckins([k("a")], at(5, 29, 58), at(5, 30, 3), "A")).toEqual([]); // 05:30 is the end of this block: nothing happens there
+  it("opening NOU in the middle of a block still shows it, but only the right weekday and week count", () => {
+    expect(activeCheckins([k("a")], at(5, 20), "A").length).toBe(1);
+    expect(activeCheckins([k("a", { weekday: 1 })], at(5, 20), "A")).toEqual([]);
+    expect(activeCheckins([k("a", { variant: "B" })], at(5, 20), "A")).toEqual([]);
   });
-  it("a start while NOU was closed or asleep is ignored: the two looks must be close together", () => {
-    expect(dueCheckins([k("a")], null, at(5, 0, 3), "A")).toEqual([]); // first look after starting
-    expect(dueCheckins([k("a")], at(4, 50), at(5, 5), "A")).toEqual([]); // a 15-minute gap
-    expect(dueCheckins([k("a")], at(4, 59, 0), at(5, 0, 50), "A").length).toBe(1); // a short gap is fine
-    expect(dueCheckins([k("a")], at(5, 0, 3), at(4, 59), "A")).toEqual([]); // the clock went backwards
+  it("a long block stays on across its whole length", () => {
+    const long = [k("l", { start_slot: 10, end_slot: 16 })]; // 05:00-08:00
+    expect(activeCheckins(long, at(7, 59), "A").length).toBe(1); expect(activeCheckins(long, at(8, 0), "A")).toEqual([]);
   });
-  it("a block at midnight starts the new day", () => {
-    const list = [k("m", { weekday: 1, start_slot: 0, end_slot: 2 })];
-    const r = dueCheckins(list, new Date(2026, 10, 23, 23, 59, 58).getTime(), new Date(2026, 10, 24, 0, 0, 2).getTime(), "A"); expect(r.map(x => [x.id, x.day])).toEqual([["m", "2026-11-24"]]);
+  it("a shown pop-up is visible only while its block is running, on its own day", () => {
+    const ev = { day: "2026-11-23", start_slot: 10, end_slot: 11 };
+    expect(blockRunning(ev, at(5, 0))).toBe(true); expect(blockRunning(ev, at(5, 30))).toBe(false); expect(blockRunning(ev, at(4, 59))).toBe(false);
+    expect(blockRunning(ev, new Date(2026, 10, 24, 5, 10).getTime())).toBe(false);
   });
 });

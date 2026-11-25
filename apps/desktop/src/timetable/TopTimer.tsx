@@ -16,7 +16,7 @@ export default function TopTimer({ onOpen, disabled }: { onOpen: () => void; dis
   const name = names(ev.ids, activities), left = ev.end.getTime() - t.getTime(), p = countdownParts(left);
   const label = `${name}, ${p.aria}`;
   return <button type="button" className="top-timer" disabled={disabled} onClick={onOpen} aria-label={`${label}. Open the Life Timetable`} title={`${name} · ${clock(ev.start)}–${clock(ev.end)} · open the Life Timetable`}>
-    <span className="top-timer-ring" aria-hidden="true"><ProgressRing fraction={1 - progress(ev, t)} thin label="" /></span>
+    <span className="top-timer-ring" aria-hidden="true"><ProgressRing fraction={1 - progress(ev, t)} mini label="" /></span>
     <span className="top-timer-name">{name}</span>
     <span className="top-timer-time" role="timer" aria-label={p.aria}>{p.showH ? `${p.h}:${p.m}:${p.s}` : `${p.m}:${p.s}`}</span>
   </button>;

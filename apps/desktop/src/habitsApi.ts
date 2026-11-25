@@ -10,20 +10,19 @@ export const announceCheckins = () => { try { window.dispatchEvent(new Event(CHE
 /** The device clock (or the simulated one in a development build) as whole seconds, which is what the backend wants. */
 export const nowSecs = () => Math.floor(now().getTime() / 1000);
 export const todayLocal = () => localDay(now());
-export type BlockKey = { day: number; start: number; end: number };
 export type ImportRow = { day: string; habit: string; done: boolean };
 
 export const habitsApi = {
   list: () => invoke<Habit[]>("habits_list_cmd"),
-  add: (name: string, days?: number) => invoke<Habit>("habit_add_cmd", { name, days: days ?? null }),
-  update: (id: string, patch: { name?: string; days?: number }) => invoke<Habit>("habit_update_cmd", { id, name: patch.name ?? null, days: patch.days ?? null }),
+  add: (name: string, days?: number, category?: string) => invoke<Habit>("habit_add_cmd", { name, days: days ?? null, category: category ?? null }),
+  update: (id: string, patch: { name?: string; days?: number; category?: string }) => invoke<Habit>("habit_update_cmd", { id, name: patch.name ?? null, days: patch.days ?? null, category: patch.category ?? null }),
+  reorder: (ids: string[]) => invoke<void>("habits_reorder_cmd", { ids }),
   remove: (id: string) => invoke<void>("habit_delete_cmd", { id }),
   log: (from: string, to: string) => invoke<LogEntry[]>("habit_log_list_cmd", { from, to }),
   set: (day: string, habitId: string, state: "done" | "skipped" | null) => invoke<void>("habit_log_set_cmd", { day, habitId, state, today: todayLocal(), now: nowSecs() }),
   import: (rows: ImportRow[]) => invoke<{ habits_added: number; entries_added: number; entries_kept: number }>("habit_import_cmd", { rows }),
   checkins: () => invoke<Checkin[]>("checkin_list_cmd"),
-  setBlock: (variant: "A" | "B", from: BlockKey | null, days: number[], start: number, end: number, habitIds: string[]) => invoke<number>("checkins_set_block_cmd", { variant, from, days, start, end, habitIds }),
-  show: (checkinId: string, day: string, block: string) => invoke<CheckinEvent | null>("checkin_event_show_cmd", { checkinId, day, block, now: nowSecs() }),
+  show: (checkinId: string, day: string, block: string, until = 0) => invoke<CheckinEvent | null>("checkin_event_show_cmd", { checkinId, day, block, now: nowSecs(), until }),
   pending: () => invoke<CheckinEvent[]>("checkin_events_pending_cmd", { now: nowSecs() }),
   answer: (checkinId: string, day: string, answer: "done" | "skipped") => invoke<LogEntry>("checkin_event_answer_cmd", { checkinId, day, answer, now: nowSecs() }),
   sweep: (closed: boolean) => invoke<number>("checkin_events_sweep_cmd", { now: nowSecs(), closed }),

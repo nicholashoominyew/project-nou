@@ -9,14 +9,14 @@ const MAGIC: &[u8; 8] = b"NOUENC02";
 const LIMIT: usize = 64 * 1024 * 1024;
 const HEADER: usize = 8 + 16 + 12;
 fn key(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8;32]>, String> {
-    if password.is_empty() || password.len() > 1024 { return Err("Enter a passphrase of at most 1024 bytes".into()); }
+    if password.is_empty() || password.len() > 1024 { return Err("Enter a password of at most 1024 bytes".into()); }
     let mut key = Zeroizing::new([0;32]);
     let params = Params::new(65536, 3, 1, Some(32)).map_err(|e| e.to_string())?;
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params).hash_password_into(password.as_bytes(), salt, key.as_mut()).map_err(|e| e.to_string())?;
     Ok(key)
 }
 fn seal(plain: &[u8], password: &str) -> Result<Vec<u8>, String> {
-    if password.chars().count() < 12 { return Err("Use a passphrase of at least 12 characters and keep a separate recovery copy".into()); }
+    if password.chars().count() < 12 { return Err("Use a password of at least 12 characters and keep a separate recovery copy".into()); }
     if plain.len() > LIMIT + 16388 { return Err("Encrypted Notes backups currently support databases up to 64 MB".into()); }
     let mut header = [0;HEADER]; header[..8].copy_from_slice(MAGIC); OsRng.fill_bytes(&mut header[8..]);
     let key = key(password, &header[8..24])?;
@@ -28,7 +28,7 @@ fn unseal(bytes: &[u8], password: &str) -> Result<Zeroizing<Vec<u8>>, String> {
     if bytes.len() < HEADER + 16 || bytes.len() > LIMIT + 16440 || (&bytes[..8] != MAGIC && &bytes[..8] != b"NOUENC01") { return Err("Unsupported, truncated or oversized encrypted backup".into()); }
     let key = key(password, &bytes[8..24])?;
     let cipher = Aes256Gcm::new_from_slice(key.as_ref()).map_err(|_| "Invalid encryption key")?;
-    cipher.decrypt(Nonce::from_slice(&bytes[24..HEADER]), Payload { msg: &bytes[HEADER..], aad: &bytes[..HEADER] }).map(Zeroizing::new).map_err(|_| "Wrong passphrase or damaged encrypted backup; no notes were replaced".into())
+    cipher.decrypt(Nonce::from_slice(&bytes[24..HEADER]), Payload { msg: &bytes[HEADER..], aad: &bytes[..HEADER] }).map(Zeroizing::new).map_err(|_| "Wrong password or damaged encrypted backup; no notes were replaced".into())
 }
 fn bounded_read(path: &Path) -> Result<Vec<u8>, String> {
     let file = fs::File::open(path).map_err(|e| e.to_string())?;
@@ -96,13 +96,13 @@ mod tests {
     use super::*;
     #[test]
     fn authenticated_randomized_encryption_rejects_wrong_password_and_tampering() {
-        let a = seal(b"private Notes bytes", "long recovery passphrase").unwrap();
-        let b = seal(b"private Notes bytes", "long recovery passphrase").unwrap();
-        assert_ne!(a,b); assert_eq!(unseal(&a, "long recovery passphrase").unwrap().as_slice(), b"private Notes bytes");
-        assert!(unseal(&a, "different passphrase").is_err());
-        let mut changed = a.clone(); changed[30] ^= 1; assert!(unseal(&changed,"long recovery passphrase").is_err());
-        changed = a.clone(); changed[HEADER] ^= 1; assert!(unseal(&changed,"long recovery passphrase").is_err());
-        assert!(unseal(&a[..HEADER],"long recovery passphrase").is_err()); assert!(seal(b"x","short").is_err());
+        let a = seal(b"private Notes bytes", "long recovery password").unwrap();
+        let b = seal(b"private Notes bytes", "long recovery password").unwrap();
+        assert_ne!(a,b); assert_eq!(unseal(&a, "long recovery password").unwrap().as_slice(), b"private Notes bytes");
+        assert!(unseal(&a, "different password").is_err());
+        let mut changed = a.clone(); changed[30] ^= 1; assert!(unseal(&changed,"long recovery password").is_err());
+        changed = a.clone(); changed[HEADER] ^= 1; assert!(unseal(&changed,"long recovery password").is_err());
+        assert!(unseal(&a[..HEADER],"long recovery password").is_err()); assert!(seal(b"x","short").is_err());
     }
     #[test]
     fn encrypted_package_can_be_staged_without_modifying_the_source_and_never_overwrites() {
@@ -111,12 +111,12 @@ mod tests {
         c.execute_batch(include_str!("../../../../db/notes/001_initial.sql")).unwrap(); c.execute_batch(include_str!("../../../../db/notes/002_editor_formats.sql")).unwrap();
         c.execute("INSERT INTO workspaces(id,title) VALUES('personal','Personal')", []).unwrap();
         let target = dir.join("notes.noubackup");
-        export(&c, &dir, &target, "long recovery passphrase".into()).unwrap();
+        export(&c, &dir, &target, "long recovery password".into()).unwrap();
         let before = recovery::hash_file(&target).unwrap();
-        assert!(export(&c, &dir, &target, "long recovery passphrase".into()).is_err());
-        let staged = stage(&target,&dir,"long recovery passphrase".into()).unwrap(); assert_eq!(staged.pages,0);
+        assert!(export(&c, &dir, &target, "long recovery password".into()).is_err());
+        let staged = stage(&target,&dir,"long recovery password".into()).unwrap(); assert_eq!(staged.pages,0);
         assert_eq!(before,recovery::hash_file(&target).unwrap());
-        assert!(stage(&target,&dir,"wrong passphrase".into()).is_err()); drop(c); fs::remove_dir_all(dir).unwrap();
+        assert!(stage(&target,&dir,"wrong password".into()).is_err()); drop(c); fs::remove_dir_all(dir).unwrap();
     }
 }
 
@@ -126,9 +126,9 @@ mod tests {
   let dir=std::env::temp_dir().join(format!("nou-paired-encryption-{}",uuid::Uuid::new_v4()));fs::create_dir_all(&dir).unwrap();
   let c=rusqlite::Connection::open(dir.join("notes.sqlite3")).unwrap();c.execute_batch(include_str!("../../../../db/notes/001_initial.sql")).unwrap();c.execute_batch(include_str!("../../../../db/notes/002_editor_formats.sql")).unwrap();c.execute_batch(include_str!("../../../../db/notes/003_page_icons.sql")).unwrap();c.execute("INSERT INTO workspaces(id,title)VALUES('personal','Personal')",[]).unwrap();
   let files=crate::attachments::open(&dir).unwrap();let info=crate::attachments::insert(&files,"readme.pdf",b"%PDF-1.7 portable").unwrap();drop(files);
-  let target=dir.join("paired.noubackup");export(&c,&dir,&target,"long recovery passphrase".into()).unwrap();let staged=stage(&target,&dir,"long recovery passphrase".into()).unwrap();assert!(staged.manifest.files.is_some());assert_eq!(crate::attachments::read(Path::new(&staged.path),&info.id).unwrap().data,b"%PDF-1.7 portable");drop(c);fs::remove_dir_all(dir).unwrap();
+  let target=dir.join("paired.noubackup");export(&c,&dir,&target,"long recovery password".into()).unwrap();let staged=stage(&target,&dir,"long recovery password".into()).unwrap();assert!(staged.manifest.files.is_some());assert_eq!(crate::attachments::read(Path::new(&staged.path),&info.id).unwrap().data,b"%PDF-1.7 portable");drop(c);fs::remove_dir_all(dir).unwrap();
  }
  #[test]fn prior_encryption_header_remains_readable(){
-  let mut header=[0;HEADER];header[..8].copy_from_slice(b"NOUENC01");OsRng.fill_bytes(&mut header[8..]);let k=key("long recovery passphrase",&header[8..24]).unwrap();let cipher=Aes256Gcm::new_from_slice(k.as_ref()).unwrap();let mut file=header.to_vec();file.extend(cipher.encrypt(Nonce::from_slice(&header[24..]),Payload{msg:b"old payload",aad:&header}).unwrap());assert_eq!(unseal(&file,"long recovery passphrase").unwrap().as_slice(),b"old payload");
+  let mut header=[0;HEADER];header[..8].copy_from_slice(b"NOUENC01");OsRng.fill_bytes(&mut header[8..]);let k=key("long recovery password",&header[8..24]).unwrap();let cipher=Aes256Gcm::new_from_slice(k.as_ref()).unwrap();let mut file=header.to_vec();file.extend(cipher.encrypt(Nonce::from_slice(&header[24..]),Payload{msg:b"old payload",aad:&header}).unwrap());assert_eq!(unseal(&file,"long recovery password").unwrap().as_slice(),b"old payload");
  }
 }

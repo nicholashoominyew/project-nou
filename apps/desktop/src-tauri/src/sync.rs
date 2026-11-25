@@ -1,6 +1,6 @@
 //! Sync through a shared folder such as OneDrive, by taking turns. NOU never merges two devices' notes. Each "Sync now" either saves this device's notes into the
 //! folder as a new password-encrypted file, or, when another device has saved a newer one, lets the owner choose between using that copy (after saving this
-//! device's notes into the folder first, so nothing is lost) and keeping this device's notes. The folder only ever holds encrypted files; the passphrase is
+//! device's notes into the folder first, so nothing is lost) and keeping this device's notes. The folder only ever holds encrypted files; the password is
 //! never stored. The live database is never placed in the folder: OneDrive would copy it half-written, so only finished, verified snapshots go there.
 //!
 //! File names carry a UTC time and a short device id, never a note title: `NOU-20261124-103000-3fa9c1d2.noubackup`. A copy saved just before this device
@@ -253,7 +253,7 @@ pub fn sync_mark_pulled(app: AppHandle, db: State<'_, Db>, file: String) -> Resu
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
-    const PASS: &str = "a long shared passphrase";
+    const PASS: &str = "a long shared password";
 
     fn tmp(label: &str) -> PathBuf {
         static N: AtomicU32 = AtomicU32::new(0);
@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_are_tolerant_and_hold_no_passphrase_and_the_folder_must_be_outside_the_data_folder() {
+    fn settings_are_tolerant_and_hold_no_password_and_the_folder_must_be_outside_the_data_folder() {
         let data = tmp("settings"); let shared = tmp("settings-shared");
         let fresh_settings = load(&data); assert_eq!(fresh_settings.device_id.len(), 8); assert_eq!(fresh_settings.folder, None);
         fs::write(settings_path(&data), "{ damaged").unwrap(); assert_eq!(load(&data).folder, None);
@@ -339,8 +339,8 @@ mod tests {
         let st = status(&b.db, &b.data).unwrap(); assert_eq!(st.newer.as_ref().map(|f| f.name.clone()), Some(pushed.name.clone()));
         assert!(push(&b.db, &b.data, PASS.into(), false, false, 1_800_000_100).unwrap_err().contains("newer copy"));
         assert_eq!(list_files(&shared, &b.id()).unwrap().len(), 1, "the refused save wrote nothing");
-        // A wrong passphrase stages nothing and saves nothing.
-        assert!(stage_remote(&b.db, &b.data, &pushed.name, "a different passphrase".into(), 1_800_000_200).is_err());
+        // A wrong password stages nothing and saves nothing.
+        assert!(stage_remote(&b.db, &b.data, &pushed.name, "a different password".into(), 1_800_000_200).is_err());
         assert_eq!(list_files(&shared, &b.id()).unwrap().len(), 1);
         // Using A's copy: B's own notes are saved into the folder first as a safety copy, and A's notes are staged for review.
         let staged = stage_remote(&b.db, &b.data, &pushed.name, PASS.into(), 1_800_000_300).unwrap();
@@ -386,7 +386,7 @@ mod tests {
         for d in [a.data, shared] { fs::remove_dir_all(d).unwrap(); }
     }
     #[test]
-    fn it_refuses_a_bad_file_name_a_missing_file_a_weak_passphrase_and_a_missing_folder() {
+    fn it_refuses_a_bad_file_name_a_missing_file_a_weak_password_and_a_missing_folder() {
         let shared = tmp("refuse"); let a = device("refuse-A", &["A1"], &shared);
         for bad in ["../x.noubackup", "..\\x.noubackup", "notes.noubackup", "NOU-20261124-100000-aaaaaaaa.noubackup"] { assert!(stage_remote(&a.db, &a.data, bad, PASS.into(), 1).is_err(), "{bad}"); }
         assert!(push(&a.db, &a.data, "short".into(), true, false, 1_800_000_000).unwrap_err().contains("12 characters"));

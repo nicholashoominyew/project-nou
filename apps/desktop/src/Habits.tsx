@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import HabitCharts from "./HabitCharts";
 import { announceHabits, habitsApi, type ImportRow } from "./habitsApi";
-import { addDays, indexLog, logKey, localDay, maskHas, maskLabel, maskToggle, monthGrid, parseDay, progressOn, appliesOn, WEEKDAYS, slotRange, type CheckinEvent, type Habit, type LogMap, type LogState } from "./habitsLogic";
+import HabitDetail from "./HabitDetail";
+import { pushUndo } from "./undo";
+import { GRIP, useReorder } from "./Reorder";
+import { addDays, HABIT_TYPES, indexLog, logKey, localDay, maskHas, maskLabel, maskToggle, monthGrid, parseDay, progressOn, appliesOn, WEEKDAYS, slotRange, type CheckinEvent, type Habit, type LogMap, type LogState } from "./habitsLogic";
 import { useHabits } from "./useHabits";
 
 const msg = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^Error: /, "");
@@ -9,17 +12,17 @@ const WORD: Record<string, string> = { done: "done", skipped: "skipped", no_answ
 const GLYPH: Record<string, string> = { done: "✓", skipped: "–", no_answer: "?" };
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const dayLabel = (day: string) => parseDay(day).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-/** The next state when a cell is clicked: empty, no answer or skipped becomes done; done becomes skipped; and a second click on skipped clears it. */
-export const nextState = (s: LogState | undefined): "done" | "skipped" | null => (s === "done" ? "skipped" : s === "skipped" ? null : "done");
+/** The next state when a cell is clicked: empty or no answer becomes done; done (or an older skip) clears. */
+export const nextState = (s: LogState | undefined): "done" | null => (s === "done" || s === "skipped" ? null : "done");
 
 /** One habit on one day: a button that shows done, skipped, no answer or empty, and changes by clicking. */
-function Cell({ habit, day, log, today, disabled, onSet }: { habit: Habit; day: string; log: LogMap; today: string; disabled?: boolean; onSet: (day: string, habit: Habit, state: "done" | "skipped" | null) => void }) {
+function Cell({ habit, day, log, today, disabled, onSet }: { habit: Habit; day: string; log: LogMap; today: string; disabled?: boolean; onSet: (day: string, habit: Habit, state: "done" | null) => void }) {
   const entry = log.get(logKey(day, habit.id));
   const counts = appliesOn(habit, day);
   const state = entry?.state;
   const words = state ? WORD[state] + (entry?.source === "popup" ? " (pop-up)" : entry?.source === "timeout" ? " (no answer in 2 hours)" : entry?.source === "import" ? " (imported)" : "") : counts ? "empty" : "not a day for this habit";
   return <button type="button" className={"hb-cell" + (state ? " " + state : "") + (!counts && !state ? " off" : "")} disabled={disabled || day > today}
-    aria-label={`${habit.name} on ${dayLabel(day)}: ${words}`} title={`${habit.name}, ${dayLabel(day)}: ${words}. Click to change: done, skipped, empty.`}
+    aria-label={`${habit.name} on ${dayLabel(day)}: ${words}`} title={`${habit.name}, ${dayLabel(day)}: ${words}. Click to tick or clear it.`}
     onClick={() => onSet(day, habit, nextState(state))}>{state ? GLYPH[state] : ""}</button>;
 }
 
@@ -39,21 +42,27 @@ export default function Habits({ disabled }: { disabled?: boolean }) {
   const [month, setMonth] = useState(() => { const d = parseDay(today); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [picked, setPicked] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
-  const [name, setName] = useState(""); const [mask, setMask] = useState(127);
-  const [renaming, setRenaming] = useState<{ id: string; text: string } | null>(null);
+  const [name, setName] = useState(""); const [mask, setMask] = useState(127); const [type, setType] = useState<string>("Health");
+  const [open, setOpen] = useState<string | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const list = habits ?? [];
-  const ids = useMemo(() => new Set(list.map(h => h.id)), [list]);
-  useEffect(() => { void ids; }, [ids]);
+  const ids = useMemo(() => list.map(h => h.id), [list]);
+  const reorder = useReorder(ids, order => void run(async () => { const was = ids; await habitsApi.reorder(order); pushUndo("Order of habits", async () => { await habitsApi.reorder(was); announceHabits(); }); }), disabled);
 
   async function run(job: () => Promise<unknown>, done?: string) {
     setError(""); setNotice("");
     try { await job(); if (done) setNotice(done); announceHabits(); await reload(); } catch (e) { setError(msg(e)); }
   }
-  const setCell = (day: string, habit: Habit, state: "done" | "skipped" | null) => void run(() => habitsApi.set(day, habit.id, state));
-  const answer = (ev: CheckinEvent, a: "done" | "skipped") => void run(() => habitsApi.answer(ev.checkin_id, ev.day, a));
-  const addHabit = () => void run(async () => { await habitsApi.add(name, mask); setName(""); setMask(127); }, "Habit added.");
-  const remove = (h: Habit) => { if (window.confirm(`Delete “${h.name}”?\n\nIt leaves this page and the timetable's check-ins. Its history is kept, and comes back if you add a habit with the same name again.`)) void run(() => habitsApi.remove(h.id), `“${h.name}” deleted.`); };
+  const setCell = (day: string, habit: Habit, state: "done" | null) => {
+    const before = log.get(logKey(day, habit.id))?.state; const restore = before === "done" || before === "skipped" ? before : null; // "no answer" can only be written by a timed-out pop-up, so undo clears it
+    void run(async () => { await habitsApi.set(day, habit.id, state); pushUndo(`${state ? "Ticked" : "Cleared"} ${habit.name} on ${dayLabel(day)}`, async () => { await habitsApi.set(day, habit.id, restore); announceHabits(); }); });
+  };
+  const answer = (ev: CheckinEvent) => void run(() => habitsApi.answer(ev.checkin_id, ev.day, "done"));
+  const addHabit = () => void run(async () => {
+    const made = await habitsApi.add(name, mask, type); setName(""); setMask(127);
+    pushUndo(`New habit “${made.name}”`, async () => { await habitsApi.remove(made.id); announceHabits(); });
+  }, "Habit added. It is now an activity in the Life Timetable.");
+  const remove = (h: Habit) => { if (window.confirm(`Delete “${h.name}”?\n\nIt leaves this page and the timetable's check-ins (its blocks stay in the timetable as an ordinary activity). Its history is kept, and comes back if you add a habit with the same name again.`)) void run(() => habitsApi.remove(h.id), `“${h.name}” deleted.`); };
   const days = Array.from({ length: rows }, (_, i) => addDays(today, -i));
   const grid = monthGrid(month.y, month.m);
   const todays = list.filter(h => appliesOn(h, today));
@@ -83,15 +92,14 @@ export default function Habits({ disabled }: { disabled?: boolean }) {
 
     {!!pending.length && <section className="hb-card hb-waiting" aria-label="Waiting for your answer"><h2>Waiting for your answer</h2>
       {pending.map(ev => <div key={ev.checkin_id + ev.day} className="hb-wait-row"><span><strong>{ev.habit}</strong> <span className="hint">{ev.block ? ev.block + " · " : ""}{slotRange(ev.start_slot, ev.end_slot)}</span></span>
-        <span><button type="button" className="tt-btn primary" disabled={disabled} onClick={() => answer(ev, "done")}>Checked in</button> <button type="button" className="tt-btn" disabled={disabled} onClick={() => answer(ev, "skipped")}>Skipping</button></span></div>)}
+        <span><button type="button" className="tt-btn primary" disabled={disabled} onClick={() => answer(ev)}>Checked in</button></span></div>)}
     </section>}
 
     <section className="hb-card" aria-label="Today"><div className="hb-card-head"><h2>Today · {dayLabel(today)}</h2>{!!list.length && <Bar {...progressOn(list, log, today)} />}</div>
       {!list.length && habits !== null && <p className="hint">No habits yet. Add one below, such as Exercise, Anki or Reading.</p>}
       {habits === null && <p className="hint">Loading…</p>}
-      <div className="hb-today">{todays.map(h => { const s = log.get(logKey(today, h.id))?.state; return <div key={h.id} className="hb-today-row"><span>{h.name}</span>
+      <div className="hb-today">{todays.map(h => { const s = log.get(logKey(today, h.id))?.state; return <div key={h.id} className="hb-today-row"><button type="button" className="hb-name" onClick={() => setOpen(h.id)} title="Open this habit">{h.name}</button>
         <span className="hb-today-actions"><button type="button" className={"hb-tick" + (s === "done" ? " on" : "")} disabled={disabled} aria-pressed={s === "done"} aria-label={`${h.name}: done today`} onClick={() => setCell(today, h, s === "done" ? null : "done")}>{s === "done" ? "✓ Done" : "Tick"}</button>
-          <button type="button" className={"tt-btn small" + (s === "skipped" ? " on" : "")} disabled={disabled} aria-pressed={s === "skipped"} aria-label={`${h.name}: skip today`} onClick={() => setCell(today, h, s === "skipped" ? null : "skipped")}>{s === "skipped" ? "Skipped" : "Skip"}</button>
           {s === "no_answer" && <span className="hint"> no answer to the pop-up</span>}</span></div>; })}</div>
       {!!list.length && !todays.length && <p className="hint">None of your habits count today.</p>}
     </section>
@@ -113,20 +121,20 @@ export default function Habits({ disabled }: { disabled?: boolean }) {
 
     <section className="hb-card" aria-label="Manage habits"><h2>Your habits</h2>
       {!list.length && <p className="hint">Nothing here yet.</p>}
-      <ul className="hb-manage" aria-label="Habits">{list.map(h => <li key={h.id}>
-        {renaming?.id === h.id
-          ? <input aria-label="Habit name" autoFocus maxLength={60} value={renaming.text} onChange={e => setRenaming({ id: h.id, text: e.target.value })} onKeyDown={e => { if (e.key === "Enter") { const text = renaming.text; setRenaming(null); void run(() => habitsApi.update(h.id, { name: text })); } else if (e.key === "Escape") setRenaming(null); }} onBlur={() => setRenaming(null)} />
-          : <strong>{h.name}</strong>}
-        <span className="hint"> {maskLabel(h.days)} · from {dayLabel(localDay(new Date(h.created_at)))}</span>
-        <span className="hb-days" role="group" aria-label={`Days for ${h.name}`}>{WEEKDAYS.map((d, i) => <button key={d} type="button" className={"tt-toggle" + (maskHas(h.days, i) ? " on" : "")} aria-pressed={maskHas(h.days, i)} disabled={disabled} onClick={() => { const next = maskToggle(h.days, i); if (next > 0) void run(() => habitsApi.update(h.id, { days: next })); }}>{d}</button>)}</span>
-        <button type="button" className="tt-text-btn" disabled={disabled} onClick={() => setRenaming({ id: h.id, text: h.name })} aria-label={`Rename ${h.name}`}>Rename</button>
-        <button type="button" className="tt-text-btn danger" disabled={disabled} onClick={() => remove(h)} aria-label={`Delete ${h.name}`}>Delete</button></li>)}</ul>
+      <ul className="hb-manage" aria-label="Habits">{list.map(h => <li key={h.id} {...reorder.rowProps(h.id)}>
+        <button {...reorder.gripProps(h.id, h.name)}>{GRIP}</button>
+        <button type="button" className="hb-name" onClick={() => setOpen(h.id)} aria-label={`Open ${h.name}`}><strong>{h.name}</strong></button>
+        <span className="chip">{h.category}</span>
+        <span className="hint"> {maskLabel(h.days)} · from {dayLabel(localDay(new Date(h.created_at)))}</span></li>)}</ul>
       <form className="hb-add" aria-label="Add a habit" onSubmit={e => { e.preventDefault(); if (name.trim()) addHabit(); }}>
         <label>New habit<input aria-label="New habit name" value={name} maxLength={60} placeholder="For example: Reading" onChange={e => setName(e.target.value)} /></label>
+        <label>Type<select aria-label="Type of the new habit" value={type} onChange={e => setType(e.target.value)}>{HABIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></label>
         <span className="hb-days" role="group" aria-label="Days for the new habit">{WEEKDAYS.map((d, i) => <button key={d} type="button" className={"tt-toggle" + (maskHas(mask, i) ? " on" : "")} aria-pressed={maskHas(mask, i)} onClick={() => { const next = maskToggle(mask, i); if (next > 0) setMask(next); }}>{d}</button>)}</span>
         <button type="submit" className="tt-btn primary" disabled={disabled || !name.trim()}>Add habit</button></form>
-      <p className="hint">A habit only counts on the days you pick. To get a pop-up for a habit, open the Life Timetable, edit a block, and turn on its check-in.</p>
+      <p className="hint">Drag the six dots to put your habits in order. Click a habit to see its streaks, rename it or change its type and days. Every habit is also an activity in the Life Timetable: put it on a block there, and its check-in pop-up comes when that block starts.</p>
     </section>
+    {open && (() => { const h = list.find(x => x.id === open); return h ? <HabitDetail habit={h} log={log} today={today} disabled={disabled} onClose={() => setOpen(null)}
+      onChange={patch => void run(async () => { const was = { name: h.name, days: h.days, category: h.category }; await habitsApi.update(h.id, patch); pushUndo(`Change to habit “${h.name}”`, async () => { await habitsApi.update(h.id, was); announceHabits(); }); })} onDelete={() => { remove(h); setOpen(null); }} /> : null; })()}
   </div>;
 }
 void indexLog;

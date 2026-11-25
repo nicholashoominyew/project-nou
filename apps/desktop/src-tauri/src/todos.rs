@@ -11,6 +11,7 @@ const MAX_IDS: usize = 500;
 
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Todo { id: String, text: String, checked: bool, pages: i64 }
+impl Todo { pub fn text(&self) -> &str { &self.text } pub fn checked(&self) -> bool { self.checked } }
 #[derive(Serialize, Debug, PartialEq)]
 pub struct TodoPage { id: String, title: String }
 
@@ -25,7 +26,7 @@ fn valid_id(id: &str) -> bool { (8..=64).contains(&id.len()) && id.bytes().all(|
 pub fn create(c: &Connection, text: &str) -> Result<Todo, String> {
     let text = clean_text(text)?;
     let id = Uuid::new_v4().to_string();
-    c.execute("INSERT INTO linked_todos(id,text) VALUES(?1,?2)", params![id, text]).map_err(e)?;
+    c.execute("INSERT INTO linked_todos(id,text,sort_order) VALUES(?1,?2,(SELECT COALESCE(MAX(sort_order),-1)+1 FROM linked_todos))", params![id, text]).map_err(e)?;
     Ok(Todo { id, text, checked: false, pages: 0 })
 }
 
@@ -56,9 +57,25 @@ pub fn set(c: &Connection, id: &str, checked: Option<bool>, text: Option<&str>) 
 /// Existing linked to-dos for the picker, newest first, optionally filtered by text. `%` and `_` in the query are plain characters.
 pub fn list(c: &Connection, query: &str) -> Result<Vec<Todo>, String> {
     let q = format!("%{}%", query.trim().replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
-    let mut s = c.prepare(&format!("{SELECT} WHERE t.text LIKE ?1 ESCAPE '\\' ORDER BY t.updated_at DESC,t.id LIMIT 30")).map_err(e)?;
+    let mut s = c.prepare(&format!("{SELECT} WHERE t.text LIKE ?1 ESCAPE '\\' ORDER BY t.sort_order,t.updated_at DESC,t.id LIMIT 100")).map_err(e)?;
     let it = s.query_map([q], row).map_err(e)?;
     it.collect::<rusqlite::Result<Vec<_>>>().map_err(e)
+}
+
+/// Put the to-dos in the given order (Today's tasks). To-dos not listed keep their relative order after the listed ones. Unknown ids are an error.
+pub fn reorder(c: &mut Connection, ids: &[String]) -> Result<(), String> {
+    if ids.len() > MAX_IDS { return Err("Too many to-dos".into()); }
+    let tx = c.transaction().map_err(e)?;
+    let mut seen = std::collections::HashSet::new(); let mut order = 0i64;
+    for id in ids {
+        if !valid_id(id) { return Err("Not a valid to-do id".into()); }
+        if !seen.insert(id.clone()) { continue; }
+        if tx.execute("UPDATE linked_todos SET sort_order=?1 WHERE id=?2", params![order, id]).map_err(e)? == 0 { return Err("That linked to-do no longer exists".into()); }
+        order += 1;
+    }
+    let rest: Vec<String> = { let mut s = tx.prepare("SELECT id FROM linked_todos ORDER BY sort_order,updated_at DESC,id").map_err(e)?; let r = s.query_map([], |r| r.get(0)).map_err(e)?.collect::<rusqlite::Result<Vec<String>>>().map_err(e)?; r };
+    for id in rest { if seen.contains(&id) { continue; } tx.execute("UPDATE linked_todos SET sort_order=?1 WHERE id=?2", params![order, id]).map_err(e)?; order += 1; }
+    tx.commit().map_err(e)
 }
 
 /// The pages (not in the trash) that show this to-do.
@@ -104,6 +121,12 @@ pub fn linked_todo_set(db: State<'_, Db>, id: String, checked: Option<bool>, tex
 pub fn linked_todo_list(db: State<'_, Db>, query: String) -> Result<Vec<Todo>, String> {
     let c = db.0.lock().map_err(|_| "Database lock poisoned")?;
     list(&c, &query)
+}
+#[tauri::command]
+pub fn linked_todo_reorder(db: State<'_, Db>, ids: Vec<String>) -> Result<(), String> {
+    let mut c = db.0.lock().map_err(|_| "Database lock poisoned")?;
+    db.writable()?;
+    reorder(&mut c, &ids)
 }
 #[tauri::command]
 pub fn linked_todo_pages(db: State<'_, Db>, id: String) -> Result<Vec<TodoPage>, String> {
@@ -190,5 +213,18 @@ mod tests {
         c.execute("DELETE FROM pages WHERE id='a'", []).unwrap();
         assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM linked_todo_refs", [], |r| r.get(0)).unwrap(), 0);
         assert_eq!(get(&c, &[t.id]).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn to_dos_are_listed_in_the_order_they_were_put_in_and_can_be_reordered() {
+        let mut c = fresh();
+        let a = create(&c, "a").unwrap(); let b = create(&c, "b").unwrap(); let d = create(&c, "d").unwrap();
+        let texts = |c: &Connection| list(c, "").unwrap().into_iter().map(|t| t.text).collect::<Vec<_>>();
+        assert_eq!(texts(&c), vec!["a", "b", "d"], "new ones go to the end");
+        reorder(&mut c, &[d.id.clone(), a.id.clone()]).unwrap();
+        assert_eq!(texts(&c), vec!["d", "a", "b"], "listed first, the rest after");
+        assert!(reorder(&mut c, &["not-a-real-id".to_string()]).is_err() && reorder(&mut c, &["x".to_string()]).is_err());
+        assert_eq!(texts(&c), vec!["d", "a", "b"], "a refused change leaves the order alone");
+        let _ = b;
     }
 }

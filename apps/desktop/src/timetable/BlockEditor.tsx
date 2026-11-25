@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { colours } from "./palette";
-import type { Habit } from "../habitsLogic";
 import { CATEGORIES, hm, type Activity, type Variant } from "./schedule";
 
 /** `from` is the block being edited as it stood: slots it covered that the saved block no longer covers are emptied, so shrinking or moving a block really does that. */
-export interface EditorState { isNew: boolean; days: number[]; start: number; end: number; acts: string[]; /** The habits that check in at the start of this block (a pop-up asks Checked in or Skipping). */ habitIds?: string[]; from?: { day: number; start: number; end: number; ids: string[] } }
+export interface EditorState { isNew: boolean; days: number[]; start: number; end: number; acts: string[]; from?: { day: number; start: number; end: number; ids: string[] } }
 const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const startOptions = Array.from({ length: 48 }, (_, i) => i);
 const endOptions = Array.from({ length: 48 }, (_, i) => i + 1);
@@ -19,7 +18,7 @@ export function editorError(s: EditorState): string {
 }
 
 /** The block editor: times in half-hour steps, days, and activities. Esc and the backdrop close it, focus stays inside while it is open. */
-export default function BlockEditor({ initial, variant, activities, habits = [], serverError, onSave, onClear, onCancel }: { initial: EditorState; variant: Variant; activities: Activity[]; habits?: Habit[]; serverError?: string; onSave: (s: EditorState) => void; onClear?: (s: EditorState) => void; onCancel: () => void }) {
+export default function BlockEditor({ initial, variant, activities, serverError, onSave, onClear, onCancel }: { initial: EditorState; variant: Variant; activities: Activity[]; serverError?: string; onSave: (s: EditorState) => void; onClear?: (s: EditorState) => void; onCancel: () => void }) {
   const [s, setS] = useState(initial);
   const box = useRef<HTMLDivElement>(null);
   const error = editorError(s);
@@ -35,7 +34,9 @@ export default function BlockEditor({ initial, variant, activities, habits = [],
     else if (!e.shiftKey && (active === last || !box.current.contains(active))) { e.preventDefault(); first.focus(); }
   };
   const note = s.acts.length > 1 ? `${s.acts.length} SELECTED · TIME SPLIT EQUALLY` : s.acts.length === 1 ? "1 SELECTED" : "PICK ONE OR MORE";
-  const groups = CATEGORIES.map(c => ({ c, list: activities.filter(a => a.category === c) })).filter(g => g.list.length);
+  // Habits come first, in their own section; every other activity is under its category.
+  const habitList = activities.filter(a => a.habit_id);
+  const groups = [...(habitList.length ? [{ c: "Habits", list: habitList }] : []), ...CATEGORIES.map(c => ({ c: c as string, list: activities.filter(a => !a.habit_id && a.category === c) })).filter(g => g.list.length)];
   return createPortal(<div className="tt-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onCancel(); }}>
     <div ref={box} className="tt-dialog" role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
       <div className="tt-dialog-head">
@@ -57,12 +58,7 @@ export default function BlockEditor({ initial, variant, activities, habits = [],
         {groups.map(g => <div key={g.c} className="tt-group"><span className="tt-group-name">{g.c}</span>
           <div className="tt-wrap">{g.list.map(a => { const on = s.acts.includes(a.id); const c = colours(a); return <button key={a.id} type="button" className={"tt-pill" + (on ? " on" : "")} aria-pressed={on} style={on ? { background: c.fill, color: c.ink, borderColor: c.fill } : undefined} onClick={() => setS({ ...s, acts: on ? s.acts.filter(x => x !== a.id) : [...s.acts, a.id] })}>{a.name}</button>; })}</div>
         </div>)}
-      </fieldset>
-      <fieldset className="tt-fieldset"><legend>CHECK-IN · {s.habitIds?.length ? `${s.habitIds.length} ON` : "OFF"}</legend>
-        {habits.length === 0
-          ? <p className="tt-checkin-note">No habits yet. Add some on the Habits page, then turn their check-in on here.</p>
-          : <><div className="tt-wrap">{habits.map(h => { const on = !!s.habitIds?.includes(h.id); return <button key={h.id} type="button" className={"tt-pill" + (on ? " on" : "")} aria-pressed={on} aria-label={`Check in for ${h.name}`} style={on ? { background: "var(--accent)", color: "var(--accent-ink)", borderColor: "var(--accent)" } : undefined} onClick={() => setS({ ...s, habitIds: on ? (s.habitIds ?? []).filter(x => x !== h.id) : [...(s.habitIds ?? []), h.id] })}>{h.name}</button>; })}</div>
-            <p className="tt-checkin-note">When this block starts, a pop-up asks Checked in or Skipping for each habit chosen, on the days and in the week set here. Nothing pops up when the block ends. Unanswered after 2 hours is logged as No answer.</p></>}
+        {habitList.length > 0 && <p className="tt-checkin-note">A habit on a block gets a check-in pop-up when the block starts. It stays up for the whole block until you tick it. Add or manage habits on the Habits page.</p>}
       </fieldset>
       {(error || serverError) && <span role="alert" className="tt-error">{error || serverError}</span>}
       <div className="tt-dialog-foot">

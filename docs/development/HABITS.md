@@ -1,27 +1,36 @@
 # Habits and timetable check-ins
 
-A permanent **Habits** screen (sidebar) plus optional check-in pop-ups on Life Timetable blocks. Schema version 16.
+A permanent **Habits** screen (sidebar). Habits are also **activities in the Life Timetable**. Schema version 17.
 
-## Behaviour
-- A block can have one or more habits switched on in its editor ("CHECK-IN" section). A bell shows on such blocks.
-- When a block **starts** (never when it ends) NOU shows a pop-up and a system notification with "Checked in" / "Skipping".
-- Unanswered after **2 hours** (`EXPIRY_SECS = 7200`) is logged as **No answer**. That counts as not done.
-- Blocks that start while NOU is closed or the PC is asleep are ignored (the start must fall between two looks no more than 2 minutes apart).
-- A pop-up that expires while NOU is closed is not logged; it is marked lapsed and the day can be ticked by hand on the Habits page.
-- Skipping and No answer count as not done and break a streak.
-- Exercise and Anki are separate check-ins and can sit on the same 30-minute block.
+## Habits are timetable activities
+- Adding a habit on the Habits page adds an activity of the same name to the timetable, listed first under **Habits** in the block editor and the Activities panel.
+- A habit has a **type** (Training, Health, Work, Leisure, Chores, Travel, Rest). Its blocks take that type's colour.
+- If a timetable activity with the same name already exists (in any category), the habit **takes it over**: it is not listed twice, it becomes the habit's type, and its blocks stay where they are.
+- Renaming a habit (or its activity) or changing its type changes both. A habit's activity cannot be deleted from the timetable: delete the habit instead (its blocks stay as an ordinary activity and its history is kept).
+- **The check-in time is where the habit sits on the grid.** A stretch of consecutive half-hours holding the habit, on one weekday of one week, is one check-in at its start. Moving, stretching, deleting or undoing a block moves the check-in with it.
+
+## Pop-ups
+- While a habit's block is **running** and the habit is not ticked for the day, NOU shows a pop-up with one button, **Checked in**, and a system notification (once). It stays up for the whole block until ticked, and goes when the block ends. Opening NOU in the middle of a block shows it straight away.
+- There is no Skip. A day is done or not done.
+- Unanswered, the pop-up becomes **No answer** (not done) two hours after it was first shown, or when the block ends if that is later. A pop-up that expires while NOU is closed is not logged, so the day can be ticked by hand.
+- Ticking on the Habits page closes the pop-up.
 
 ## Habits page
-Today card, waiting pop-ups, history (table / month), per-habit "days it applies", add / rename / delete, charts (streaks, completion 7/30/90 days, 12-week trend, answer split), and "Import history…".
-Deleting a habit archives it; history is kept and adding the same name restores it.
+Today card, waiting pop-ups, history (table / month), charts, **Your habits**: drag the six dots (or press the up or down arrow on them) to reorder; click a habit to open its window (current and longest streak, last 30 days, totals, a 35-day strip, rename, type, days it counts, delete). "Import history…" brings in a JSON history file.
 
 ## Import file
-`{"rows":[{"day":"YYYY-MM-DD","habit":"Exercise","done":true}]}` (or a bare array). Ticks only are stored, nothing existing is overwritten, and every habit in the file starts counting from the earliest day in it.
+`{"rows":[{"day":"YYYY-MM-DD","habit":"Exercise","done":true}]}` (or a bare array). Ticks only are stored, nothing existing is overwritten, and every habit in the file counts from the earliest day in it.
+
+## Also in this release
+- Today's tasks can be reordered by dragging the six dots. The order is stored (`linked_todos.sort_order`).
+- **Ctrl+Z** undoes the last change on the timetable (blocks, resets, activities), Habits (ticks, new, renamed or deleted habits, order) and Today's tasks (ticks, order), up to 50 steps. Inside a text box or the note editor, Ctrl+Z keeps its normal typing undo. Page-level changes (trash, moves) are not covered yet.
+- The Home calendar colours each past day by the share of habits done (red low, green high) and shows a progress bar for the selected day.
+- Assistants can propose, with your approval each time: add a habit, tick a habit for a day, reorder Today's tasks (plus the existing timetable requests, which can put a habit on a block by name). Reads: `GET /v1/habits` (timetable:read) and `GET /v1/todos` (notes:read), without ids.
 
 ## Data
-`habits`, `habit_log` (one row per day and habit; state done/skipped/no_answer; source popup/manual/import/timeout), `checkins` (habit tied to a block: variant, weekday, start/end slot), `checkin_events` (pop-up record). See `db/notes/016_habits.sql`.
+`habits` (+ `category`), `habit_log`, `checkins` (derived from the timetable, rebuilt after every timetable change), `checkin_events`, `timetable_activities.habit_id`, `linked_todos.sort_order`, `app_settings`. See `db/notes/016_habits.sql` and `017_habit_activities.sql`.
 
 ## Known limits
-- Undo in the timetable restores slots but not check-ins.
-- Moving or stretching a block moves its check-ins; deleting a block removes them.
-- Not verified on real Windows: notification action buttons, WebView2 behaviour, behaviour across real restarts.
+- Not verified on real Windows: notification button, WebView2 behaviour, real restarts, the drag with a real mouse.
+- The six-dot drop marker and the habit window were checked in tests, not in the real window.
+- Several habits on the same block each get their own pop-up.

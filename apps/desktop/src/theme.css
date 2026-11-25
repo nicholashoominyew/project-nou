@@ -588,7 +588,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .tt-del{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tt-add{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .tt-check{display:flex;align-items:center;gap:8px;font-size:14px;min-height:28px}
-.tt-reminder-settings{margin-top:16px}
+.tt-reminder-settings{margin-top:10px;max-width:760px}
 .tt-lead input{width:64px;margin:0 6px}
 .tt-sim{border:1px solid var(--line);border-radius:8px;margin:8px 0;padding:8px 10px}
 .tt-sim legend{font:600 11px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 4px}
@@ -807,7 +807,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 /* Small timer in the top bar, left of the light/dark switch (the whole bar is hidden in focus mode) */
 .window-tools .top-timer{display:inline-flex;align-items:center;gap:8px;width:auto;height:30px;padding:0 10px 0 6px;margin-right:6px;border-radius:999px;color:var(--text);background:var(--hover);font-size:12px}
 .window-tools .top-timer:hover{background:var(--active,var(--hover));filter:brightness(1.1)}
-.top-timer-ring{display:block;width:20px;height:20px;flex:none}
+.top-timer-ring{display:block;width:22px;height:22px;flex:none}
 .top-timer-name{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-weight:500}
 .top-timer-time{font:600 12px var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 @media (max-width:900px){.top-timer-name{display:none}}
@@ -920,3 +920,32 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 /* timetable: check-in marks and the editor's check-in section */
 .tt-block-bell{position:absolute;top:4px;right:6px;font-size:11px;opacity:.8;pointer-events:none}
 .tt-checkin-note{font-size:12px;color:var(--muted);margin:2px 0 0}
+
+/* Drag to reorder: the six-dot grip and the drop marker */
+.grip{background:transparent;border:0;color:var(--muted);cursor:grab;font-size:18px;line-height:1;padding:2px 4px;border-radius:6px}
+.grip:hover:not(:disabled){color:var(--text);background:var(--line)}.grip:active{cursor:grabbing}.grip:disabled{opacity:.35;cursor:not-allowed}
+.reorder-dragging{opacity:.45}.reorder-over{box-shadow:0 -2px 0 0 var(--accent)}
+
+/* Habit detail window and list parts */
+.hb-name{background:transparent;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}.hb-name:hover{text-decoration:underline}
+.hb-manage li{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hb-modal-back{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px}
+.hb-modal{width:min(520px,100%);max-height:90vh;overflow:auto;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:16px;padding:20px;display:grid;gap:14px;outline:none}
+.hb-modal-head{display:flex;gap:10px;align-items:center}.hb-modal-name{flex:1;font:inherit;font-size:20px;font-weight:600;background:transparent;color:inherit;border:1px solid transparent;border-radius:8px;padding:4px 8px}
+.hb-modal-name:hover,.hb-modal-name:focus{border-color:var(--line)}
+.hb-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.hb-stats div{border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:2px}
+.hb-stats b{font-size:24px;line-height:1.1}.hb-stats span{font-size:12px;color:var(--muted)}
+.hb-strip{display:grid;grid-template-columns:repeat(35,1fr);gap:3px}.hb-strip i{height:14px;border-radius:3px;background:var(--line)}.hb-strip i.done{background:var(--accent)}.hb-strip i.off{opacity:.35}
+.hb-field{display:grid;gap:6px;font-size:14px}.hb-field select{padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+.hb-modal-foot{display:flex;justify-content:flex-end}
+@media (max-width:520px){.hb-stats{grid-template-columns:repeat(2,1fr)}}
+
+.undo-note{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:80;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.undo-note.bad{border-color:#c0392b}
+
+/* Home calendar: a day's bubble takes a colour from the share of habits done (red low, green high) */
+.mcal-day.hp{background:hsl(calc(var(--hp) * 1.2) 65% 45% / .42)}
+.mcal-day.hp.sel{outline:2px solid var(--accent)}
+.mcal-habits{display:flex;align-items:center;gap:10px;margin:8px 0 2px;font-size:13px}.mcal-habits .mini-bar{flex:1;min-width:60px}
+.backup-more>summary{cursor:pointer;font-weight:600;padding:6px 0}.backup-more[open]>summary{margin-bottom:8px}
+details.recovery-card.backup-more{padding:12px 16px}

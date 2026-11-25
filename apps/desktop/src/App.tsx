@@ -22,6 +22,7 @@ import { appendBlocksToNote } from "./noteAppend";
 import {useReminders,ReminderToast} from "./timetable/reminders";
 import TopTimer from "./timetable/TopTimer";
 import {CheckinPopups,useCheckinPopups} from "./checkins";
+import {UndoHost} from "./undo";
 import { INBOX_KEY, parseCapture, pickInbox } from "./captureParse";
 const GatewayPanel=lazy(()=>import("./GatewayPanel"));
 const GraphView=lazy(()=>import("./GraphView"));
@@ -277,6 +278,7 @@ export default function App(){
    </header>
    <ReminderToast reminder={reminders.toast} dismiss={reminders.dismiss}/>
    <CheckinPopups state={checkins}/>
+   <UndoHost/>
    {backupNotice&&<p className="notice" role="status">{backupNotice} Open Workspace tools → Backups & restore.</p>}
    {recoveryBlocked&&<p className="notice">A restore needs review. Notes are read-only until you review Backups & restore.</p>}
    {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>Dismiss</button></div>}

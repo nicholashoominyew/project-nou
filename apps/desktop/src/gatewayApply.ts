@@ -3,6 +3,8 @@ import { newRichUpdate } from "./richUpdate";
 import { appendBlocksToNote } from "./noteAppend";
 import { DEFAULT_LAYOUT_KEY, HOME_LAYOUT_EVENT, HOME_NEVER_HIDDEN, HOME_WIDGET_IDS, HOME_WIDGET_INFO, normalizeLayout, setWidgetHidden } from "./homeLayout";
 import { addActivity, restoreCells, saveRange } from "./timetable/useTimetable";
+import { announceHabits, habitsApi, todayLocal } from "./habitsApi";
+import { HABIT_TYPES, WEEKDAYS } from "./habitsLogic";
 
 /** One request from an outside client, as the gateway stores it. Never trust its shape: every field is re-checked here. */
 export type Proposal = {
@@ -17,9 +19,10 @@ export const OP_LABELS: Record<string, string> = {
   create_page: "Create a page", rename_page: "Rename a page", set_value: "Change a database cell", create_row: "Add a database row",
   append_text: "Add text to a page", add_checklist_item: "Add a checklist item",
   timetable_set_block: "Change the Life Timetable", timetable_add_activity: "Add a timetable activity", home_set_widgets: "Show or hide Home sections",
+  habit_add: "Add a habit", habit_tick: "Tick a habit for a day", todo_reorder: "Reorder Today's tasks",
 };
 /** Operations the app can apply today. The others can be viewed and rejected but not approved. */
-export const APPLICABLE_OPS = ["create_page", "rename_page", "set_value", "create_row", "append_text", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets"] as const;
+export const APPLICABLE_OPS = ["create_page", "rename_page", "set_value", "create_row", "append_text", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder"] as const;
 /** An open copy of the page reloads itself, so an approved change shows up without reopening the page. */
 function announceNoteChanged(pageId: string) { try { window.dispatchEvent(new CustomEvent("nou:note-changed", { detail: pageId })); } catch { /* only a refresh hint */ } }
 export const canApply = (op: string) => (APPLICABLE_OPS as readonly string[]).includes(op);
@@ -58,6 +61,38 @@ export function parseHomeWidgets(d: Record<string, unknown>): HomeWidgetChange {
   if (hide.includes(HOME_NEVER_HIDDEN)) throw new Error("The “Waiting for approval” section cannot be hidden by a request");
   return { show, hide };
 }
+
+// ---- habits and Today's tasks ----
+export type HabitAdd = { name: string; category: string; days: number };
+/** Check an "add a habit" request: a name, an optional type (default Health) and optional day names (default every day). */
+export function parseHabitAdd(d: Record<string, unknown>): HabitAdd {
+  if (!text(d.name, 60) || /[\u0000-\u001f]/.test(d.name as string)) throw new Error("The habit needs a name of 1 to 60 characters");
+  const category = d.category === undefined ? "Health" : d.category;
+  if (typeof category !== "string" || !(HABIT_TYPES as readonly string[]).includes(category)) throw new Error("The type must be one of " + HABIT_TYPES.join(", "));
+  let days = 127;
+  if (d.days !== undefined) {
+    const names = list(d.days, "days", 7).map(x => (typeof x === "string" ? DAYS[x.trim().toLowerCase()] : undefined));
+    if (!names.length || names.some(x => x === undefined) || new Set(names).size !== names.length) throw new Error("days must be day names such as Mon, Tue");
+    days = (names as number[]).reduce((m, x) => m | (1 << x), 0);
+  }
+  return { name: (d.name as string).trim().replace(/\s+/g, " "), category, days };
+}
+export type HabitTick = { habit: string; day: string; done: boolean };
+/** Check a "tick or clear a habit on a day" request. The day must be a real day that has already begun (the app checks again). */
+export function parseHabitTick(d: Record<string, unknown>): HabitTick {
+  if (!text(d.habit, 60)) throw new Error("Name the habit");
+  if (typeof d.day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d.day) || Number.isNaN(new Date(d.day + "T12:00:00").getTime()) || new Date(d.day + "T12:00:00").toISOString().slice(0, 10) !== d.day) throw new Error("The day must be written like 2026-11-24");
+  if (typeof d.done !== "boolean") throw new Error("done must be true or false");
+  return { habit: (d.habit as string).trim(), day: d.day, done: d.done };
+}
+export type TodoOrder = { order: string[] };
+const norm = (t: string) => t.trim().replace(/\s+/g, " ").toLowerCase();
+/** Check a "put Today's tasks in this order" request: task texts, each once, as the owner sees them. */
+export function parseTodoOrder(d: Record<string, unknown>): TodoOrder {
+  const order = list(d.order, "order", 100);
+  if (!order.length || order.some(t => typeof t !== "string" || !t.trim() || t.length > 500) || new Set(order.map(t => norm(t as string))).size !== order.length) throw new Error("order must be different task texts, each once");
+  return { order: order as string[] };
+}
 const titleOf = (id: string) => HOME_WIDGET_INFO.find(w => w.id === id)?.title ?? id;
 /** One plain sentence about what approving would do, for the approval card. Null when the request is not one of these or is badly shaped (the card then shows the raw fields). */
 export function describeProposal(op: string, d: Record<string, unknown>): string | null {
@@ -67,6 +102,9 @@ export function describeProposal(op: string, d: Record<string, unknown>): string
       return `In week ${b.weeks.join(" and ")}, on ${b.days.map(x => DAY_SHORT[x]).join(", ")}, ${slotTime(b.start)}–${slotTime(b.end)} will be ${b.names.length ? "set to " + b.names.join(" + ") : "emptied"}, replacing what is there now.`;
     }
     if (op === "timetable_add_activity") return text(d.name, 80) && CATEGORIES.includes(d.category as string) ? `A new activity “${(d.name as string).trim()}” (${d.category}) will be added to your list. It is not placed on any day.` : null;
+    if (op === "habit_add") { const h = parseHabitAdd(d); return `A new habit “${h.name}” (${h.category}, ${h.days === 127 ? "every day" : WEEKDAYS.filter((_, i) => h.days & (1 << i)).join(", ")}) will be added. It also appears in the Life Timetable's activities, but is not placed on any day.`; }
+    if (op === "habit_tick") { const t = parseHabitTick(d); return `“${t.habit}” will be marked ${t.done ? "done" : "not done (cleared)"} on ${t.day}.`; }
+    if (op === "todo_reorder") { const t = parseTodoOrder(d); return `Today's tasks will start with, in this order: ${t.order.map(x => "“" + x.trim() + "”").join(", ")}. The rest keep their order after them.`; }
     if (op === "home_set_widgets") { const c = parseHomeWidgets(d); return [c.show.length ? "Show: " + c.show.map(titleOf).join(", ") : "", c.hide.length ? "Hide: " + c.hide.map(titleOf).join(", ") : ""].filter(Boolean).join(". ") + ". Nothing else on the Home page changes."; }
   } catch { return null; }
   return null;
@@ -152,6 +190,32 @@ export async function applyProposal(p: Pick<Proposal, "op" | "payload">): Promis
         localStorage.setItem(DEFAULT_LAYOUT_KEY, JSON.stringify(layout));
         try { window.dispatchEvent(new Event(HOME_LAYOUT_EVENT)); } catch { /* only a refresh hint */ }
         return { ok: true, result: `Home: ${[c.show.length ? "showed " + c.show.join(", ") : "", c.hide.length ? "hid " + c.hide.join(", ") : ""].filter(Boolean).join("; ")}` };
+      }
+      case "habit_add": {
+        const h = parseHabitAdd(d);
+        const made = await habitsApi.add(h.name, h.days, h.category); announceHabits();
+        return { ok: true, result: "Added the habit " + made.name };
+      }
+      case "habit_tick": {
+        const t = parseHabitTick(d);
+        if (t.day > todayLocal()) throw new Error("A day that has not happened yet cannot be logged");
+        const habit = (await habitsApi.list()).find(h => norm(h.name) === norm(t.habit));
+        if (!habit) throw new Error(`There is no habit called “${t.habit}”. Ask for it to be added first.`);
+        await habitsApi.set(t.day, habit.id, t.done ? "done" : null); announceHabits();
+        return { ok: true, result: `${habit.name} ${t.done ? "ticked" : "cleared"} on ${t.day}` };
+      }
+      case "todo_reorder": {
+        const t = parseTodoOrder(d);
+        const todos = (await invoke<{ id: string; text: string }[]>("linked_todo_list", { query: "" })) ?? [];
+        const ids: string[] = [];
+        for (const wanted of t.order) {
+          const found = todos.find(x => norm(x.text) === norm(wanted) && !ids.includes(x.id));
+          if (!found) throw new Error(`There is no task “${wanted.trim().slice(0, 60)}” in Today's tasks`);
+          ids.push(found.id);
+        }
+        await invoke("linked_todo_reorder", { ids });
+        try { window.dispatchEvent(new Event("nou:linked-todo")); } catch { /* only a refresh hint */ }
+        return { ok: true, result: `Put ${ids.length} task${ids.length === 1 ? "" : "s"} first, in the order asked` };
       }
       default:
         return { ok: false, result: "This kind of request cannot be applied yet" };

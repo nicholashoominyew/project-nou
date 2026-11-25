@@ -4,16 +4,19 @@ import { CalendarWidget, ClocksWidget, CountdownWidget, DailyWidget, PeriodsWidg
 import { Flip } from "./HomeBits";
 import { dayKey } from "./timeLogic";
 
-const { search, db, todos } = vi.hoisted(() => ({ search: { results: [] as any[], fail: "" }, db: { list: [] as any[], data: {} as Record<string, any> }, todos: { list: [] as any[], calls: [] as any[] } }));
+const { search, db, todos, hab } = vi.hoisted(() => ({ hab: { habits: [] as any[], log: [] as any[] }, search: { results: [] as any[], fail: "" }, db: { list: [] as any[], data: {} as Record<string, any> }, todos: { list: [] as any[], calls: [] as any[] } }));
 vi.mock("./geocode", () => ({ searchPlaces: async () => { if (search.fail) throw new Error(search.fail); return search.results; } }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
   if (command === "list_databases") return db.list;
   if (command === "get_database") return db.data[args.pageId] ?? null;
+  if (command === "habits_list_cmd") return hab.habits;
+  if (command === "habit_log_list_cmd") return hab.log;
   if (command === "linked_todo_list") return todos.list;
   if (command === "linked_todo_set") { todos.calls.push({ command, args }); return {}; }
+  if (command === "linked_todo_reorder") { todos.calls.push({ command, args }); todos.list = [...args.ids.map((id: string) => todos.list.find(t => t.id === id)), ...todos.list.filter(t => !args.ids.includes(t.id))]; return null; }
   if (command === "linked_todo_create") { todos.calls.push({ command, args }); todos.list = [...todos.list, { id: "new", text: args.text, checked: false, pages: 0 }]; return todos.list[todos.list.length - 1]; }
 } }));
-beforeEach(() => { todos.list = []; todos.calls.length = 0; localStorage.clear(); search.results = []; search.fail = ""; db.list = []; db.data = {}; });
+beforeEach(() => { hab.habits = []; hab.log = []; todos.list = []; todos.calls.length = 0; localStorage.clear(); search.results = []; search.fail = ""; db.list = []; db.data = {}; });
 
 describe("two clocks", () => {
   it("start as London and Kuala Lumpur, and the zone can be changed and is remembered", () => {
@@ -144,6 +147,20 @@ describe("master calendar", () => {
     expect(open).toHaveBeenCalledWith("d1");
     expect(screen.queryByText("Plain")).toBeNull();
   });
+  it("colours each past day's bubble by the share of habits done, and shows a progress bar for the selected day", async () => {
+    const t = new Date(); const day = (n: number) => { const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    const h = (id: string) => ({ id, name: id, days: 127, sort_order: 0, created_at: new Date(2020, 0, 1, 12).toISOString(), category: "Health" });
+    hab.habits = [h("a"), h("b")]; hab.log = [{ day: day(0), habit_id: "a", state: "done", answered_at: null, source: "manual" }, { day: day(1), habit_id: "a", state: "done", answered_at: null, source: "manual" }, { day: day(1), habit_id: "b", state: "done", answered_at: null, source: "manual" }];
+    render(<CalendarWidget ctx={ctx()} />);
+    const cell = (n: number) => screen.getAllByRole("gridcell").find(c => c.getAttribute("aria-label")?.startsWith(day(n)))!;
+    await waitFor(() => expect(cell(1).getAttribute("aria-label")).toMatch(/habits 2 of 2, 100%/));
+    expect(cell(1).style.getPropertyValue("--hp")).toBe("100"); expect(cell(1).className).toMatch(/\bhp\b/);
+    expect(cell(0).getAttribute("aria-label")).toMatch(/habits 1 of 2, 50%/); expect(cell(0).style.getPropertyValue("--hp")).toBe("50");
+    const bar = screen.getByRole("progressbar", { name: "Share of habits done" }); expect(bar.getAttribute("aria-valuenow")).toBe("50"); // today is selected
+    fireEvent.click(cell(1)); expect(screen.getByRole("progressbar", { name: "Share of habits done" }).getAttribute("aria-valuenow")).toBe("100");
+    expect(screen.getByText("2/2 · 100%")).toBeTruthy();
+    expect(cell(2).style.getPropertyValue("--hp")).toBe("0"); // a day with habits and none done is the low (red) end
+  });
   it("moves between months and back to today", () => {
     render(<CalendarWidget ctx={ctx()} />);
     const title = () => screen.getByRole("grid").getAttribute("aria-label")!;
@@ -203,11 +220,19 @@ describe("today's tasks", () => {
     todos.list = [{ id: "a", text: "Done thing", checked: true, pages: 1 }, { id: "b", text: "Call Sam", checked: false, pages: 2 }];
     render(<TasksWidget />);
     const items = await screen.findAllByRole("listitem");
-    expect(items.map(i => i.textContent)).toEqual(["Call SamOn 2 pages", "Done thingOn 1 page"]);
+    expect(items.map(i => i.textContent?.replace("⠿", ""))).toEqual(["Call SamOn 2 pages", "Done thingOn 1 page"]);
     expect(screen.getByText("1/2")).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Call Sam"));
     await waitFor(() => expect(todos.calls).toContainEqual({ command: "linked_todo_set", args: { id: "b", checked: true, text: null } }));
     expect(screen.getByText("2/2")).toBeTruthy();
+  });
+  it("puts the list in your order when a task is moved with its six dots (or the arrow keys), and keeps that order", async () => {
+    todos.list = [{ id: "a", text: "First", checked: false, pages: 0 }, { id: "b", text: "Second", checked: false, pages: 0 }, { id: "c", text: "Third", checked: false, pages: 0 }];
+    render(<TasksWidget />);
+    await screen.findByText("First");
+    fireEvent.keyDown(screen.getByLabelText(/Drag Third to reorder/), { key: "ArrowUp" });
+    await waitFor(() => expect(todos.calls).toContainEqual({ command: "linked_todo_reorder", args: { ids: ["a", "c", "b"] } }));
+    expect(screen.getAllByRole("listitem").map(i => i.textContent?.replace("⠿", ""))).toEqual(["First", "Third", "Second"]);
   });
   it("adds a task with Enter, and says when there are none", async () => {
     render(<TasksWidget />);

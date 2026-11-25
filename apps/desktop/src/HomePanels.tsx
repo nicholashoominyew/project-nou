@@ -1,3 +1,7 @@
+import { useReorder, GRIP } from "./Reorder";
+import { pushUndo } from "./undo";
+import { useHabits } from "./useHabits";
+import { progressOn } from "./habitsLogic";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icons";
@@ -313,7 +317,10 @@ export function TasksWidget({ disabled }: { disabled?: boolean }) {
   useEffect(() => { const f = () => void load(); window.addEventListener("nou:linked-todo", f); return () => window.removeEventListener("nou:linked-todo", f); }, [load]);
   async function toggle(t: Todo) {
     setTodos(old => (old ?? []).map(x => (x.id === t.id ? { ...x, checked: !t.checked } : x)));
-    try { await invoke("linked_todo_set", { id: t.id, checked: !t.checked, text: null }); } catch (e) { setError(errText(e)); void load(); }
+    try {
+      await invoke("linked_todo_set", { id: t.id, checked: !t.checked, text: null });
+      pushUndo(`${t.checked ? "Unticked" : "Ticked"} task “${t.text.slice(0, 40)}”`, async () => { await invoke("linked_todo_set", { id: t.id, checked: t.checked, text: null }); window.dispatchEvent(new Event("nou:linked-todo")); });
+    } catch (e) { setError(errText(e)); void load(); }
   }
   async function add() {
     const text = draft.trim();
@@ -322,6 +329,12 @@ export function TasksWidget({ disabled }: { disabled?: boolean }) {
   }
   const list = [...(todos ?? [])].sort((a, b) => Number(a.checked) - Number(b.checked)).slice(0, 100);
   const done = list.filter(t => t.checked).length;
+  // Drag a task by its six dots (or press the up or down arrow on the dots) to put the list in your order. The order is kept, and assistants can change it too (with your approval).
+  const reorder = useReorder(list.map(t => t.id), ids => {
+    setTodos(old => { const by = new Map((old ?? []).map(t => [t.id, t])); return [...ids.map(id => by.get(id)!).filter(Boolean), ...(old ?? []).filter(t => !ids.includes(t.id))]; });
+    const was = list.map(t => t.id);
+    invoke("linked_todo_reorder", { ids }).then(() => { pushUndo("Order of tasks", async () => { await invoke("linked_todo_reorder", { ids: was }); window.dispatchEvent(new Event("nou:linked-todo")); }); window.dispatchEvent(new Event("nou:linked-todo")); }).catch(e => { setError(errText(e)); void load(); });
+  }, disabled);
   return <>
     <CardHead title="Today's tasks" live>
       <span className="task-count"><span className="mini-bar" aria-hidden="true"><i style={{ width: (list.length ? (done / list.length) * 100 : 0) + "%" }} /></span>{done}/{list.length}</span>
@@ -330,7 +343,8 @@ export function TasksWidget({ disabled }: { disabled?: boolean }) {
     <div className="task-scroll-wrap"><div className="task-scroll" role="list">
       {todos === null && <p className="hint">Loading…</p>}
       {todos !== null && !list.length && <p className="hint">No to-dos yet. Add one below, or type /[] in a note.</p>}
-      {list.map(t => <div className={"task" + (t.checked ? " done" : "")} role="listitem" key={t.id}>
+      {list.map(t => <div {...reorder.rowProps(t.id)} className={"task" + (t.checked ? " done" : "") + " " + reorder.rowProps(t.id).className} role="listitem" key={t.id}>
+        <button {...reorder.gripProps(t.id, t.text || "task")}>{GRIP}</button>
         <input type="checkbox" id={"task-" + t.id} checked={t.checked} disabled={disabled} onChange={() => void toggle(t)} />
         <div><label htmlFor={"task-" + t.id}>{t.text || "(empty)"}</label>
           {t.pages > 0 && <span className="chip">On {t.pages} {t.pages === 1 ? "page" : "pages"}</span>}</div>
@@ -416,6 +430,9 @@ export function CalendarWidget({ ctx }: { ctx: HomeContext }) {
     const ends: CalendarEvent[] = counts.map(c => ({ date: c.end, title: c.label, kind: "countdown" }));
     return groupByDay([...daily, ...ends, ...rows]);
   }, [ctx.pages, counts, rows]);
+  // Habits: each day's bubble is coloured by the share of that day's habits that were done (red low, green high), and the selected day shows a progress bar.
+  const { habits, log } = useHabits();
+  const habitDay = (day: string) => (habits?.length ? progressOn(habits, log, day) : { done: 0, total: 0, pct: null as number | null });
   const weeks = useMemo(() => monthGrid(cursor.y, cursor.m), [cursor]);
   const shift = (n: number) => setCursor(c => { const d = new Date(c.y, c.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
   const title = new Date(cursor.y, cursor.m, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
@@ -432,8 +449,10 @@ export function CalendarWidget({ ctx }: { ctx: HomeContext }) {
       {WEEKDAYS.map(d => <span key={d} className="mcal-dow" role="columnheader">{d}</span>)}
       {weeks.flat().map(cell => {
         const n = events.get(cell.date)?.length ?? 0, past = cell.date <= today, level = past && cell.inMonth ? activityLevel(n) : 0;
-        return <button key={cell.date} role="gridcell" className={"mcal-day lvl-" + level + (cell.inMonth ? "" : " out") + (cell.date === today ? " today" : "") + (cell.date === selected ? " sel" : "")}
-          aria-label={cell.date + (n ? ", " + n + (n === 1 ? " item" : " items") : "")} aria-selected={cell.date === selected} onClick={() => setSelected(cell.date)}>
+        const hp = cell.date <= today ? habitDay(cell.date) : null, pct = hp && hp.total > 0 ? hp.pct : null;
+        return <button key={cell.date} role="gridcell" className={"mcal-day lvl-" + level + (pct !== null ? " hp" : "") + (cell.inMonth ? "" : " out") + (cell.date === today ? " today" : "") + (cell.date === selected ? " sel" : "")}
+          style={pct !== null ? ({ "--hp": pct } as CSSProperties) : undefined}
+          aria-label={cell.date + (n ? ", " + n + (n === 1 ? " item" : " items") : "") + (hp && pct !== null ? `, habits ${hp.done} of ${hp.total}, ${pct}%` : "")} aria-selected={cell.date === selected} onClick={() => setSelected(cell.date)}>
           <span className="num">{+cell.date.slice(8)}</span>{n > 0 && <i className="mcal-dot" aria-hidden="true" />}</button>;
       })}
     </div>
@@ -441,6 +460,11 @@ export function CalendarWidget({ ctx }: { ctx: HomeContext }) {
       <div className="mcal-today"><span className="mono-note">TODAY</span>{todayEvents.length ? todayEvents.slice(0, 3).map((e, i) => <span key={i}>{i > 0 && <span className="hint">· </span>}{e.title}</span>) : <span className="hint">Nothing today</span>}</div>
       <div className="mcal-legend" aria-hidden="true"><span className="mono-note">LESS</span>{[0, 1, 2, 3].map(l => <i key={l} className={"lvl-" + l} />)}<span className="mono-note">MORE</span></div>
     </div>
+    {(() => { const hp = habitDay(selected); return hp.total > 0 && selected <= today
+      ? <div className="mcal-habits" role="group" aria-label={"Habits on " + selected}><span className="mono-note">HABITS</span>
+          <span className="mini-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={hp.pct ?? 0} aria-label="Share of habits done"><i style={{ width: (hp.pct ?? 0) + "%", background: `hsl(${(hp.pct ?? 0) * 1.2} 65% 45%)` }} /></span>
+          <span>{hp.done}/{hp.total} · {hp.pct}%</span></div>
+      : null; })()}
     <div className="mcal-list" aria-label={"Items on " + selected}>
       <p className="hint">{selected}</p>
       {!dayEvents.length && <p className="hint">Nothing on this day.</p>}

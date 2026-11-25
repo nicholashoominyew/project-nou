@@ -15,6 +15,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: a
   h.calls.push({ command, args });
   if (command === "timetable_get") return { system_page_id: null, swap_ab: false, activities: [{ id: "w", name: "Shower + Breakfast", category: "Chores", colour: null, remind: true, sort_order: 0 }, { id: "x", name: "Side projects", category: "Work", colour: null, remind: true, sort_order: 1 }],
     slots: [{ variant: "B", weekday: 0, slot_index: 10, activity_id: "w" }, { variant: "B", weekday: 0, slot_index: 11, activity_id: "x" }], edited: { a: false, b: false } };
+  if (command === "habits_list_cmd") return [{ id: "h1", name: "Exercise", days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Training" }, { id: "h2", name: "Anki", days: 127, sort_order: 1, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health" }];
   if (command === "checkin_list_cmd") return [...h.checkins];
   if (command === "checkin_events_sweep_cmd") return h.swept;
   if (command === "checkin_event_show_cmd") {
@@ -44,48 +45,44 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("check-in pop-ups", () => {
-  it("appear when a block starts: Workout and Anki each get their own, once, with the block's name and times", async () => {
+  it("appear when a block is running: Workout and Anki each get their own, once, with the block's name and times", async () => {
     await mount(at(4, 59, 58));
+    expect(sent("checkin_event_show_cmd")).toHaveLength(0); // not before the block starts
     await look(at(5, 0, 3));
     await waitFor(() => expect(sent("checkin_event_show_cmd")).toHaveLength(2));
     expect(sent("checkin_event_show_cmd").map(c => [c.args.checkinId, c.args.day, c.args.block])).toEqual([["k1", "2026-11-23", "Shower + Breakfast"], ["k2", "2026-11-23", "Shower + Breakfast"]]);
+    expect(sent("checkin_event_show_cmd")[0].args.until).toBe(Math.floor(at(5, 30).getTime() / 1000)); // it lasts at least until the block ends
     const exercise = await screen.findByRole("alertdialog", { name: "Check-in: Exercise" }); const anki = await screen.findByRole("alertdialog", { name: "Check-in: Anki" });
     expect(within(exercise).getByText(/05:00–05:30/)).toBeTruthy(); expect(within(anki).getByText("CHECK-IN · 05:00")).toBeTruthy();
-    await look(at(5, 0, 20)); await look(at(5, 0, 40));
-    expect(sent("checkin_event_show_cmd")).toHaveLength(2); // later looks do not show them again
     await waitFor(() => expect(h.sent).toHaveLength(2));
     expect(h.sent.map(n => [n.title, n.actionTypeId, n.extra])).toEqual([["Check-in: Exercise", "nou-checkin", { checkinId: "k1", day: "2026-11-23" }], ["Check-in: Anki", "nou-checkin", { checkinId: "k2", day: "2026-11-23" }]]);
     expect(h.sent[0].body).toBe("Shower + Breakfast · 05:00–05:30. Did you do it?");
+    await look(at(5, 0, 20)); await look(at(5, 0, 40));
+    expect(h.sent).toHaveLength(2); // later looks do not send the notification again
   });
-  it("never appear when a block ends, on another weekday, or in the other week", async () => {
-    h.checkins = [k("end", "h1"), k("other-day", "h1", { weekday: 1 }), k("other-week", "h1", { variant: "A" })];
-    await mount(at(5, 29, 58)); await look(at(5, 30, 3)); // 05:30 is where the block ends
-    await mount(at(4, 59, 58)); await look(at(5, 0, 3));
-    expect(sent("checkin_event_show_cmd").filter(c => c.args.checkinId !== "end")).toHaveLength(0);
-    expect(sent("checkin_event_show_cmd").every(c => c.args.day === "2026-11-23")).toBe(true);
+  it("stay up for the whole block until ticked, go when the block ends, and never show on another weekday or in the other week", async () => {
+    await mount(at(5, 0, 5));
+    await screen.findByRole("alertdialog", { name: "Check-in: Exercise" });
+    await look(at(5, 15, 0)); expect(screen.getByRole("alertdialog", { name: "Check-in: Exercise" })).toBeTruthy();
+    await look(at(5, 29, 59)); expect(screen.getByRole("alertdialog", { name: "Check-in: Exercise" })).toBeTruthy(); // still there at the very end of the block
+    await look(at(5, 30, 0)); await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull()); // the end of the block: gone (still open on the Habits page)
+    expect(h.pending.length).toBe(2); expect(h.sent).toHaveLength(2); // nothing new happens at the end
+    cleanup(); h.calls.length = 0; h.shown = []; h.pending = []; h.checkins = [k("other-day", "h1", { weekday: 1 }), k("other-week", "h1", { variant: "A" })];
+    await mount(at(5, 10)); expect(sent("checkin_event_show_cmd")).toHaveLength(0);
   });
-  it("one tap on Checked in or Skipping answers it, and the card goes", async () => {
-    await mount(at(4, 59, 58)); await look(at(5, 0, 3));
+  it("one tap on Checked in answers it, and the card goes; there is no Skipping and no way to hide it", async () => {
+    await mount(at(5, 0, 3));
     const exercise = await screen.findByRole("alertdialog", { name: "Check-in: Exercise" });
+    expect(screen.queryByRole("button", { name: /skipping/i })).toBeNull(); expect(screen.queryByRole("button", { name: /hide/i })).toBeNull();
     fireEvent.click(within(exercise).getByRole("button", { name: "Checked in" }));
     await waitFor(() => expect(sent("checkin_event_answer_cmd")[0].args).toMatchObject({ checkinId: "k1", day: "2026-11-23", answer: "done" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "Check-in: Exercise" })).toBeNull());
-    fireEvent.click(within(await screen.findByRole("alertdialog", { name: "Check-in: Anki" })).getByRole("button", { name: "Skipping" }));
-    await waitFor(() => expect(sent("checkin_event_answer_cmd")[1].args).toMatchObject({ checkinId: "k2", answer: "skipped" }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(screen.getByRole("alertdialog", { name: "Check-in: Anki" })).toBeTruthy(); // the other habit still waits
   });
-  it("can be hidden for now without answering, and say so when an answer is refused", async () => {
-    await mount(at(4, 59, 58)); await look(at(5, 0, 3));
-    fireEvent.click(await screen.findByRole("button", { name: "Hide the Exercise check-in for now" }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "Check-in: Exercise" })).toBeNull());
-    expect(sent("checkin_event_answer_cmd")).toHaveLength(0); expect(h.pending.length).toBe(2); // still open: the Habits page lists it
-  });
-  it("are ignored for a block that started while NOU was closed or the computer was asleep", async () => {
-    await mount(at(5, 20, 0)); await look(at(5, 20, 10)); // opened after the 05:00 start
-    expect(sent("checkin_event_show_cmd")).toHaveLength(0); cleanup(); h.calls.length = 0;
-    await mount(at(4, 50, 0)); await look(at(5, 5, 0)); // a 15-minute gap: asleep through the start
-    expect(sent("checkin_event_show_cmd")).toHaveLength(0);
-    await look(at(5, 5, 10)); expect(sent("checkin_event_show_cmd")).toHaveLength(0); // and it is not shown late
+  it("opening NOU in the middle of a block shows its pop-up straight away", async () => {
+    await mount(at(5, 20, 0));
+    expect(await screen.findByRole("alertdialog", { name: "Check-in: Exercise" })).toBeTruthy();
+    expect(sent("checkin_event_show_cmd")).toHaveLength(2);
   });
   it("on start, pop-ups whose two hours ran out while NOU was closed are only lapsed (closed: true); while running they are swept as no answer (closed: false)", async () => {
     await mount(at(9, 0, 0));
@@ -94,26 +91,26 @@ describe("check-in pop-ups", () => {
     expect(sent("checkin_events_sweep_cmd").some(c => c.args.closed === false)).toBe(true);
     expect(sent("checkin_events_sweep_cmd")[0].args.now).toBe(Math.floor(at(9, 0, 0).getTime() / 1000));
   });
-  it("an open pop-up from before a restart is shown again (it has not expired)", async () => {
-    h.pending = [{ checkin_id: "k1", day: "2026-11-23", habit_id: "h1", habit: "Exercise", block: "x", start_slot: 10, end_slot: 11, shown_at: 1, expires_at: 2, state: "shown" }];
+  it("an open pop-up from before a restart is shown again while its block is running", async () => {
+    h.checkins = []; h.pending = [{ checkin_id: "k1", day: "2026-11-23", habit_id: "h1", habit: "Exercise", block: "x", start_slot: 10, end_slot: 11, shown_at: 1, expires_at: 2, state: "shown" }];
     await mount(at(5, 10, 0)); expect(await screen.findByRole("alertdialog", { name: "Check-in: Exercise" })).toBeTruthy();
   });
-  it("a failed record does not stop the others or the next look", async () => {
-    h.failShow = true; await mount(at(4, 59, 58)); await look(at(5, 0, 3));
-    expect(screen.queryByRole("alertdialog")).toBeNull(); h.failShow = false; await look(at(5, 0, 8)); // not retried: the start has passed
-    expect(h.sent).toHaveLength(0);
+  it("a failed record does not stop the others, and is tried again at the next look", async () => {
+    h.failShow = true; await mount(at(5, 0, 3));
+    expect(screen.queryByRole("alertdialog")).toBeNull(); h.failShow = false; await look(at(5, 0, 8));
+    expect(await screen.findByRole("alertdialog", { name: "Check-in: Exercise" })).toBeTruthy();
   });
 });
 
 describe("the system notification", () => {
   it("is not shown when notifications are refused, but the in-app pop-up still is", async () => {
-    h.granted = false; await mount(at(4, 59, 58)); await look(at(5, 0, 3));
+    h.granted = false; await mount(at(5, 0, 3));
     expect(h.sent).toHaveLength(0); expect(await screen.findByRole("alertdialog", { name: "Check-in: Exercise" })).toBeTruthy();
   });
-  it("its buttons answer the check-in they belong to, and a tap on a notification that cannot be matched does nothing", async () => {
-    await mount(at(4, 59, 58)); await look(at(5, 0, 3)); await waitFor(() => expect(h.onAction).not.toBeNull());
-    await act(async () => { h.onAction!({ actionId: "skipped", inputValue: null, notification: { extra: { checkinId: "k2", day: "2026-11-23" } } }); });
-    await waitFor(() => expect(sent("checkin_event_answer_cmd")[0].args).toMatchObject({ checkinId: "k2", day: "2026-11-23", answer: "skipped" }));
+  it("its button answers the check-in it belongs to, and a tap on a notification that cannot be matched does nothing", async () => {
+    await mount(at(5, 0, 3)); await waitFor(() => expect(h.onAction).not.toBeNull());
+    await act(async () => { h.onAction!({ actionId: "done", inputValue: null, notification: { extra: { checkinId: "k2", day: "2026-11-23" } } }); });
+    await waitFor(() => expect(sent("checkin_event_answer_cmd")[0].args).toMatchObject({ checkinId: "k2", day: "2026-11-23", answer: "done" }));
     await act(async () => { h.onAction!({ actionId: "done", inputValue: null, notification: null }); h.onAction!({ actionId: "tap", inputValue: null, notification: { extra: { checkinId: "k1", day: "2026-11-23" } } }); });
     expect(sent("checkin_event_answer_cmd")).toHaveLength(1);
   });

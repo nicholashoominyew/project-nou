@@ -9,7 +9,7 @@ use tauri::State;
 use uuid::Uuid;
 
 pub const SCOPES: [&str; 13] = ["notes:read", "databases:read", "notes:write", "databases:write", "chat:read", "chat:write", "queue:read", "queue:write", "inhouse:read", "inhouse:write", "timetable:read", "timetable:write", "home:write"];
-pub const OPS: [&str; 9] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets"];
+pub const OPS: [&str; 12] = ["create_page", "append_text", "rename_page", "create_row", "set_value", "add_checklist_item", "timetable_set_block", "timetable_add_activity", "home_set_widgets", "habit_add", "habit_tick", "todo_reorder"];
 const MAX_PENDING_PER_TOKEN: i64 = 50;
 const MAX_PAYLOAD: usize = 60_000;
 const EXPIRY: &str = "-7 days";
@@ -89,7 +89,7 @@ pub fn verify_token(c: &Connection, secret: &str) -> Result<Verified, String> {
     }
 }
 
-fn scope_for(op: &str) -> &'static str { match op { "create_row" | "set_value" => "databases:write", "timetable_set_block" | "timetable_add_activity" => "timetable:write", "home_set_widgets" => "home:write", _ => "notes:write" } }
+fn scope_for(op: &str) -> &'static str { match op { "create_row" | "set_value" => "databases:write", "timetable_set_block" | "timetable_add_activity" | "habit_add" | "habit_tick" => "timetable:write", "home_set_widgets" => "home:write", _ => "notes:write" } }
 
 /// A client asks for a change. This only queues it; it never touches notes.
 pub fn propose(c: &Connection, secret: &str, op: &str, payload: &Value, summary: &str) -> Result<Proposed, String> {
@@ -343,4 +343,14 @@ mod tests {
         assert_eq!(indexes, 2); assert!(c.prepare("PRAGMA foreign_key_check").unwrap().exists([]).map(|b| !b).unwrap());
     }
     fn gateway_decide_for_test(c: &Connection, id: &str) { decide(c, id, true).unwrap(); }
+
+    #[test]
+    fn habit_and_task_requests_use_the_timetable_and_notes_scopes() {
+        let c = fresh(); let tt = token(&c, &["timetable:write"]); let notes = token(&c, &["notes:write"]);
+        assert!(propose(&c, &tt.secret, "habit_add", &json!({ "name": "Reading" }), "Add Reading").is_ok());
+        assert!(propose(&c, &tt.secret, "habit_tick", &json!({ "habit": "Reading", "day": "2026-11-20", "done": true }), "Tick it").is_ok());
+        assert!(propose(&c, &notes.secret, "habit_add", &json!({ "name": "Reading" }), "x").unwrap_err().contains("timetable:write"));
+        assert!(propose(&c, &notes.secret, "todo_reorder", &json!({ "order": ["Call Sam"] }), "Reorder").is_ok());
+        assert!(propose(&c, &tt.secret, "todo_reorder", &json!({ "order": ["Call Sam"] }), "x").unwrap_err().contains("notes:write"));
+    }
 }

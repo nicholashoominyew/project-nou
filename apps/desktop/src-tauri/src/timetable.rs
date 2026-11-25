@@ -24,7 +24,7 @@ fn e(error: rusqlite::Error) -> String { error.to_string() }
 fn variant_ok(v: &str) -> Result<(), String> { if v == "A" || v == "B" { Ok(()) } else { Err("Variant must be A or B".into()) } }
 
 #[derive(Serialize, Debug, PartialEq, Clone)]
-pub struct Activity { pub id: String, name: String, category: String, colour: Option<String>, remind: bool, sort_order: i64 }
+pub struct Activity { pub id: String, name: String, category: String, colour: Option<String>, remind: bool, sort_order: i64, habit_id: Option<String> }
 #[derive(Serialize, Debug, PartialEq, Clone)]
 pub struct Slot { variant: String, weekday: i64, slot_index: i64, activity_id: String }
 /// What one slot held, used to undo a save.
@@ -152,8 +152,8 @@ fn edited(c: &Connection, file: &SeedFile, variant: &str) -> Result<bool, String
 
 pub fn get(c: &Connection) -> Result<Timetable, String> {
     let system_page_id = c.query_row("SELECT id FROM pages WHERE system_key=?1", [SYSTEM_KEY], |r| r.get(0)).optional().map_err(e)?;
-    let mut s = c.prepare("SELECT id,name,category,colour,remind,sort_order FROM timetable_activities ORDER BY sort_order,name COLLATE NOCASE,id").map_err(e)?;
-    let activities = s.query_map([], |r| Ok(Activity { id: r.get(0)?, name: r.get(1)?, category: r.get(2)?, colour: r.get(3)?, remind: r.get::<_, i64>(4)? != 0, sort_order: r.get(5)? })).map_err(e)?.collect::<rusqlite::Result<Vec<_>>>().map_err(e)?;
+    let mut s = c.prepare("SELECT id,name,category,colour,remind,sort_order,habit_id FROM timetable_activities ORDER BY sort_order,name COLLATE NOCASE,id").map_err(e)?;
+    let activities = s.query_map([], |r| Ok(Activity { id: r.get(0)?, name: r.get(1)?, category: r.get(2)?, colour: r.get(3)?, remind: r.get::<_, i64>(4)? != 0, sort_order: r.get(5)?, habit_id: r.get(6)? })).map_err(e)?.collect::<rusqlite::Result<Vec<_>>>().map_err(e)?;
     let mut s = c.prepare("SELECT variant,weekday,slot_index,activity_id FROM timetable_slots ORDER BY variant,weekday,slot_index,activity_id").map_err(e)?;
     let slots = s.query_map([], |r| Ok(Slot { variant: r.get(0)?, weekday: r.get(1)?, slot_index: r.get(2)?, activity_id: r.get(3)? })).map_err(e)?.collect::<rusqlite::Result<Vec<_>>>().map_err(e)?;
     let file = seed_file()?;
@@ -188,7 +188,7 @@ pub fn summary(c: &Connection) -> Result<serde_json::Value, String> {
         weeks.insert(variant.to_string(), serde_json::Value::Object(days));
     }
     Ok(json!({
-        "activities": tt.activities.iter().map(|a| json!({ "name": a.name, "category": a.category })).collect::<Vec<_>>(),
+        "activities": tt.activities.iter().map(|a| json!({ "name": a.name, "category": a.category, "habit": a.habit_id.is_some() })).collect::<Vec<_>>(),
         "swap_ab": tt.swap_ab, "weeks": weeks,
         "note": "Times are local, in half-hour steps; 'end' is exclusive. Weeks A and B alternate by ISO week number (odd is A) unless swap_ab is true. Empty stretches are not listed.",
     }))
@@ -228,6 +228,7 @@ pub fn save_range(c: &mut Connection, variant: &str, weekdays: &[i64], start: i6
         }
     }
     tx.commit().map_err(e)?;
+    crate::habits::sync_checkins(c)?;
     Ok(before)
 }
 
@@ -244,7 +245,8 @@ pub fn restore_cells(c: &mut Connection, variant: &str, cells: &[Cell]) -> Resul
         tx.execute("DELETE FROM timetable_slots WHERE variant=?1 AND weekday=?2 AND slot_index=?3", params![variant, cell.weekday, cell.slot_index]).map_err(e)?;
         for a in cell.activity_ids.iter().collect::<BTreeSet<_>>() { tx.execute("INSERT INTO timetable_slots(variant,weekday,slot_index,activity_id) VALUES(?1,?2,?3,?4)", params![variant, cell.weekday, cell.slot_index, a]).map_err(e)?; }
     }
-    tx.commit().map_err(e)
+    tx.commit().map_err(e)?;
+    crate::habits::sync_checkins(c)
 }
 
 /// Put one variant back to the shipped plan. Activities the plan needs that have since been deleted are created again.
@@ -259,7 +261,8 @@ pub fn reset_variant(c: &mut Connection, variant: &str) -> Result<(), String> {
         let id = ids.get(&name).ok_or("Plan uses an unknown activity")?;
         tx.execute("INSERT OR IGNORE INTO timetable_slots(variant,weekday,slot_index,activity_id) VALUES(?1,?2,?3,?4)", params![variant, d, slot, id]).map_err(e)?;
     }
-    tx.commit().map_err(e)
+    tx.commit().map_err(e)?;
+    crate::habits::sync_checkins(c)
 }
 
 fn clean_name(name: &str) -> Result<String, String> {
@@ -284,7 +287,7 @@ pub fn add_activity(c: &Connection, name: &str, category: &str) -> Result<Activi
     let order: i64 = c.query_row("SELECT COALESCE(MAX(sort_order),-1)+1 FROM timetable_activities", [], |r| r.get(0)).map_err(e)?;
     c.execute("INSERT INTO timetable_activities(id,name,category,sort_order) VALUES(?1,?2,?3,?4)", params![id, name, category, order])
         .map_err(|x| if x.to_string().contains("UNIQUE") { "An activity with that name already exists".to_string() } else { x.to_string() })?;
-    Ok(Activity { id, name, category: category.into(), colour: None, remind: true, sort_order: order })
+    Ok(Activity { id, name, category: category.into(), colour: None, remind: true, sort_order: order, habit_id: None })
 }
 
 #[derive(Deserialize)]
@@ -294,11 +297,16 @@ pub fn update_activity(c: &Connection, a: &ActivityEdit) -> Result<(), String> {
     let n = c.execute("UPDATE timetable_activities SET name=?1,category=?2,colour=?3,remind=?4,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?5", params![name, a.category, colour, a.remind as i64, a.id])
         .map_err(|x| if x.to_string().contains("UNIQUE") { "An activity with that name already exists".to_string() } else { x.to_string() })?;
     if n != 1 { return Err("Activity not found".into()); }
+    // A habit's activity and the habit are one thing: renaming or retyping either changes both.
+    c.execute("UPDATE habits SET name=?1,category=?2 WHERE id=(SELECT habit_id FROM timetable_activities WHERE id=?3)", params![name, a.category, a.id])
+        .map_err(|x| if x.to_string().contains("UNIQUE") { "A habit with that name already exists".to_string() } else { x.to_string() })?;
     Ok(())
 }
 
 /// Delete an activity. If it is still used in either week it is refused, unless `reassign_to` names another activity to take its slots.
 pub fn delete_activity(c: &mut Connection, id: &str, reassign_to: Option<&str>) -> Result<(), String> {
+    let habit: bool = c.query_row("SELECT habit_id IS NOT NULL FROM timetable_activities WHERE id=?1", [id], |r| r.get(0)).optional().map_err(e)?.unwrap_or(false);
+    if habit { return Err("This activity is a habit. Delete it on the Habits page".into()); }
     let tx = c.transaction().map_err(e)?;
     let used: i64 = tx.query_row("SELECT COUNT(*) FROM timetable_slots WHERE activity_id=?1", [id], |r| r.get(0)).map_err(e)?;
     if used > 0 {
@@ -309,7 +317,8 @@ pub fn delete_activity(c: &mut Connection, id: &str, reassign_to: Option<&str>) 
         tx.execute("DELETE FROM timetable_slots WHERE activity_id=?1", [id]).map_err(e)?;
     }
     if tx.execute("DELETE FROM timetable_activities WHERE id=?1", [id]).map_err(e)? != 1 { return Err("Activity not found".into()); }
-    tx.commit().map_err(e)
+    tx.commit().map_err(e)?;
+    crate::habits::sync_checkins(c)
 }
 
 #[tauri::command]
@@ -365,7 +374,7 @@ mod tests {
     #[test]
     fn a_new_database_gets_the_tables_the_system_page_and_both_weeks() {
         let c = fresh();
-        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 16);
+        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 17);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM pages WHERE system_key='life_timetable' AND title='Life Timetable' AND parent_id IS NULL"), 1);
         assert!(count(&c, "SELECT COUNT(*) FROM timetable_activities") >= 30);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM timetable_activities WHERE name LIKE '%alternating%'"), 0, "the old combined activity is not seeded");
@@ -412,7 +421,7 @@ mod tests {
     fn the_upgrade_copies_existing_slots_into_both_weeks_and_splits_the_saturday() {
         let c = v10(false);
         crate::editor::upgrade(&c).unwrap();
-        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 16);
+        assert_eq!(count(&c, "SELECT MAX(version) FROM schema_migrations"), 17);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM timetable_slots WHERE variant='A' AND weekday=0 AND slot_index=18 AND activity_id='w'"), 1);
         assert_eq!(count(&c, "SELECT COUNT(*) FROM timetable_slots WHERE variant='B' AND weekday=0 AND slot_index=18 AND activity_id='w'"), 1, "both weeks keep the edit");
         assert_eq!(names_at(&c, "A", 5, 25), vec!["Dark Sphere"]); assert_eq!(names_at(&c, "B", 5, 25), vec!["Deep learning (library)"]);

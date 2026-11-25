@@ -1,3 +1,4 @@
+import { pushUndo, undoEntry } from "../undo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ActivitiesPanel from "./ActivitiesPanel";
@@ -6,10 +7,8 @@ import { now } from "./clock";
 import Distribution from "./Distribution";
 import NowPanel, { kickerOf } from "./NowPanel";
 import { colours } from "./palette";
-import { dayBlocks, fmtDuration, hm, names, otherVariant, weekdayOf, type Activity, type Block, type Variant } from "./schedule";
+import { dayBlocks, fmtDuration, hm, names, otherVariant, SLOTS_PER_DAY, weekdayOf, type Activity, type Block, type Variant } from "./schedule";
 import { addActivity, resetVariant, restoreCells, saveRange, setSwap, useTick, useTimetable, type Cell } from "./useTimetable";
-import { announceCheckins, habitsApi } from "../habitsApi";
-import { useCheckinData } from "../useHabits";
 
 const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -67,9 +66,8 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   const [showActs, setShowActs] = useState(false);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [editorError, setEditorError] = useState("");
-  const [undo, setUndo] = useState<{ variant: Variant; cells: Cell[]; label: string } | null>(null);
+  const [undo, setUndo] = useState<{ id: number; label: string } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
-  const { habits, habitsAt } = useCheckinData();
   const [menu, setMenu] = useState<{ x: number; y: number; block: Block; day: number; el: HTMLElement } | null>(null);
   const moved = useRef(false); // true from the first real movement of a drag until just after it ends, so the click that follows a drag is ignored
   const [status, setStatus] = useState<Status>({ state: "saved" });
@@ -101,8 +99,8 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   const openEdit = (state: EditorState, from?: HTMLElement | null) => { opener.current = from ?? (document.activeElement as HTMLElement | null); setEditorError(""); setEditor(state); };
   // A gap (nothing planned) opens as a new block over exactly that gap; a real block opens as an edit that remembers what it covered.
   const editBlock = (b: Block, d: number, el: HTMLElement) => b.ids.length === 0
-    ? openEdit({ isNew: true, days: [d], start: b.first, end: b.first + b.count, acts: [], habitIds: [] }, el)
-    : openEdit({ isNew: false, days: [d], start: b.first, end: b.first + b.count, acts: [...b.ids], habitIds: habitsAt(variant, d, b.first, b.first + b.count), from: { day: d, start: b.first, end: b.first + b.count, ids: [...b.ids] } }, el);
+    ? openEdit({ isNew: true, days: [d], start: b.first, end: b.first + b.count, acts: [] }, el)
+    : openEdit({ isNew: false, days: [d], start: b.first, end: b.first + b.count, acts: [...b.ids], from: { day: d, start: b.first, end: b.first + b.count, ids: [...b.ids] } }, el);
 
   /** Save a block's new place. Slots the block used to cover and no longer does become a gap; Undo puts everything back in one step. */
   async function write(s: EditorState, acts: string[], label = "saved") {
@@ -117,30 +115,24 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
           if (gone.length) { await restoreCells(variant, gone); before = [...before, ...gone.map(c => ({ ...c, activity_ids: o.ids }))]; }
         }
       });
-      setUndo({ variant, cells: before, label });
+      const v = variant, cells = before;
+      setUndo({ id: pushUndo(`Timetable block ${label}`, () => restoreCells(v, cells)), label });
     }
   }
-  /** Save which habits check in for the block, wherever it now is. A failure here does not undo the timetable change; it is reported. */
-  async function saveCheckins(s: EditorState) {
-    try { await habitsApi.setBlock(variant, s.from ? { day: s.from.day, start: s.from.start, end: s.from.end } : null, s.days, s.start, s.end, s.habitIds ?? []); announceCheckins(); }
-    catch (e) { setStatus({ state: "error", message: "The block was saved, but its check-in setting was not: " + String(e instanceof Error ? e.message : e) }); }
-  }
   async function commit(s: EditorState, acts: string[]) {
-    try { await write(s, acts); await saveCheckins(s); closeEditor(); } catch (e) { setEditorError(String(e)); }
+    try { await write(s, acts); closeEditor(); } catch (e) { setEditorError(String(e)); }
   }
   /** Move or stretch a block to a new day and half-hour range. */
   const place = (b: Block, fromDay: number, to: { day: number; start: number; end: number }, label: string) => {
     if (disabled || (to.day === fromDay && to.start === b.first && to.end === b.first + b.count)) return;
-    const mine = habitsAt(variant, fromDay, b.first, b.first + b.count); // its check-ins go with it
-    const state: EditorState = { isNew: false, days: [to.day], start: to.start, end: to.end, acts: [...b.ids], habitIds: mine, from: { day: fromDay, start: b.first, end: b.first + b.count, ids: [...b.ids] } };
-    void write(state, b.ids, label).then(() => { if (mine.length || habitsAt(variant, to.day, to.start, to.end).length) return saveCheckins(state); }).catch(() => undefined);
+    const state: EditorState = { isNew: false, days: [to.day], start: to.start, end: to.end, acts: [...b.ids], from: { day: fromDay, start: b.first, end: b.first + b.count, ids: [...b.ids] } };
+    void write(state, b.ids, label).catch(() => undefined); // a habit's check-in follows the block: it is worked out from where the habit sits
   };
   /** Delete a block: its half-hours become a gap. Undo brings it back. */
   const remove = (b: Block, d: number) => {
     if (disabled) return;
     const cells = (ids: string[]): Cell[] => Array.from({ length: b.count }, (_, i) => ({ weekday: d, slot_index: b.first + i, activity_ids: ids }));
-    void run(async () => { await restoreCells(variant, cells([])); setUndo({ variant, cells: cells([...b.ids]), label: "deleted" }); })
-      .then(() => { if (habitsAt(variant, d, b.first, b.first + b.count).length) return saveCheckins({ isNew: false, days: [], start: 0, end: 0, acts: [], habitIds: [], from: { day: d, start: b.first, end: b.first + b.count, ids: [] } }); }).catch(() => undefined);
+    void run(async () => { await restoreCells(variant, cells([])); const v = variant, back = cells([...b.ids]); setUndo({ id: pushUndo("Timetable block deleted", () => restoreCells(v, back)), label: "deleted" }); }).catch(() => undefined);
   };
   const columnAt = (x: number, y: number): number | null => {
     const col = (document.elementsFromPoint?.(x, y) ?? []).find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.col !== undefined);
@@ -185,8 +177,12 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
       await commit(s, [id!]);
     } catch (e) { setEditorError(String(e)); }
   }
-  const undoLast = () => { if (!undo) return; const u = undo; setUndo(null); void runQuiet(() => restoreCells(u.variant, u.cells)); };
-  const reset = () => { if (window.confirm(`Reset Week ${variant} to the original plan? Your edits to this week will be replaced.`)) void runQuiet(() => resetVariant(variant)); };
+  const undoLast = () => { if (!undo) return; const u = undo; setUndo(null); void undoEntry(u.id); };
+  const reset = () => {
+    if (!window.confirm(`Reset Week ${variant} to the original plan? Your edits to this week will be replaced.`)) return;
+    const v = variant, snapshot: Cell[] = grid.map((ids, i) => ({ weekday: Math.floor(i / SLOTS_PER_DAY), slot_index: i % SLOTS_PER_DAY, activity_ids: [...ids] })).filter(c => c.activity_ids.length);
+    void runQuiet(async () => { await resetVariant(v); pushUndo(`Reset of Week ${v}`, async () => { await restoreCells(v, Array.from({ length: 7 * SLOTS_PER_DAY }, (_, i) => snapshot.find(c => c.weekday * SLOTS_PER_DAY + c.slot_index === i) ?? { weekday: Math.floor(i / SLOTS_PER_DAY), slot_index: i % SLOTS_PER_DAY, activity_ids: [] })); }); });
+  };
   const flip = () => setViewVar(otherVariant(variant));
   const toggleSwap = () => { setViewVar(null); void runQuiet(() => setSwap(!swap)); };
   const jump = () => {
@@ -206,7 +202,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
     onMenu: e => { if (disabled) return; e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, block: b, day: d, el: e.currentTarget }); },
     onKey: e => blockKey(e, b, d),
   });
-  const checkinNames = (d: number, b: Block) => habitsAt(variant, d, b.first, b.first + b.count).map(id => habits.find(h => h.id === id)?.name).filter((n): n is string => !!n);
+  const checkinNames = (_d: number, b: Block) => b.ids.map(id => activities.find(a => a.id === id)).filter((a): a is Activity => !!a?.habit_id).map(a => a.name);
   const ghost = (g: Drag, px: number) => <div className="tt-ghost" aria-hidden="true" style={{ top: g.start * (px / 2) + 3, height: (g.end - g.start) * (px / 2) - 6 }}><span>{hm(g.start * 30)}–{hm(g.end * 30)}</span></div>;
   return <div className="document tt-screen" aria-label="Life Timetable">
     <header className="tt-head">
@@ -275,7 +271,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
 
     {menu && <BlockMenu at={menu} onClose={() => setMenu(null)} onEdit={() => { const m = menu; setMenu(null); editBlock(m.block, m.day, m.el); }} onDelete={() => { const m = menu; setMenu(null); remove(m.block, m.day); }} />}
     {undo && createPortal(<div className="tt-undo" role="status"><span>Block {undo.label}</span><button type="button" onClick={undoLast}>Undo</button></div>, document.body)}
-    {editor && <BlockEditor initial={editor} variant={variant} activities={activities} habits={habits} serverError={editorError} onSave={s => void commit(s, s.acts)} onClear={s => void clearToFree(s)} onCancel={closeEditor} />}
+    {editor && <BlockEditor initial={editor} variant={variant} activities={activities} serverError={editorError} onSave={s => void commit(s, s.acts)} onClear={s => void clearToFree(s)} onCancel={closeEditor} />}
   </div>;
 }
 

@@ -1,3 +1,4 @@
+import { clearUndo, undoLatest } from "../undo";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LifeTimetable from "./LifeTimetable";
@@ -17,6 +18,7 @@ let swapAb = false;
 let failSave = false;
 let habitRows: any[] = [];
 let checkinRows: any[] = [];
+let extraActs: any[] = [];
 const acts = [
   { id: "w", name: "Work", category: "Work", colour: null, remind: true, sort_order: 0 },
   { id: "m", name: "Meal", category: "Chores", colour: null, remind: true, sort_order: 1 },
@@ -26,7 +28,7 @@ const acts = [
 ];
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
   calls.push([command, args]);
-  if (command === "timetable_get") return { system_page_id: "system-life-timetable", swap_ab: swapAb, activities: acts, slots, edited };
+  if (command === "timetable_get") return { system_page_id: "system-life-timetable", swap_ab: swapAb, activities: [...acts, ...extraActs], slots, edited };
   if (command === "timetable_save_range") { if (failSave) throw "Unknown activity"; return [{ weekday: 0, slot_index: 18, activity_ids: ["w"] }]; }
   if (command === "habits_list_cmd") return [...habitRows];
   if (command === "checkin_list_cmd") return [...checkinRows];
@@ -39,7 +41,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 const monday = (h: number, mi = 0, s = 0) => new Date(2026, 10, 16, h, mi, s); // Monday 16 Nov 2026, ISO week 47 = Week A
 const fill = (variant: string, ids: string[], from: number, to: number, day = 0) => { for (let i = from; i < to; i++) for (const id of ids) slots.push({ variant, weekday: day, slot_index: i, activity_id: id }); };
 beforeEach(() => {
-  calls.length = 0; localStorage.clear(); slots = []; edited = { a: false, b: false }; swapAb = false; failSave = false; habitRows = []; checkinRows = [];
+  calls.length = 0; localStorage.clear(); slots = []; edited = { a: false, b: false }; swapAb = false; failSave = false; habitRows = []; checkinRows = []; extraActs = [];
   for (const v of ["A", "B"]) {
     fill(v, ["b"], 0, 18); fill(v, ["w"], 18, 26); fill(v, ["m"], 26, 27); fill(v, ["m", "q"], 27, 29); fill(v, ["f"], 29, 44); fill(v, ["b"], 44, 48); // Monday
     for (let d = 1; d < 7; d++) fill(v, ["f"], 0, 48, d);
@@ -454,58 +456,37 @@ describe("block editor", () => {
     expect(await screen.findByRole("dialog", { name: "Edit block · Week A" })).toBeTruthy();
     expect(calls.some(c => c[0] === "timetable_save_range")).toBe(false);
   });
-  const habit = (id: string, name: string) => ({ id, name, days: 127, sort_order: 0, created_at: new Date(2026, 0, 1).toISOString() });
-  const setBlocks = () => calls.filter(c => c[0] === "checkins_set_block_cmd").map(c => c[1]);
-  it("the editor offers each habit as a check-in, and saves the chosen ones with the block, for the days chosen", async () => {
-    habitRows = [habit("h1", "Exercise"), habit("h2", "Anki")];
+  // A habit is an activity of the timetable (it has a habit_id): the editor lists it under Habits, and a block holding it shows a bell, because its check-in comes at the block's start.
+  const habitAct = { id: "hx", name: "Exercise", category: "Training", colour: null, remind: false, sort_order: 9, habit_id: "h1" };
+  it("lists habits in their own section first in the editor, in their type's colour, and has no separate check-in switch", async () => {
+    extraActs = [habitAct];
     const { dialog } = await open();
-    expect(within(dialog).getByText(/CHECK-IN · OFF/)).toBeTruthy(); expect(within(dialog).getByText(/Nothing pops up when the block ends/)).toBeTruthy();
-    const exercise = await within(dialog).findByRole("button", { name: "Check in for Exercise" }); expect(exercise.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(exercise); fireEvent.click(within(dialog).getByRole("button", { name: "Check in for Anki" })); expect(within(dialog).getByText(/CHECK-IN · 2 ON/)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "TUE" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(setBlocks()).toEqual([{ variant: "A", from: { day: 0, start: 18, end: 26 }, days: [0, 1], start: 18, end: 26, habitIds: ["h1", "h2"] }]));
+    const legends = [...dialog.querySelectorAll(".tt-group-name")].map(n => n.textContent);
+    expect(legends[0]).toBe("Habits"); expect(legends).toContain("Work");
+    const pill = within(dialog).getByRole("button", { name: "Exercise" }); expect(pill.closest(".tt-group")!.querySelector(".tt-group-name")!.textContent).toBe("Habits");
+    expect(within(dialog).getByText(/gets a check-in pop-up when the block starts/)).toBeTruthy();
+    expect(within(dialog).queryByText(/CHECK-IN/)).toBeNull(); expect(calls.some(c => c[0] === "checkins_set_block_cmd")).toBe(false);
+    fireEvent.click(pill); fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")![1].activityIds).toEqual(["w", "hx"])); // placing the habit on the block is what sets its check-in
   });
-  it("shows the habits already set for the block, and turning one off saves the rest", async () => {
-    habitRows = [habit("h1", "Exercise"), habit("h2", "Anki")]; checkinRows = [{ id: "k1", habit_id: "h1", weekday: 0, start_slot: 18, end_slot: 26, variant: "A" }, { id: "k2", habit_id: "h2", weekday: 0, start_slot: 18, end_slot: 26, variant: "A" }];
+  it("has no Habits section until a habit exists", async () => {
     const { dialog } = await open();
-    const exercise = await within(dialog).findByRole("button", { name: "Check in for Exercise" }); await waitFor(() => expect(exercise.getAttribute("aria-pressed")).toBe("true"));
-    fireEvent.click(exercise); fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(setBlocks()[0]).toMatchObject({ habitIds: ["h2"], days: [0] }));
+    expect([...dialog.querySelectorAll(".tt-group-name")].map(n => n.textContent)).not.toContain("Habits");
   });
-  it("says to add habits first when there are none", async () => {
-    const { dialog } = await open();
-    expect(await within(dialog).findByText(/No habits yet. Add some on the Habits page/)).toBeTruthy();
-  });
-  it("marks a block that has check-ins with a bell and names the habits", async () => {
-    habitRows = [habit("h1", "Exercise"), habit("h2", "Anki")]; checkinRows = [{ id: "k1", habit_id: "h1", weekday: 0, start_slot: 18, end_slot: 26, variant: "A" }, { id: "k2", habit_id: "h2", weekday: 0, start_slot: 18, end_slot: 26, variant: "A" }];
+  it("marks a block that holds a habit with a bell and names the habits", async () => {
+    extraActs = [habitAct]; fill("A", ["hx"], 18, 26); // Exercise joins Work on Monday 09:00-13:00 in week A
     render(<LifeTimetable />);
-    const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
-    expect(await within(b).findByRole("img", { name: "Check-in: Exercise, Anki" })).toBeTruthy(); expect(b.getAttribute("title")).toMatch(/check-in: Exercise, Anki/);
+    const b = await screen.findByRole("button", { name: /Edit .*Exercise.*09:00–13:00/ });
+    expect(await within(b).findByRole("img", { name: "Check-in: Exercise" })).toBeTruthy(); expect(b.getAttribute("title")).toMatch(/check-in: Exercise/);
     expect(within(screen.getByRole("button", { name: "Edit Meal · 13:00–13:30" })).queryByRole("img")).toBeNull();
   });
-  const withCheckin = () => { habitRows = [habit("h1", "Exercise")]; checkinRows = [{ id: "k1", habit_id: "h1", weekday: 0, start_slot: 18, end_slot: 26, variant: "A" }]; };
-  const workBlock = async () => { render(<LifeTimetable />); const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" }); await within(b).findByRole("img", { name: /Check-in/ }); return b; };
-  it("moving a block takes its check-ins with it", async () => {
-    withCheckin(); const b = await workBlock();
-    fireEvent.keyDown(b, { key: "ArrowDown", altKey: true }); // half an hour later
-    await waitFor(() => expect(setBlocks()).toEqual([{ variant: "A", from: { day: 0, start: 18, end: 26 }, days: [0], start: 19, end: 27, habitIds: ["h1"] }]));
-  });
-  it("stretching a block keeps its check-ins on the new shape", async () => {
-    withCheckin(); const b = await workBlock();
-    fireEvent.keyDown(b, { key: "ArrowUp", altKey: true, shiftKey: true }); // its end half an hour earlier
-    await waitFor(() => expect(setBlocks()).toEqual([{ variant: "A", from: { day: 0, start: 18, end: 26 }, days: [0], start: 18, end: 25, habitIds: ["h1"] }]));
-  });
-  it("deleting a block clears its check-ins", async () => {
-    withCheckin(); const b = await workBlock();
-    fireEvent.keyDown(b, { key: "Delete" });
-    await waitFor(() => expect(setBlocks()).toEqual([{ variant: "A", from: { day: 0, start: 18, end: 26 }, days: [], start: 0, end: 0, habitIds: [] }]));
-  });
-  it("a block without check-ins does not touch the check-ins when it is moved", async () => {
-    render(<LifeTimetable />);
-    fireEvent.keyDown(await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" }), { key: "ArrowDown", altKey: true });
+  it("a saved block can be taken back with the shared Undo (Ctrl+Z) as well as the Undo button", async () => {
+    clearUndo();
+    const { dialog } = await open();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.some(c => c[0] === "timetable_save_range")).toBe(true));
-    expect(setBlocks()).toEqual([]);
+    expect(await undoLatest()).toBe("Timetable block saved");
+    await waitFor(() => expect(calls.some(c => c[0] === "timetable_restore_cells")).toBe(true));
   });
   it("keeps the editor open and shows the reason when the save is refused", async () => {
     failSave = true;
