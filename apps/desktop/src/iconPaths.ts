@@ -69,6 +69,7 @@ unlock:"M7 11V8a5 5 0 0 1 9.6-2M5 11h14v10H5V11Zm7 4v2",
 	pin:"M9 4h6l-1 6 3 3H7l3-3-1-6m3 9v8",
 	undo:"M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
 	check:"m5 12 5 5 9-10",
+	calendarCheck:"M3 5h18v16H3V5m0 5h18M8 3v4m8-4v4M9 15l2 2 4-4",
 	info:"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m0 8v5m0-8h.01",
 	download:"M12 3v12m0 0-4-4m4 4 4-4M4 17v4h16v-4",
 	send:"m22 2-11 11M22 2l-7 20-4-9-9-4 20-7z"

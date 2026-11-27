@@ -11,7 +11,8 @@ import type { HomeContext } from "./Home";
 import { Arc, CardHead, Flip, SkyIcon, StateDot } from "./HomeBits";
 import { searchPlaces, type FoundPlace } from "./geocode";
 import { fetchWeather, normalizePlaces, WEATHER_KEY, type Place, type Weather } from "./weather";
-import { activityLevel, dayFraction, isDaytime, pickForDay, pickSunPlace, rangePosition, sunPosition, sunTimes } from "./homeLogic";
+import { activityLevel, dayFraction, isDaytime, pickSunPlace, rangePosition, sunPosition, sunTimes } from "./homeLogic";
+import { readTeachings, type Teaching } from "./teachings";
 import { COUNTDOWNS_KEY, MAX_COUNTDOWNS, clockParts, countdownState, dayKey, groupByDay, localZone, monthGrid, normalizeCountdowns, parseDay, periods, validZone, zoneCity, zoneList, type CalendarEvent, type Countdown, type Unit } from "./timeLogic";
 
 function read(key: string): unknown { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; } }
@@ -358,31 +359,12 @@ export function TasksWidget({ disabled }: { disabled?: boolean }) {
 }
 
 // ---- teaching of the day: from a database called Teachings ----------------------------------------------------------
-type Db = { title: string; properties: { id: string; name: string; type: string; options?: { id: string; name: string }[] }[]; rows: { id: string; title: string; values: Record<string, unknown> }[] };
-type Teaching = { text: string; theme: string; source: string; author: string; apply: string };
-const prop = (db: Db, names: string[], types: string[]) => db.properties.find(p => names.includes(p.name.trim().toLowerCase()) && types.includes(p.type));
-function valueOf(p: Db["properties"][number] | undefined, v: unknown): string {
-  if (!p || v == null) return "";
-  if (typeof v === "string") return (p.options?.find(o => o.id === v)?.name ?? v).slice(0, 300);
-  if (Array.isArray(v)) return v.map(x => (typeof x === "string" ? p.options?.find(o => o.id === x)?.name ?? x : "")).filter(Boolean).join(", ").slice(0, 300);
-  return "";
-}
 export function TeachingWidget({ today }: { today: string }) {
   const [items, setItems] = useState<Teaching[] | null>(null);
   const [at, setAt] = useState(0);
   useEffect(() => {
     let off = false;
-    void (async () => {
-      try {
-        const list = await invoke<{ id: string; title: string }[]>("list_databases");
-        const brief = (Array.isArray(list) ? list : []).find(d => d.title.trim().toLowerCase() === "teachings");
-        const db = brief ? await invoke<Db | null>("get_database", { pageId: brief.id }) : null;
-        if (!db) { if (!off) setItems([]); return; }
-        const body = prop(db, ["teaching", "text", "quote", "note"], ["text"]), theme = prop(db, ["theme"], ["select", "multi_select", "text"]), src = prop(db, ["book", "source"], ["select", "text", "url"]), who = prop(db, ["author"], ["select", "text"]), how = prop(db, ["how to apply", "try today", "apply"], ["text"]);
-        const all = db.rows.map(r => ({ text: (valueOf(body, r.values?.[body?.id ?? ""]) || r.title || "").trim(), theme: valueOf(theme, r.values?.[theme?.id ?? ""]), source: valueOf(src, r.values?.[src?.id ?? ""]), author: valueOf(who, r.values?.[who?.id ?? ""]), apply: valueOf(how, r.values?.[how?.id ?? ""]) })).filter(t => t.text);
-        if (!off) setItems(pickForDay(all, today, 5));
-      } catch { if (!off) setItems([]); }
-    })();
+    void readTeachings(today).then(t => { if (!off) setItems(t); });
     return () => { off = true; };
   }, [today]);
   const cur = items?.[at];

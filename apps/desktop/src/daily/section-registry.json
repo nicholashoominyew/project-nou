@@ -1,0 +1,31 @@
+{
+  "_note": "Single source of truth for the Daily page sections. The UI and every agent read this. Order follows the Notion 'Daily page format' page (updated 29 Oct and 3 Nov 2026). days: 0=Mon ... 6=Sun.",
+  "timezone": "Europe/London",
+  "weekday_themes": [
+    {"day": 0, "theme": "Managing Systems", "covers": "Bot team, prompts, scheduled tasks, Notion systems", "code": "SYSTEMS"},
+    {"day": 1, "theme": "Personal Product Building", "covers": "Nick's own apps and side projects", "code": "PRODUCT"},
+    {"day": 2, "theme": "Industry Research", "covers": "AEC and AI research", "code": "RESEARCH"},
+    {"day": 3, "theme": "Connections", "covers": "Outreach, posts and replies", "code": "CONNECT"},
+    {"day": 4, "theme": "Startup Product Building", "covers": "DraftBot and the AEC-tech startup", "code": "STARTUP"},
+    {"day": 5, "theme": "Vanguard Day", "covers": "Cardfight!! Vanguard: playing, videos and the VG Companion app", "code": "VANGUARD"},
+    {"day": 6, "theme": "Household Management", "covers": "Sunday routine, chores, meals and money admin", "code": "HOUSE"}
+  ],
+  "sections": [
+    {"id": "focus", "title": "Today's focus", "order": "0", "owner": "page creator", "days": [0,1,2,3,4,5,6], "ui": "first line of daily_summary (label only, no tasks, no stamp)"},
+    {"id": "daily_summary", "title": "Daily summary", "order": "1", "owner": "claude", "days": [0,1,2,3,4,5,6], "ui": "card"},
+    {"id": "teaching_of_the_day", "title": "Teaching of the day", "order": "1b", "owner": "claude", "days": [0,1,2,3,4,5,6], "ui": "card", "rule": "five teachings from five different books, each with a citation"},
+    {"id": "sunday_routine", "title": "Sunday routine", "order": "2", "owner": "claude", "days": [6], "ui": "ghost card on other days"},
+    {"id": "todo_list", "title": "To-do list", "order": "3", "owner": "claude", "days": [0,1,2,3,4,5,6], "ui": "card, checkboxes", "rule": "urgent items only; format [Topic] One sentence - link"},
+    {"id": "daily_updates", "title": "Daily updates", "order": "4", "owner": "any agent", "days": [0,1,2,3,4,5,6], "ui": "timeline, newest first"},
+    {"id": "braindump", "title": "Braindump processing", "order": "5", "owner": "claude", "days": [0,1,2,3,4,5,6], "ui": "card with donut"},
+    {"id": "wecs_digest", "title": "WECS digest", "order": "6", "owner": "claude", "days": [0,1,2,3,4], "ui": "tile"},
+    {"id": "newsletter_summary", "title": "Newsletter summary", "order": "7", "owner": "xgrok", "days": [0,1,2,3,4,5,6], "ui": "tile", "trust": "untrusted_content"},
+    {"id": "aec_ai_news", "title": "AEC & AI news", "order": "8", "owner": "xgrok", "days": [0,1,2,3,4], "ui": "tile", "trust": "untrusted_content"},
+    {"id": "grokbot_updates", "title": "GrokBot updates", "order": "9", "owner": "any grokbot", "days": [0,1,2,3,4,5,6], "ui": "HIDDEN in this design (Nick removed it); keep in the registry with show_in_ui=false", "show_in_ui": false},
+    {"id": "xgrok_card_reveals", "title": "XGrok card reveals", "order": "10", "owner": "xgrok", "days": [1,3], "ui": "ghost card on other days", "trust": "untrusted_content"},
+    {"id": "draftbot_findings", "title": "DraftBot weekly findings", "order": "11", "owner": "xgrok", "days": [], "ui": "RETIRED 29 Oct 2026, do not render"},
+    {"id": "meals", "title": "Meals suggestions", "order": "12", "owner": "groza", "days": [6], "ui": "ghost card on other days"},
+    {"id": "journal", "title": "Journal", "owner": "user", "days": [0,1,2,3,4,5,6], "ui": "full-width card under the hero", "agent_read": false, "agent_write": false,
+     "blocks": ["Today's Agenda", "Goals For Today (minimum 3)", "One small win", "Quote(s) of the day", "Learnings Today (EOD)", "Notes"]}
+  ]
+}
