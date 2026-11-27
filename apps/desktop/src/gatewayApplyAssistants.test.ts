@@ -23,8 +23,9 @@ describe("the Home sections list", () => {
 });
 
 describe("a request to change the Life Timetable", () => {
-  it("is checked field by field and turned into half-hour slots", () => {
-    expect(parseTimetableBlock({ weeks: ["B", "A"], days: ["tuesday", "Mon"], start: "09:00", end: "24:00", activities: [" Work ", "Meal"] })).toEqual({ weeks: ["B", "A"], days: [0, 1], start: 18, end: 48, names: ["Work", "Meal"] });
+  it("is checked field by field and turned into 10-minute slots", () => {
+    expect(parseTimetableBlock({ weeks: ["B", "A"], days: ["tuesday", "Mon"], start: "09:00", end: "24:00", activities: [" Work ", "Meal"] })).toEqual({ weeks: ["B", "A"], days: [0, 1], start: 54, end: 144, names: ["Work", "Meal"] });
+    expect(parseTimetableBlock({ ...block, start: "09:10", end: "09:20" })).toMatchObject({ start: 55, end: 56 });
     expect(parseTimetableBlock({ ...block, activities: [] }).names).toEqual([]);
     const bad: Record<string, unknown>[] = [
       { ...block, weeks: [] }, { ...block, weeks: ["C"] }, { ...block, weeks: ["A", "A"] }, { ...block, weeks: "A" }, { ...block, days: [] }, { ...block, days: ["Funday"] }, { ...block, days: ["Mon", "monday"] }, { ...block, days: [1] },
@@ -37,14 +38,14 @@ describe("a request to change the Life Timetable", () => {
     const out = await applyProposal({ op: "timetable_set_block", payload: { weeks: ["A", "B"], days: ["Tue", "Mon"], start: "09:00", end: "10:30", activities: ["work", "MEAL"] } });
     expect(out.ok).toBe(true); expect(out.result).toBe("Set week A and B Mon, Tue 09:00-10:30 to work + MEAL");
     expect(writes()).toEqual([
-      { command: "timetable_save_range", args: { variant: "A", weekdays: [0, 1], start: 18, end: 21, activityIds: ["w", "m"] } },
-      { command: "timetable_save_range", args: { variant: "B", weekdays: [0, 1], start: 18, end: 21, activityIds: ["w", "m"] } },
+      { command: "timetable_save_range", args: { variant: "A", weekdays: [0, 1], start: 54, end: 63, activityIds: ["w", "m"] } },
+      { command: "timetable_save_range", args: { variant: "B", weekdays: [0, 1], start: 54, end: 63, activityIds: ["w", "m"] } },
     ]);
   });
   it("with no activities empties the stretch (so Undo-style cells go through restore), and handles an end of 24:00", async () => {
     const out = await applyProposal({ op: "timetable_set_block", payload: { weeks: ["A"], days: ["Sun", "Sat"], start: "23:00", end: "24:00", activities: [] } });
     expect(out).toEqual({ ok: true, result: "Set week A Sat, Sun 23:00-24:00 to nothing planned" });
-    expect(writes()).toEqual([{ command: "timetable_restore_cells", args: { variant: "A", cells: [5, 6].flatMap(d => [46, 47].map(s => ({ weekday: d, slot_index: s, activity_ids: [] }))) } }]);
+    expect(writes()).toEqual([{ command: "timetable_restore_cells", args: { variant: "A", cells: [5, 6].flatMap(d => [138, 139, 140, 141, 142, 143].map(s => ({ weekday: d, slot_index: s, activity_ids: [] }))) } }]);
   });
   it("is refused, with nothing written, for an unknown activity or a badly shaped request", async () => {
     const unknown = await applyProposal({ op: "timetable_set_block", payload: { ...block, activities: ["Work", "Dancing"] } });

@@ -4,7 +4,7 @@ A permanent page that holds the weekly routine as two alternating weeks (A and B
 
 ## What was built
 
-- **Data** lives in the notes database. `timetable_activities` (name, category, optional colour, `remind`, order) and `timetable_slots` (`variant` A or B, `weekday` 0 = Monday … 6 = Sunday, `slot_index` 0–47 for half hours from 00:00, `activity_id`; the primary key covers all four, so one slot can hold several activities). Migration 011 added the `variant` column by rebuilding the slots table and a small `timetable_settings` table (`swap_ab`).
+- **Data** lives in the notes database. `timetable_activities` (name, category, optional colour, `remind`, order) and `timetable_slots` (`variant` A or B, `weekday` 0 = Monday … 6 = Sunday, `slot_index` 0–143 for 10-minute steps from 00:00 (schema 20 turned each half hour into three), `activity_id`; the primary key covers all four, so one slot can hold several activities). Migration 011 added the `variant` column by rebuilding the slots table and a small `timetable_settings` table (`swap_ab`).
 - **Which week is this week:** ISO week number, odd = A, even = B, flipped by the persisted `swap_ab` setting. Week 47 of 2026 (16–22 Nov) is A. The resolver, the live timer and the reminder read each slot from the week it really belongs to, so on Sunday night the slots after midnight come from the **next** week's variant.
 - **Saturday split.** The combined activity "Dark Sphere / Library deep learning (alternating)" is gone. Week A Saturday 11:30–19:00 is **Dark Sphere** (Leisure), week B is **Deep learning (library)** (Training). The upgrade only rewrites slots that still hold the old activity (edited slots are left alone) and deletes the old activity only when nothing uses it. The seed (`apps/desktop/src-tauri/seed/life_timetable.json`) now contains both weeks, so a fresh install gets A and B directly.
 - **The built-in page** is a row in `pages` with `system_key = 'life_timetable'`, created at startup if missing. It is hidden from the page tree, search, graph and Home lists. Rename, trash, move, delete and "create inside it" are refused in Rust (`timetable::refuse_system`) and by database triggers.
@@ -12,7 +12,7 @@ A permanent page that holds the weekly routine as two alternating weeks (A and B
 
 ## Time accounting
 
-One slot is 30 minutes. A slot with n activities gives each **30/n minutes**; an activity with several categories would split its share equally across them (activities have one category today). A filled day always totals 24 h and a week 168 h (tested for both weeks).
+One slot is 10 minutes. A slot with n activities gives each **10/n minutes**; an activity with several categories would split its share equally across them (activities have one category today). A filled day always totals 24 h and a week 168 h (tested for both weeks).
 
 ## The page (top to bottom)
 
@@ -20,8 +20,10 @@ One slot is 30 minutes. A slot with n activities gives each **30/n minutes**; an
 - **Current event panel:** `NOW · HH:MM`, the time range (with `(+1)` past midnight), category chips, the event name, and a thin ring whose accent arc fills clockwise from 12 o'clock. The countdown in the ring shows **hours** (large, bold, hidden under an hour), **minutes** (same size, regular) and **seconds** (about half size, muted) with h / m / s labels. It is always live: no scrub slider, no LIVE button, no "Next" row. A **Focus** button opens focus mode. The same panel is the Home card (with a link to open the page).
 - **Time distribution:** one donut and a table (Category · Hours · Share) driven by the timetable's Week/Day toggle: the whole week of the variant shown (168 h) or the selected day (24 h). Hovering or focusing a category highlights it in both and shows its hours and share in the centre.
 - **Timetable:** the Week A/B button (an accent dot marks this week's variant), `This week is A · swap`, **Reset to plan** (only when that week differs from the plan; asks first and resets the week shown), **Add block**, the Week | Day toggle and, in Day view, day pills. Week view has a 60 px gutter, banded alternate columns, hour lines with `HH:00` labels, pill blocks coloured by category (Bed time is unfilled, shared slots are neutral with a split stripe along the bottom), a ring on the current block and a now line, both shown only on this week's variant. Below ~920 px the grid scrolls sideways.
-- **Editing:** every block is a button. Click one (or **Add block**) to open the editor: start and end in half-hour steps, days (Mon–Sun), and activities grouped by category with the time split equally. **Save** stays disabled with an inline reason until at least one day and one activity are chosen and the end is after the start. **Clear to free time** writes the Free time activity. Saving writes the range for every chosen day in the **variant being viewed only**, in one SQLite transaction, through `timetable_save_range`, which validates everything and changes nothing if anything is wrong. Esc and the backdrop close the editor, focus stays inside it and returns to the block afterwards. After a save a toast offers **Undo** for ten seconds (`timetable_restore_cells` puts the previous slots back exactly).
+- **Editing:** every block is a button. Click one (or **Add block**) to open the editor: start and end in 10-minute steps, days (Mon–Sun), and activities grouped by category with the time split equally. **Save** stays disabled with an inline reason until at least one day and one activity are chosen and the end is after the start. **Clear to free time** writes the Free time activity. Saving writes the range for every chosen day in the **variant being viewed only**, in one SQLite transaction, through `timetable_save_range`, which validates everything and changes nothing if anything is wrong. Esc and the backdrop close the editor, focus stays inside it and returns to the block afterwards. After a save a toast offers **Undo** for ten seconds (`timetable_restore_cells` puts the previous slots back exactly).
 - **Focus mode:** a full-window overlay with only the event name and a large ring with the same countdown, scaled to the window. Exit with the corner ✕ (aria-label "Exit focus mode") or Esc. The reminder toast stays above it.
+
+**Activities in the block window.** Under the list, type a name, pick its type and press **Add to list** (it is selected for the block). **Remove from list** turns the pills into delete buttons; an activity that is on the timetable asks which activity takes its half-hours (Free time by default). Habits are deleted on the Habits page.
 
 ## Colours
 
@@ -38,6 +40,8 @@ The decision is made in the page (one tested copy of the rules in `schedule.ts`)
 - Limit: reminders work while the app is running (hidden or minimised is fine). A closed app cannot remind.
 
 ## Upgrade warning
+
+Schema 20 (10-minute steps) is one-way: update every device before syncing between them.
 
 Opening an existing database with this version makes a rollback snapshot (`schema-rollback`) and upgrades it to schema 11. **Older builds cannot open a schema 11 database.** A database from the first Life Timetable branch (schema 10) keeps every slot in both weeks. A database that still has the old combined Saturday activity gets the split described above.
 

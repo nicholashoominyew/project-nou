@@ -252,3 +252,20 @@ describe("how many habits make 100%", () => {
     expect(JSON.parse(localStorage.getItem("nou-habit-target")!)).toEqual({ usual: [{ from: day(), n: 5 }], days: { [day()]: 4 } });
   });
 });
+
+describe("ticking an earlier day", () => {
+  it("steps back from the top card, ticks that day, and returns to today", async () => {
+    await page();
+    const today = screen.getByRole("region", { name: "Today" });
+    fireEvent.click(within(today).getByRole("button", { name: "Previous day" }));
+    expect(within(today).getByText("EARLIER DAY")).toBeTruthy();
+    fireEvent.click(within(today).getByRole("button", { name: "Mark done: Exercise" }));
+    await waitFor(() => expect(sent("habit_log_set_cmd")[0].args).toMatchObject({ day: day(-1), habitId: "h1", state: "done", today: day() }));
+    expect(await within(today).findByRole("button", { name: "Mark not done: Exercise" })).toBeTruthy();
+    fireEvent.change(within(today).getByLabelText("Day to edit"), { target: { value: day(-9) } });
+    expect(within(today).getByRole("button", { name: "Mark done: Exercise" })).toBeTruthy();
+    fireEvent.click(within(today).getByRole("button", { name: "Back to today" }));
+    expect(within(today).getByText("TODAY")).toBeTruthy();
+    expect((within(today).getByRole("button", { name: "Next day" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});

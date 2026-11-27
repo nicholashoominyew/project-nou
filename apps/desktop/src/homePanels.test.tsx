@@ -203,14 +203,20 @@ describe("flip tiles", () => {
 });
 
 describe("daily strip", () => {
-  it("shows today's date, the streak from daily pages, and opens today's page", () => {
+  it("counts the days the habit target was met, not daily pages, and opens today's page", async () => {
     const today = dayKey(new Date());
+    const before = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return dayKey(d); };
+    hab.habits = ["a", "b"].map(id => ({ id, name: id, days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health" }));
+    // yesterday and the day before met a target of 1; today is still open; the day before those did not
+    hab.log = [before(1), before(2)].map(day => ({ day, habit_id: "a", state: "done", answered_at: null, source: "manual" }));
+    localStorage.setItem("nou-habit-target", JSON.stringify({ usual: [{ from: "2026-01-01", n: 1 }], days: {} }));
     const open = vi.fn();
     const ctx = { pages: [{ id: "d", title: today, parent_id: null, sort_key: "1", icon: "document" }], open: () => {}, today, openDaily: open, disabled: false, refresh: async () => {} } as any;
     const { container } = render(<DailyWidget ctx={ctx} />);
-    expect(screen.getByLabelText(/Writing streak, last 14 days: 1 day in a row/)).toBeTruthy();
+    expect(await screen.findByLabelText(/Habit streak, last 14 days: 2 days in a row/)).toBeTruthy();
     expect(container.querySelectorAll(".streak-day").length).toBe(14);
-    expect(container.querySelector(".streak-day.today.on")).toBeTruthy();
+    expect(container.querySelectorAll(".streak-day.on").length).toBe(2);
+    expect(container.querySelector(".streak-day.today.on")).toBeNull();
     fireEvent.click(screen.getByText("Open today's page"));
     expect(open).toHaveBeenCalledTimes(1);
   });

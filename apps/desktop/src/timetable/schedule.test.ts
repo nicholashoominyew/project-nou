@@ -12,7 +12,7 @@ const activities: Activity[] = seed.activities.map((a, i) => ({ id: "a:" + a.nam
 const mins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
 function rowsFromSeed(): SlotRow[] {
   const rows: SlotRow[] = [];
-  for (const variant of ["A", "B"] as Variant[]) DAYS.forEach((d, weekday) => (seed.variants[variant]?.[d] ?? seed.days[d]).forEach(([s, e, who]) => { for (let i = mins(s) / 30; i < mins(e) / 30; i++) who.forEach(n => rows.push({ variant, weekday, slot_index: i, activity_id: "a:" + n })); }));
+  for (const variant of ["A", "B"] as Variant[]) DAYS.forEach((d, weekday) => (seed.variants[variant]?.[d] ?? seed.days[d]).forEach(([s, e, who]) => { for (let i = mins(s) / 10; i < mins(e) / 10; i++) who.forEach(n => rows.push({ variant, weekday, slot_index: i, activity_id: "a:" + n })); }));
   return rows;
 }
 const grids = buildGrids(rowsFromSeed());
@@ -38,11 +38,11 @@ describe("which week is this: A or B", () => {
 });
 
 describe("the seed", () => {
-  it("fills all 48 slots of every day in both weeks, and only the Saturday differs", () => {
-    for (const v of ["A", "B"] as Variant[]) for (let d = 0; d < 7; d++) expect(grids[v].slice(d * 48, d * 48 + 48).every(c => c.length > 0)).toBe(true);
+  it("fills all 144 slots of every day in both weeks, and only the Saturday differs", () => {
+    for (const v of ["A", "B"] as Variant[]) for (let d = 0; d < 7; d++) expect(grids[v].slice(d * 144, d * 144 + 144).every(c => c.length > 0)).toBe(true);
     const diff = grids.A.map((c, i) => (c.join() !== grids.B[i].join() ? i : -1)).filter(i => i >= 0);
-    expect(diff.length).toBe(15); expect(diff.every(i => Math.floor(i / 48) === 5 && i % 48 >= 23 && i % 48 < 38)).toBe(true);
-    expect(grids.A[5 * 48 + 23]).toEqual(["a:Dark Sphere"]); expect(grids.B[5 * 48 + 23]).toEqual(["a:Deep learning (library)"]);
+    expect(diff.length).toBe(45); expect(diff.every(i => Math.floor(i / 144) === 5 && i % 144 >= 69 && i % 144 < 114)).toBe(true);
+    expect(grids.A[5 * 144 + 69]).toEqual(["a:Dark Sphere"]); expect(grids.B[5 * 144 + 69]).toEqual(["a:Deep learning (library)"]);
   });
 });
 
@@ -56,7 +56,7 @@ describe("the current event", () => {
   });
   it("keeps slots with several activities together", () => {
     const ev = eventAt(tl(), at("2026-11-16 05:10:00"))!;
-    expect(ev.ids.length).toBe(4); expect(ev.ids).toContain("a:Walk"); expect(ev.slots).toBe(1);
+    expect(ev.ids.length).toBe(4); expect(ev.ids).toContain("a:Walk"); expect(ev.slots).toBe(3);
     expect(nm(eventAt(tl(), at("2026-11-17 05:10:00")))).toContain("Exercise");
   });
   it("two runs that share a name are separate events: Work before and after the meal", () => {
@@ -77,9 +77,9 @@ describe("the current event", () => {
     expect(nm(eventAfter(tl(), ev))).toContain("Shower + Breakfast");
   });
   it("reads each side of the Sunday boundary from its own week's variant", () => {
-    const fill = (id: string): Grid => Array.from({ length: 336 }, () => [id]);
+    const fill = (id: string): Grid => Array.from({ length: 1008 }, () => [id]);
     const a = fill("a:Bed time"), b = fill("a:Bed time");
-    for (let i = 0; i < 10; i++) b[i] = ["a:Night shift"]; // Monday 00:00-05:00 differs only in week B
+    for (let i = 0; i < 30; i++) b[i] = ["a:Night shift"]; // Monday 00:00-05:00 differs only in week B
     const mixed: Timeline = { grids: { A: a, B: b }, swap: false };
     // Sunday 22 Nov 2026 is in week 47 (A); the Monday after is in week 48 (B): the night shift starts at midnight.
     const ev = eventAt(mixed, at("2026-11-22 23:00:00"))!; expect(nm(ev)).toBe("Bed time"); expect(ev.end.getTime()).toBe(at("2026-11-23 00:00:00").getTime());
@@ -108,7 +108,7 @@ describe("clock changes", () => {
     const ev = eventAt(tl(), now)!; expect(hhmm(ev.end)).toBe("09:00");
     expect(ev.end.getTime() - now.getTime()).toBe(7.5 * 3600 * 1000);
   });
-  it("finds the slot from wall-clock time", () => { expect(slotOf(at("2026-10-25 09:00:00"))).toBe(6 * 48 + 18); });
+  it("finds the slot from wall-clock time", () => { expect(slotOf(at("2026-10-25 09:00:00"))).toBe(6 * 144 + 54); });
 });
 
 describe("sleep and resume", () => {
@@ -145,12 +145,12 @@ describe("time distribution: every day is 24 h and every week 168 h", () => {
       const w = distribution(grids[v], activities, null); expect(w.total).toBe(168); expect(sum(w.hours)).toBeCloseTo(168, 9);
     }
   });
-  it("splits a slot equally between its activities (30/n minutes each)", () => {
+  it("splits a slot equally between its activities (10/n minutes each)", () => {
     const a = (id: string, category: Activity["category"]): Activity => ({ id, name: id, category, colour: null, remind: true, sort_order: 0 });
     const acts = [a("x", "Work"), a("y", "Rest"), a("z", "Rest")];
-    const g: Grid = Array.from({ length: 336 }, () => ["x"]); g[0] = ["x", "y", "z"];
+    const g: Grid = Array.from({ length: 1008 }, () => ["x"]); g[0] = ["x", "y", "z"];
     const r = distribution(g, acts, 0);
-    expect(r.hours.Work).toBeCloseTo(23.5 + 10 / 60, 9); expect(r.hours.Rest).toBeCloseTo(20 / 60, 9); expect(sum(r.hours)).toBeCloseTo(24, 9);
+    expect(r.hours.Work).toBeCloseTo((143 * 10 + 10 / 3) / 60, 9); expect(r.hours.Rest).toBeCloseTo(20 / 3 / 60, 9); expect(sum(r.hours)).toBeCloseTo(24, 9);
   });
   it("follows the day or the whole week: Monday has 7.5 h of Work, the week 37.5 h", () => {
     expect(distribution(grids.A, activities, 0).hours.Work).toBeCloseTo(7.5, 9);
@@ -165,7 +165,7 @@ describe("the 5-minute reminder", () => {
   it("fires inside the window with the next event name and times, and not before it", () => {
     expect(reminderFor(tl(), activities, at("2026-11-16 12:54:00"), lead, null)).toBeNull();
     const r = reminderFor(tl(), activities, at("2026-11-16 12:55:00"), lead, null)!;
-    expect(r.text).toBe("In 5 min: Meal · 13:00–13:30"); expect(r.key).toBe("2026-11-16 0:26"); expect(r.names).toBe("Meal"); expect(r.range).toBe("13:00–13:30");
+    expect(r.text).toBe("In 5 min: Meal · 13:00–13:30"); expect(r.key).toBe("2026-11-16 0:78"); expect(r.names).toBe("Meal"); expect(r.range).toBe("13:00–13:30");
   });
   it("fires once per transition: the stored key stops later ticks, a reload and tab switches", () => {
     const first = reminderFor(tl(), activities, at("2026-11-16 12:56:10"), lead, null)!;
@@ -184,8 +184,8 @@ describe("the 5-minute reminder", () => {
   it("uses this week's variant for the next event, also when it crosses from Sunday into the next week", () => {
     expect(reminderFor(tl(), activities, at("2026-11-21 11:25:00"), lead, null)!.text).toContain("Dark Sphere");
     expect(reminderFor(tl(), activities, at("2026-11-28 11:25:00"), lead, null)!.text).toContain("Deep learning (library)");
-    const fill = (id: string): Grid => Array.from({ length: 336 }, () => [id]);
-    const b = fill("a:Bed time"); for (let i = 0; i < 10; i++) b[i] = ["a:Work"];
+    const fill = (id: string): Grid => Array.from({ length: 1008 }, () => [id]);
+    const b = fill("a:Bed time"); for (let i = 0; i < 30; i++) b[i] = ["a:Work"];
     const mixed: Timeline = { grids: { A: fill("a:Bed time"), B: b }, swap: false };
     expect(reminderFor(mixed, activities, at("2026-11-22 23:56:00"), 5, null)!.text).toBe("In 4 min: Work · 00:00–05:00");
     expect(reminderFor(mixed, activities, at("2026-11-29 23:56:00"), 5, null)).toBeNull();
@@ -199,13 +199,13 @@ describe("the 5-minute reminder", () => {
   it("uses the lead time it is given, and follows an edit", () => {
     expect(reminderFor(tl(), activities, at("2026-11-16 12:50:00"), 10, null)!.text).toMatch(/^In 10 min/);
     expect(reminderFor(tl(), activities, at("2026-11-16 12:50:00"), 5, null)).toBeNull();
-    const rows = rowsFromSeed().filter(r => !(r.variant === "A" && r.weekday === 0 && r.slot_index === 26)).concat({ variant: "A", weekday: 0, slot_index: 26, activity_id: "a:Read" });
+    const rows = rowsFromSeed().filter(r => !(r.variant === "A" && r.weekday === 0 && r.slot_index >= 78 && r.slot_index < 81)).concat([78, 79, 80].map(i => ({ variant: "A" as const, weekday: 0, slot_index: i, activity_id: "a:Read" })));
     expect(reminderFor({ grids: buildGrids(rows), swap: false }, activities, at("2026-11-16 12:55:00"), 5, null)!.text).toBe("In 5 min: Read · 13:00–13:30");
   });
 });
 
 describe("blocks", () => {
   it("merges identical consecutive slots within a day", () => {
-    const blocks = dayBlocks(grids.A, 0); expect(blocks[0]).toMatchObject({ first: 0, count: 10 }); expect(blocks.reduce((n, b) => n + b.count, 0)).toBe(48);
+    const blocks = dayBlocks(grids.A, 0); expect(blocks[0]).toMatchObject({ first: 0, count: 30 }); expect(blocks.reduce((n, b) => n + b.count, 0)).toBe(144);
   });
 });

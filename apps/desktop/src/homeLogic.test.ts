@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityLevel, editsPerDay, pickForDay, pickSunPlace, placeDate, rangePosition, staleFraction, sunPosition, sunTimes, writingDays } from "./homeLogic";
+import { activityLevel, editsPerDay, pickForDay, pickSunPlace, placeDate, rangePosition, staleFraction, sunPosition, sunTimes } from "./homeLogic";
 
 describe("sunTimes", () => {
   it("gives London's mid-November daylight to within a few minutes", () => {
@@ -20,22 +20,6 @@ describe("sunTimes", () => {
     expect(sunPosition(new Date("2026-11-18T12:00:00Z"), t)).toEqual({ fraction: 0.5, up: true, leftMinutes: 300 });
     expect(sunPosition(new Date("2026-11-18T20:00:00Z"), t)).toMatchObject({ fraction: 1, up: false, leftMinutes: 0 });
     expect(sunPosition(new Date("2026-11-18T03:00:00Z"), t)).toMatchObject({ fraction: 0, up: false });
-  });
-});
-
-describe("writing streak", () => {
-  const today = new Date(2026, 10, 18, 9, 0);
-  it("marks the last 14 days with a daily page and counts the run ending today", () => {
-    const r = writingDays(["2026-11-18", "2026-11-17", "2026-11-16", "2026-11-14", " 2026-11-10 ", "Plain page", "2026-13-01"], today);
-    expect(r.days.length).toBe(14);
-    expect(r.days[13]).toEqual({ date: "2026-11-18", written: true });
-    expect(r.days[0].date).toBe("2026-11-05");
-    expect(r.days.filter(d => d.written).length).toBe(5);
-    expect(r.streak).toBe(3);
-  });
-  it("keeps yesterday's run alive while today is not written yet, and is zero otherwise", () => {
-    expect(writingDays(["2026-11-17", "2026-11-16"], today).streak).toBe(2);
-    expect(writingDays(["2026-11-10"], today).streak).toBe(0);
   });
 });
 

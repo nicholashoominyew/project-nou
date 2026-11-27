@@ -7,12 +7,13 @@ import { now } from "./clock";
 import Distribution from "./Distribution";
 import NowPanel, { kickerOf } from "./NowPanel";
 import { colours } from "./palette";
-import { dayBlocks, fmtDuration, hm, names, otherVariant, SLOTS_PER_DAY, weekdayOf, type Activity, type Block, type Variant } from "./schedule";
-import { addActivity, resetVariant, restoreCells, saveRange, setSwap, useTick, useTimetable, type Cell } from "./useTimetable";
+import { dayBlocks, fmtDuration, hm, names, otherVariant, SLOT_MINUTES, SLOTS_PER_DAY, SLOTS_PER_HOUR, weekdayOf, type Activity, type Block, type Variant } from "./schedule";
+import { addActivity, resetVariant, restoreCells, saveRange, setSwap, useTick, useTimetable, type Cell, deleteActivity } from "./useTimetable";
 
 const DAY_SHORT = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const WEEK_PX = 48, DAY_PX = 64; // pixels per hour
+const WEEK_PX = 72, DAY_PX = 96; // pixels per hour: tall enough that a 10-minute block can be clicked and named
+const gapOf = (height: number) => (height >= 24 ? 3 : 1); // space around a block, tighter for short ones
 type Status = { state: "saved" | "saving" | "error"; message?: string };
 
 type Zone = "top" | "bottom" | "move";
@@ -27,23 +28,23 @@ interface BlockActions { onEdit: (el: HTMLElement) => void; onPointerDown: (e: R
 function BlockButton({ block, day, today, px, detailed, activities, live, nowMin, dragging, actions, checkins = [] }: { block: Block; day: number; today: number; px: number; detailed: boolean; activities: Activity[]; live: boolean; nowMin: number; dragging: boolean; actions: BlockActions; checkins?: string[] }) {
   const { onEdit } = actions;
   const acts = block.ids.map(id => activities.find(a => a.id === id)).filter((a): a is Activity => !!a);
-  const n = acts.length, sp = px / 2, h = block.count * sp - 6;
+  const n = acts.length, sp = px / SLOTS_PER_HOUR, gap = gapOf(block.count * sp), h = block.count * sp - gap * 2;
   const isBed = n === 1 && acts[0].name.toLowerCase() === "bed time";
   const quiet = isBed || n === 0;
-  const mins = block.count * 30, range = `${hm(block.first * 30)}–${hm((block.first + block.count) * 30)}`;
-  const isCur = live && day === today && nowMin >= block.first * 30 && nowMin < (block.first + block.count) * 30;
+  const mins = block.count * SLOT_MINUTES, range = `${hm(block.first * SLOT_MINUTES)}–${hm((block.first + block.count) * SLOT_MINUTES)}`;
+  const isCur = live && day === today && nowMin >= block.first * SLOT_MINUTES && nowMin < (block.first + block.count) * SLOT_MINUTES;
   const single = n === 1 ? colours(acts[0]) : null;
   const label = n === 0 ? "Empty" : names(block.ids, activities);
   const stripe = n > 1 ? `linear-gradient(to right, ${acts.map((a, i) => `${colours(a).fill} ${(i / n) * 100}% ${((i + 1) / n) * 100}%`).join(", ")})` : "";
   const style: React.CSSProperties = {
-    top: block.first * sp + 3, height: h, borderRadius: Math.floor(Math.min(h, 40) / 2),
+    top: block.first * sp + gap, height: h, borderRadius: Math.floor(Math.min(h, 40) / 2),
     background: quiet ? "transparent" : n > 1 ? "var(--tt-shared)" : single!.fill,
     color: quiet ? "var(--muted)" : n > 1 ? "var(--text)" : single!.ink,
   };
   const title = `Edit ${label} · ${range}${n > 1 ? " · split equally" : ""}`;
   const bell = checkins.length ? ` · check-in: ${checkins.join(", ")}` : "";
   const real = n > 0; // a gap is not a block: it can be filled by clicking it, but not dragged, stretched or deleted
-  return <button type="button" className={"tt-block" + (detailed ? " day" : "") + (isCur ? " current" : "") + (dragging ? " dragging" : "")} data-day={day} data-first={block.first} aria-current={isCur ? "time" : undefined} style={style} title={real ? title + bell + " · drag to move, drag an edge to stretch, right-click for more" : title} aria-label={title}
+  return <button type="button" className={"tt-block" + (detailed ? " day" : "") + (h < 18 ? " short" : "") + (isCur ? " current" : "") + (dragging ? " dragging" : "")} data-day={day} data-first={block.first} aria-current={isCur ? "time" : undefined} style={style} title={real ? title + bell + " · drag to move, drag an edge to stretch, right-click for more" : title} aria-label={title}
     onClick={e => onEdit(e.currentTarget)}
     onPointerDown={real ? actions.onPointerDown : undefined}
     onPointerMove={real ? e => { if (e.buttons === 0) e.currentTarget.style.cursor = zoneOf(e) === "move" ? "grab" : "ns-resize"; } : undefined}
@@ -122,13 +123,13 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   async function commit(s: EditorState, acts: string[]) {
     try { await write(s, acts); closeEditor(); } catch (e) { setEditorError(String(e)); }
   }
-  /** Move or stretch a block to a new day and half-hour range. */
+  /** Move or stretch a block to a new day and time range. */
   const place = (b: Block, fromDay: number, to: { day: number; start: number; end: number }, label: string) => {
     if (disabled || (to.day === fromDay && to.start === b.first && to.end === b.first + b.count)) return;
     const state: EditorState = { isNew: false, days: [to.day], start: to.start, end: to.end, acts: [...b.ids], from: { day: fromDay, start: b.first, end: b.first + b.count, ids: [...b.ids] } };
     void write(state, b.ids, label).catch(() => undefined); // a habit's check-in follows the block: it is worked out from where the habit sits
   };
-  /** Delete a block: its half-hours become a gap. Undo brings it back. */
+  /** Delete a block: its time becomes a gap. Undo brings it back. */
   const remove = (b: Block, d: number) => {
     if (disabled) return;
     const cells = (ids: string[]): Cell[] => Array.from({ length: b.count }, (_, i) => ({ weekday: d, slot_index: b.first + i, activity_ids: ids }));
@@ -141,7 +142,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
   /** Press on a block: a short press is a click (opens the editor); moving the pointer drags it, or stretches it from its top or bottom edge. Esc cancels. */
   function beginDrag(e: React.PointerEvent<HTMLButtonElement>, b: Block, d: number, px: number) {
     if (disabled || e.button !== 0 || e.pointerType === "touch") return;
-    const zone = zoneOf(e), sp = px / 2, x0 = e.clientX, y0 = e.clientY, end0 = b.first + b.count;
+    const zone = zoneOf(e), sp = px / SLOTS_PER_HOUR, x0 = e.clientX, y0 = e.clientY, end0 = b.first + b.count;
     const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
     let cur = { day: d, start: b.first, end: end0 }, active = false, cancelled = false;
     const stop = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", abort); window.removeEventListener("keydown", key, true); };
@@ -150,8 +151,8 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
       active = true; moved.current = true;
       const ds = Math.round((ev.clientY - y0) / sp);
       if (zone === "top") cur = { day: d, start: clamp(b.first + ds, 0, end0 - 1), end: end0 };
-      else if (zone === "bottom") cur = { day: d, start: b.first, end: clamp(end0 + ds, b.first + 1, 48) };
-      else { const st = clamp(b.first + ds, 0, 48 - b.count); cur = { day: columnAt(ev.clientX, ev.clientY) ?? d, start: st, end: st + b.count }; }
+      else if (zone === "bottom") cur = { day: d, start: b.first, end: clamp(end0 + ds, b.first + 1, SLOTS_PER_DAY) };
+      else { const st = clamp(b.first + ds, 0, SLOTS_PER_DAY - b.count); cur = { day: columnAt(ev.clientX, ev.clientY) ?? d, start: st, end: st + b.count }; }
       setDrag({ ...cur, from: b, fromDay: d });
     };
     const finish = () => { stop(); setDrag(null); if (active) setTimeout(() => { moved.current = false; }, 0); };
@@ -160,15 +161,23 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
     const key = (ev: KeyboardEvent) => { if (ev.key === "Escape") { ev.stopPropagation(); abort(); } };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", abort); window.addEventListener("keydown", key, true);
   }
-  /** Keyboard: Delete removes the block, Alt+Up/Down moves it by half an hour, Alt+Shift+Up/Down stretches its end. */
+  /** Keyboard: Delete removes the block, Alt+Up/Down moves it by 10 minutes, Alt+Shift+Up/Down stretches its end. */
   function blockKey(e: React.KeyboardEvent<HTMLButtonElement>, b: Block, d: number) {
     if (disabled) return;
     if (e.key === "Delete") { e.preventDefault(); remove(b, d); return; }
     if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
     e.preventDefault();
     const dir = e.key === "ArrowUp" ? -1 : 1, end = b.first + b.count;
-    if (e.shiftKey) { const ne = Math.max(b.first + 1, Math.min(48, end + dir)); place(b, d, { day: d, start: b.first, end: ne }, "resized"); }
-    else { const st = Math.max(0, Math.min(48 - b.count, b.first + dir)); place(b, d, { day: d, start: st, end: st + b.count }, "moved"); }
+    if (e.shiftKey) { const ne = Math.max(b.first + 1, Math.min(SLOTS_PER_DAY, end + dir)); place(b, d, { day: d, start: b.first, end: ne }, "resized"); }
+    else { const st = Math.max(0, Math.min(SLOTS_PER_DAY - b.count, b.first + dir)); place(b, d, { day: d, start: st, end: st + b.count }, "moved"); }
+  }
+  /** A new activity typed into the block window. Ctrl+Z takes it away again. */
+  async function addFromEditor(name: string, category: string): Promise<Activity> {
+    let made: Activity | undefined;
+    await run(async () => { made = await addActivity(name, category); });
+    let id = made!.id;
+    pushUndo(`New activity “${made!.name}”`, () => deleteActivity(id, null), async () => { id = (await addActivity(name, category)).id; });
+    return made!;
   }
   async function clearToFree(s: EditorState) {
     try {
@@ -203,7 +212,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
     onKey: e => blockKey(e, b, d),
   });
   const checkinNames = (_d: number, b: Block) => b.ids.map(id => activities.find(a => a.id === id)).filter((a): a is Activity => !!a?.habit_id).map(a => a.name);
-  const ghost = (g: Drag, px: number) => <div className="tt-ghost" aria-hidden="true" style={{ top: g.start * (px / 2) + 3, height: (g.end - g.start) * (px / 2) - 6 }}><span>{hm(g.start * 30)}–{hm(g.end * 30)}</span></div>;
+  const ghost = (g: Drag, px: number) => <div className="tt-ghost" aria-hidden="true" style={{ top: g.start * (px / SLOTS_PER_HOUR) + 1, height: (g.end - g.start) * (px / SLOTS_PER_HOUR) - 2 }}><span>{hm(g.start * SLOT_MINUTES)}–{hm(g.end * SLOT_MINUTES)}</span></div>;
   return <div className="document tt-screen" aria-label="Life Timetable">
     <header className="tt-head">
       <div className="tt-head-title">
@@ -236,7 +245,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
         <div className="tt-wrap center">
           {view === "day" && <div role="tablist" aria-label="Day" className="tt-pills">{DAY_SHORT.map((d, i) => <button key={d} type="button" role="tab" aria-selected={i === day} className={"tt-daypill" + (i === day ? " on" : "") + (i === today ? " today" : "")} onClick={() => setSelDay(i)}>{d}</button>)}</div>}
           {edited && <button type="button" className="tt-text-btn" disabled={disabled} onClick={reset}>Reset to plan</button>}
-          <button ref={addButton} type="button" className="tt-btn" disabled={disabled} onClick={e => openEdit({ isNew: true, days: [day], start: 24, end: 26, acts: [] }, e.currentTarget)}>
+          <button ref={addButton} type="button" className="tt-btn" disabled={disabled} onClick={e => openEdit({ isNew: true, days: [day], start: 12 * SLOTS_PER_HOUR, end: 13 * SLOTS_PER_HOUR, acts: [] }, e.currentTarget)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Add block
           </button>
           <div role="group" aria-label="View" className="tt-seg-toggle">
@@ -271,7 +280,7 @@ export default function LifeTimetable({ disabled = false }: { disabled?: boolean
 
     {menu && <BlockMenu at={menu} onClose={() => setMenu(null)} onEdit={() => { const m = menu; setMenu(null); editBlock(m.block, m.day, m.el); }} onDelete={() => { const m = menu; setMenu(null); remove(m.block, m.day); }} />}
     {undo && createPortal(<div className="tt-undo" role="status"><span>Block {undo.label}</span><button type="button" onClick={undoLast}>Undo</button></div>, document.body)}
-    {editor && <BlockEditor initial={editor} variant={variant} activities={activities} serverError={editorError} onSave={s => void commit(s, s.acts)} onClear={s => void clearToFree(s)} onCancel={closeEditor} />}
+    {editor && <BlockEditor initial={editor} variant={variant} activities={activities} usedBy={usedBy} onAddActivity={addFromEditor} onDeleteActivity={(id, to) => run(() => deleteActivity(id, to))} serverError={editorError} onSave={s => void commit(s, s.acts)} onClear={s => void clearToFree(s)} onCancel={closeEditor} />}
   </div>;
 }
 

@@ -4,7 +4,8 @@ import { appendBlocksToNote, type AddedBlock } from "./noteAppend";
 import { DEFAULT_LAYOUT_KEY, HOME_LAYOUT_EVENT, HOME_NEVER_HIDDEN, HOME_WIDGET_IDS, HOME_WIDGET_INFO, normalizeLayout, setWidgetHidden } from "./homeLayout";
 import { addActivity, restoreCells, saveRange } from "./timetable/useTimetable";
 import { announceHabits, habitsApi, todayLocal } from "./habitsApi";
-import { HABIT_TYPES, WEEKDAYS } from "./habitsLogic";
+import { HABIT_TYPES, WEEKDAYS, slotTime } from "./habitsLogic";
+import { SLOT_MINUTES, SLOTS_PER_HOUR } from "./timetable/schedule";
 import { parseBotRequest, runBotRequest } from "./youtube";
 import { allowedHosts, clampHeight, hostAllowed, MAX_HEIGHT, MAX_HTML, MIN_HEIGHT, parseEmbedUrl } from "./embed";
 
@@ -37,12 +38,11 @@ const DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const CATEGORIES = ["Work", "Rest", "Leisure", "Travel", "Chores", "Training", "Health"];
 const list = (v: unknown, what: string, max: number): unknown[] => { if (!Array.isArray(v) || v.length > max) throw new Error(`${what} must be a list of at most ${max}`); return v; };
 const timeToSlot = (v: unknown, what: string, allow24: boolean): number => {
-  const m = typeof v === "string" ? /^(\d\d):(00|30)$/.exec(v) : null;
+  const m = typeof v === "string" ? /^(\d\d):([0-5]0)$/.exec(v) : null;
   const h = m ? Number(m[1]) : -1;
-  if (!m || (h > 23 && !(allow24 && h === 24 && m[2] === "00"))) throw new Error(`${what} must be a time on the hour or half hour, like 09:00`);
-  return h * 2 + (m[2] === "30" ? 1 : 0);
+  if (!m || (h > 23 && !(allow24 && h === 24 && m[2] === "00"))) throw new Error(`${what} must be a time in 10-minute steps, like 09:00 or 09:10`);
+  return h * SLOTS_PER_HOUR + Number(m[2]) / SLOT_MINUTES;
 };
-const slotTime = (slot: number) => `${String(Math.floor(slot / 2)).padStart(2, "0")}:${slot % 2 ? "30" : "00"}`;
 export type TimetableBlock = { weeks: ("A" | "B")[]; days: number[]; start: number; end: number; names: string[] };
 /** Check a "change a stretch of the timetable" request and turn it into slots. Throws a plain message when anything is wrong; nothing is trusted. */
 export function parseTimetableBlock(d: Record<string, unknown>): TimetableBlock {

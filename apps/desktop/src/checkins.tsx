@@ -3,7 +3,7 @@ import { announceHabits, CHECKINS_CHANGED, habitsApi, HABITS_CHANGED, TEST_CHECK
 import { activeCheckins, appliesOn, blockRunning, slotRange, slotTime, type Checkin, type CheckinEvent, type Habit } from "./habitsLogic";
 import { invoke } from "@tauri-apps/api/core";
 import { now } from "./timetable/clock";
-import { buildGrids, clock as hhmm, eventAt, names, SLOTS_PER_DAY } from "./timetable/schedule";
+import { buildGrids, clock as hhmm, eventAt, names, SLOT_MINUTES, SLOTS_PER_DAY } from "./timetable/schedule";
 import { useTimetable, type TimetableData } from "./timetable/useTimetable";
 
 const msg = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^Error: /, "");
@@ -95,7 +95,7 @@ export function useCheckinPopups(): CheckinPopupState {
         if (!habit || !appliesOn(habit, k.day)) continue;
         const ids = nowOn.grid[variant]?.[k.weekday * SLOTS_PER_DAY + k.start_slot] ?? [];
         let ev: CheckinEvent | null = null;
-        try { ev = await habitsApi.show(k.id, k.day, names(ids, nowOn.activities), Math.floor(new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), new Date(nowMs).getDate(), 0, k.end_slot * 30).getTime() / 1000)); } catch { ev = null; } // null: already shown today, or already ticked
+        try { ev = await habitsApi.show(k.id, k.day, names(ids, nowOn.activities), Math.floor(new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), new Date(nowMs).getDate(), 0, k.end_slot * SLOT_MINUTES).getTime() / 1000)); } catch { ev = null; } // null: already shown today, or already ticked
         if (ev) { void notifyCheckin(ev); }
       }
       let closed = 0; try { closed = await habitsApi.sweep(false); } catch { closed = 0; }
@@ -120,8 +120,8 @@ export function useCheckinPopups(): CheckinPopupState {
     window.addEventListener(HABITS_CHANGED, habitsChanged);
     const test = (e: Event) => {
       const d = (e as CustomEvent<{ id: string; name: string }>).detail; if (!d) return;
-      const t = new Date(now().getTime()), slot = Math.floor((t.getHours() * 60 + t.getMinutes()) / 30);
-      const ev: CheckinEvent = { checkin_id: "test-" + d.id, day: todayLocal(), habit_id: d.id, habit: d.name, block: "Test pop-up", start_slot: slot, end_slot: Math.min(48, slot + 1), shown_at: 0, expires_at: 0, state: "shown" };
+      const t = new Date(now().getTime()), slot = Math.floor((t.getHours() * 60 + t.getMinutes()) / SLOT_MINUTES);
+      const ev: CheckinEvent = { checkin_id: "test-" + d.id, day: todayLocal(), habit_id: d.id, habit: d.name, block: "Test pop-up", start_slot: slot, end_slot: Math.min(SLOTS_PER_DAY, slot + 3), shown_at: 0, expires_at: 0, state: "shown" };
       setHidden(old => { const n = new Set(old); n.delete(keyOf(ev)); return n; }); setTests(old => [...old.filter(x => keyOf(x) !== keyOf(ev)), ev]); void notifyCheckin(ev);
     };
     window.addEventListener(TEST_CHECKIN, test);
@@ -135,7 +135,7 @@ export function useCheckinPopups(): CheckinPopupState {
 
   const next = useCallback((ev: CheckinEvent) => {
     const { timeline, activities } = latest.current; const [y, m, d] = ev.day.split("-").map(Number);
-    const after = eventAt(timeline, new Date(y, m - 1, d, 0, ev.end_slot * 30)); // the event that is on at the moment this block ends
+    const after = eventAt(timeline, new Date(y, m - 1, d, 0, ev.end_slot * SLOT_MINUTES)); // the event that is on at the moment this block ends
     return after && after.ids.length ? `${hhmm(after.start)} ${names(after.ids, activities)}`.toUpperCase() : "";
   }, []);
   return { visible: [...tests, ...pending.filter(e => blockRunning(e, clock))].filter(e => !hidden.has(keyOf(e))), errors, answer, hide, next };

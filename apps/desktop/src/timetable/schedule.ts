@@ -1,14 +1,16 @@
 // Pure timing logic for the Life Timetable. Nothing here reads the clock: callers pass `now`, so every rule can be tested with fixed dates.
-// Time is always the device's local wall-clock time. A week is 7 days x 48 half-hour slots, Monday first; slot 0 is 00:00-00:30.
+// Time is always the device's local wall-clock time. A week is 7 days x 144 ten-minute slots, Monday first; slot 0 is 00:00-00:10.
 // There are two alternating weeks, A and B. ISO week number odd = A, even = B, unless the swap setting flips it.
-export const SLOTS_PER_DAY = 48;
+export const SLOT_MINUTES = 10;
+export const SLOTS_PER_HOUR = 60 / SLOT_MINUTES;
+export const SLOTS_PER_DAY = 24 * SLOTS_PER_HOUR;
 export const WEEK_SLOTS = SLOTS_PER_DAY * 7;
 export const CATEGORIES = ["Work", "Training", "Leisure", "Health", "Travel", "Chores", "Rest"] as const;
 export type Category = (typeof CATEGORIES)[number];
 export type Variant = "A" | "B";
 export interface Activity { id: string; name: string; category: Category; colour: string | null; remind: boolean; sort_order: number; /** Set when the activity is a habit (managed on the Habits page); its check-in comes at the start of its blocks. */ habit_id?: string | null }
 export interface SlotRow { variant: Variant; weekday: number; slot_index: number; activity_id: string }
-/** One sorted list of activity ids per slot, indexed weekday * 48 + slot. */
+/** One sorted list of activity ids per slot, indexed weekday * SLOTS_PER_DAY + slot. */
 export type Grid = string[][];
 export type Grids = Record<Variant, Grid>;
 /** What the resolver needs: both weeks, and whether the A/B assignment is swapped. */
@@ -41,8 +43,8 @@ export const otherVariant = (v: Variant): Variant => (v === "A" ? "B" : "A");
 
 /** Monday = 0 ... Sunday = 6, from a local date. */
 export const weekdayOf = (d: Date) => (d.getDay() + 6) % 7;
-/** The slot of the week the local time falls in, 0-335. */
-export function slotOf(d: Date): number { return weekdayOf(d) * SLOTS_PER_DAY + Math.floor((d.getHours() * 60 + d.getMinutes()) / 30); }
+/** The slot of the week the local time falls in, 0-1007. */
+export function slotOf(d: Date): number { return weekdayOf(d) * SLOTS_PER_DAY + Math.floor((d.getHours() * 60 + d.getMinutes()) / SLOT_MINUTES); }
 const signature = (cell: string[]) => cell.join("|");
 /** A local Date `minutes` after local midnight of `base` (wall-clock arithmetic, so a clock change cannot shift it). */
 function atMinutes(base: Date, minutes: number): Date { return new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, minutes, 0, 0); }
@@ -74,8 +76,8 @@ export function eventAt(tl: Timeline, now: Date): ScheduleEvent | null {
   const sig = signature(cell(0));
   let back = 0; while (back < WINDOW && signature(cell(-back - 1)) === sig) back++;
   let fwd = 0; while (back + fwd < WINDOW && signature(cell(fwd + 1)) === sig) fwd++;
-  const anchor = (g0 % SLOTS_PER_DAY) * 30;
-  return { ids: cell(0), start: atMinutes(now, anchor - back * 30), end: atMinutes(now, anchor + (fwd + 1) * 30), slots: back + fwd + 1 };
+  const anchor = (g0 % SLOTS_PER_DAY) * SLOT_MINUTES;
+  return { ids: cell(0), start: atMinutes(now, anchor - back * SLOT_MINUTES), end: atMinutes(now, anchor + (fwd + 1) * SLOT_MINUTES), slots: back + fwd + 1 };
 }
 /** The event that follows `current`, or null when nothing ever changes. */
 export function eventAfter(tl: Timeline, current: ScheduleEvent): ScheduleEvent | null {
@@ -133,7 +135,7 @@ export function reminderFor(tl: Timeline, activities: Activity[], now: Date, lea
   if (ms <= 0 || ms > leadMinutes * 60000) return null;
   const mine = next.ids.map(id => activities.find(a => a.id === id)).filter((a): a is Activity => !!a);
   if (!mine.some(a => a.remind)) return null;
-  const key = `${next.start.getFullYear()}-${pad(next.start.getMonth() + 1)}-${pad(next.start.getDate())} ${weekdayOf(next.start)}:${Math.floor((next.start.getHours() * 60 + next.start.getMinutes()) / 30)}`;
+  const key = `${next.start.getFullYear()}-${pad(next.start.getMonth() + 1)}-${pad(next.start.getDate())} ${weekdayOf(next.start)}:${Math.floor((next.start.getHours() * 60 + next.start.getMinutes()) / SLOT_MINUTES)}`;
   if (key === lastKey) return null;
   const minutes = Math.max(1, Math.ceil(ms / 60000));
   const nm = names(next.ids, activities), range = `${clock(next.start)}–${clock(next.end)}`;
@@ -155,7 +157,7 @@ export function dayBlocks(grid: Grid, weekday: number): Block[] {
 /** The categories an activity counts toward (one today; the split rule below handles several). */
 const categoriesOf = (a: Activity): string[] => [a.category];
 /**
- * Hours per category for one day (`day` 0-6) or the whole week. One slot is 30 minutes; a slot with n activities gives each of them 30/n minutes,
+ * Hours per category for one day (`day` 0-6) or the whole week. One slot is 10 minutes; a slot with n activities gives each of them 10/n minutes,
  * and an activity with several categories splits its share equally across them. Every filled day therefore totals 24 h and a week 168 h.
  */
 export function distribution(grid: Grid, activities: Activity[], day: number | null): { hours: Record<string, number>; total: number } {
@@ -166,8 +168,9 @@ export function distribution(grid: Grid, activities: Activity[], day: number | n
     const cell = grid[s].filter(id => byId.has(id)); if (!cell.length) continue;
     for (const id of cell) {
       const cats = categoriesOf(byId.get(id)!);
-      for (const c of cats) hours[c] += 30 / cell.length / cats.length / 60;
+      for (const c of cats) hours[c] += SLOT_MINUTES / cell.length / cats.length; // minutes while adding up, so whole hours stay whole
     }
   }
+  for (const c of CATEGORIES) hours[c] /= 60;
   return { hours, total: day === null ? 168 : 24 };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NO_TARGETS, targetOn, withDay, withUsual, heatCells, heatLayout, habitRate, rangeStats, weekBlocks, addDays, answerSplit, appliesOn, activeCheckins, blockRunning, indexLog, localDay, maskLabel, maskToggle, monthGrid, parseDay, progressOn, slotRange, streaks, totalsPerHabit, weekdayOfDay, weeklyTrend, type Checkin, type Habit, type LogEntry, type LogState } from "./habitsLogic";
+import { targetStreak, NO_TARGETS, targetOn, withDay, withUsual, heatCells, heatLayout, habitRate, rangeStats, weekBlocks, addDays, answerSplit, appliesOn, activeCheckins, blockRunning, indexLog, localDay, maskLabel, maskToggle, monthGrid, parseDay, progressOn, slotRange, streaks, totalsPerHabit, weekdayOfDay, weeklyTrend, type Checkin, type Habit, type LogEntry, type LogState } from "./habitsLogic";
 
 const habit = (id: string, over: Partial<Habit> = {}): Habit => ({ id, name: id, days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health", ...over });
 const entry = (day: string, habit_id: string, state: LogState = "done"): LogEntry => ({ day, habit_id, state, answered_at: null, source: "manual" });
@@ -9,7 +9,7 @@ describe("days", () => {
   it("are local calendar days, counted without time-zone surprises", () => {
     expect(localDay(new Date(2026, 10, 24, 23, 59))).toBe("2026-11-24"); expect(addDays("2026-11-30", 1)).toBe("2026-12-01"); expect(addDays("2027-01-01", -1)).toBe("2026-12-31"); expect(addDays("2026-02-28", 1)).toBe("2026-03-01");
     expect([weekdayOfDay("2026-11-23"), weekdayOfDay("2026-11-29"), weekdayOfDay("2026-11-28")]).toEqual([0, 6, 5]); expect(parseDay("2026-11-24").getDate()).toBe(24);
-    expect(slotRange(10, 11)).toBe("05:00–05:30"); expect(slotRange(47, 48)).toBe("23:30–24:00");
+    expect(slotRange(30, 33)).toBe("05:00–05:30"); expect(slotRange(141, 144)).toBe("23:30–24:00"); expect(slotRange(54, 55)).toBe("09:00–09:10");
   });
   it("a habit counts from its start day and only on its weekdays", () => {
     const h = habit("a", { days: 0b0011111, created_at: new Date(2026, 10, 10, 12).toISOString() }); // Mon-Fri, from 10 Nov 2026
@@ -74,7 +74,7 @@ describe("the month calendar", () => {
 
 describe("which check-ins are running", () => {
   const at = (h: number, m = 0, s = 0) => new Date(2026, 10, 23, h, m, s).getTime(); // Monday 23 Nov 2026
-  const k = (id: string, over: Partial<Checkin> = {}): Checkin => ({ id, habit_id: "h", weekday: 0, start_slot: 10, end_slot: 11, variant: "A", ...over });
+  const k = (id: string, over: Partial<Checkin> = {}): Checkin => ({ id, habit_id: "h", weekday: 0, start_slot: 30, end_slot: 33, variant: "A", ...over });
   it("is on from the start of the block until just before its end, and both habits of one block are on together", () => {
     const list = [k("workout"), k("anki")];
     expect(activeCheckins(list, at(4, 59, 59), "A")).toEqual([]);
@@ -89,11 +89,11 @@ describe("which check-ins are running", () => {
     expect(activeCheckins([k("a", { variant: "B" })], at(5, 20), "A")).toEqual([]);
   });
   it("a long block stays on across its whole length", () => {
-    const long = [k("l", { start_slot: 10, end_slot: 16 })]; // 05:00-08:00
+    const long = [k("l", { start_slot: 30, end_slot: 48 })]; // 05:00-08:00
     expect(activeCheckins(long, at(7, 59), "A").length).toBe(1); expect(activeCheckins(long, at(8, 0), "A")).toEqual([]);
   });
   it("a shown pop-up is visible only while its block is running, on its own day", () => {
-    const ev = { day: "2026-11-23", start_slot: 10, end_slot: 11 };
+    const ev = { day: "2026-11-23", start_slot: 30, end_slot: 33 };
     expect(blockRunning(ev, at(5, 0))).toBe(true); expect(blockRunning(ev, at(5, 30))).toBe(false); expect(blockRunning(ev, at(4, 59))).toBe(false);
     expect(blockRunning(ev, new Date(2026, 10, 24, 5, 10).getTime())).toBe(false);
   });
@@ -150,5 +150,21 @@ describe("daily targets", () => {
     const stats = rangeStats(habits, log, "2026-03-03", 3, empty);
     expect(stats.completion).toBeCloseTo(14 / 15);
     expect(stats.fullDays).toBe(2);
+  });
+});
+
+describe("the Home streak", () => {
+  const one = (days = 127) => [{ id: "a", name: "a", days, sort_order: 0, created_at: new Date(2026, 2, 1, 12).toISOString(), category: "Health" }];
+  const ticks = (...d: string[]) => indexLog(d.map(day => ({ day, habit_id: "a", state: "done" as const, answered_at: null, source: "manual" })));
+  it("counts back from today, is not broken by an open today, and is repaired by ticking a forgotten day", () => {
+    expect(targetStreak(one(), ticks("2026-03-07", "2026-03-09"), "2026-03-10").streak).toBe(1);
+    expect(targetStreak(one(), ticks("2026-03-07", "2026-03-08", "2026-03-09"), "2026-03-10").streak).toBe(3);
+    expect(targetStreak(one(), ticks("2026-03-08", "2026-03-09", "2026-03-10"), "2026-03-10").streak).toBe(3);
+    expect(targetStreak(one(), ticks(), "2026-03-10").streak).toBe(0);
+    expect(targetStreak([], ticks(), "2026-03-10").streak).toBe(0);
+  });
+  it("skips days on which no habit counts", () => {
+    // weekdays only: Friday 6 and Monday 9 March, with the weekend between
+    expect(targetStreak(one(31), ticks("2026-03-06", "2026-03-09"), "2026-03-09").streak).toBe(2);
   });
 });

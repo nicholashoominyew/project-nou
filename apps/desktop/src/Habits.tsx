@@ -34,6 +34,7 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
   const [extra, setExtra] = useState(0);
   const [month, setMonth] = useState(() => { const d = parseDay(today); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [picked, setPicked] = useState<string | null>(null);
+  const [earlier, setEarlier] = useState<string | null>(null); // an earlier day shown in the top card; null is today
   const [notice, setNotice] = useState("");
   const [name, setName] = useState(""); const [mask, setMask] = useState(127); const [type, setType] = useState<string>("Health");
   const [open, setOpen] = useState<string | null>(null);
@@ -82,10 +83,12 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
   };
 
   // ---- numbers ----
-  const scheduled = list.filter(h => appliesOn(h, today));
-  const doneToday = scheduled.filter(h => log.get(logKey(today, h.id))?.state === "done").length;
-  const needed = progressOn(list, log, today, targets).total;
-  const share = needed ? Math.min(doneToday / needed, 1) : 0;
+  const shownDay = earlier && earlier < today ? earlier : today, isToday = shownDay === today;
+  const showDay = (day: string) => setEarlier(day && day < today ? day : null);
+  const scheduled = list.filter(h => appliesOn(h, shownDay));
+  const doneShown = scheduled.filter(h => log.get(logKey(shownDay, h.id))?.state === "done").length;
+  const needed = progressOn(list, log, shownDay, targets).total;
+  const share = needed ? Math.min(doneShown / needed, 1) : 0;
   const usual = usualOn(targets, today);
   const usingTargets = targets.usual.some(u => u.n > 0) || Object.values(targets.days).some(n => n > 0);
   const choices = (current: number) => Array.from({ length: Math.max(list.length, current) }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>);
@@ -111,23 +114,29 @@ export default function Habits({ disabled, onOpenTimetable }: { disabled?: boole
     {notice && <p className="notice" role="status">{notice}</p>}
 
     <section className="hx-rise hx-card hx-today" style={{ animationDelay: "120ms" }} aria-label="Today">
+      <div className="hx-daynav" role="group" aria-label="Day to tick">
+        <button type="button" className="hx-btn small" aria-label="Previous day" onClick={() => showDay(addDays(shownDay, -1))}>‹</button>
+        <input type="date" aria-label="Day to edit" value={shownDay} max={today} onChange={e => showDay(e.target.value)} />
+        <button type="button" className="hx-btn small" aria-label="Next day" disabled={isToday} onClick={() => showDay(addDays(shownDay, 1))}>›</button>
+        {!isToday && <button type="button" className="hx-link" onClick={() => setEarlier(null)}>Back to today</button>}
+      </div>
       <div className="hx-today-left">
-        <div className="hx-ring"><svg width="96" height="96" viewBox="0 0 96 96" fill="none" role="img" aria-label={`${doneToday} of ${needed} habits done today`}><circle cx="48" cy="48" r="40" stroke="var(--line)" strokeWidth="8" /><circle cx="48" cy="48" r="40" stroke="var(--accent)" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(share * circ).toFixed(1)} ${circ.toFixed(1)}`} transform="rotate(-90 48 48)" className="hx-ring-arc" /></svg>
-          <div className="hx-num hx-ring-num">{doneToday}/{needed}</div></div>
-        <div className="hx-today-text"><span className="hx-mono">TODAY</span><span className="hx-today-date">{dayLabel(today)}</span>
-          {needed > 0 && doneToday >= needed && <span className="hx-mono hx-alldone"><span className="hx-dot hx-ping" />{doneToday === scheduled.length ? "ALL DONE" : "TARGET MET"}</span>}</div>
+        <div className="hx-ring"><svg width="96" height="96" viewBox="0 0 96 96" fill="none" role="img" aria-label={`${doneShown} of ${needed} habits done ${isToday ? "today" : "on " + dayLabel(shownDay)}`}><circle cx="48" cy="48" r="40" stroke="var(--line)" strokeWidth="8" /><circle cx="48" cy="48" r="40" stroke="var(--accent)" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(share * circ).toFixed(1)} ${circ.toFixed(1)}`} transform="rotate(-90 48 48)" className="hx-ring-arc" /></svg>
+          <div className="hx-num hx-ring-num">{doneShown}/{needed}</div></div>
+        <div className="hx-today-text"><span className="hx-mono">{isToday ? "TODAY" : "EARLIER DAY"}</span><span className="hx-today-date">{dayLabel(shownDay)}</span>
+          {needed > 0 && doneShown >= needed && <span className="hx-mono hx-alldone"><span className="hx-dot hx-ping" />{doneShown === scheduled.length ? "ALL DONE" : "TARGET MET"}</span>}</div>
       </div>
       <div className="hx-circles">
         {habits === null && <span className="hint">Loading…</span>}
         {habits !== null && !list.length && <span className="hint">No habits yet. Add one under Your habits.</span>}
-        {habits !== null && list.length > 0 && !scheduled.length && <span className="hint">None of your habits count today.</span>}
-        {scheduled.map(h => { const on = log.get(logKey(today, h.id))?.state === "done";
-          return <button key={h.id} type="button" className="hx-circle-btn" aria-pressed={on} aria-label={(on ? "Mark not done: " : "Mark done: ") + h.name} disabled={disabled} onClick={() => setCell(today, h, on ? null : "done")}>
+        {habits !== null && list.length > 0 && !scheduled.length && <span className="hint">{isToday ? "None of your habits count today." : "No habit counts on this day."}</span>}
+        {scheduled.map(h => { const on = log.get(logKey(shownDay, h.id))?.state === "done";
+          return <button key={h.id} type="button" className="hx-circle-btn" aria-pressed={on} aria-label={(on ? "Mark not done: " : "Mark done: ") + h.name} disabled={disabled} onClick={() => setCell(shownDay, h, on ? null : "done")}>
             <span className={"hx-circle" + (on ? " on" : "")}>{on && <Check size={22} className="hx-pop" />}</span><span className={"hx-circle-name" + (on ? " on" : "")}>{h.name}</span></button>; })}
       </div>
       {list.length > 0 && <div className="hx-target" role="group" aria-label="Habits needed for 100%">
         <span className="hx-mono">NEEDED FOR 100%</span>
-        <label>Today {daySelect(today, "Needed today")}</label>
+        <label>{isToday ? "Today" : "This day"} {daySelect(shownDay, isToday ? "Needed today" : "Needed on " + dayLabel(shownDay))}</label>
         <label>Usually <select aria-label="Usually needed" disabled={disabled} value={String(usual)} onChange={e => setTargets(withUsual(targets, today, Number(e.target.value)), "Usual target")}>
           <option value="0">Every habit</option>{choices(usual)}</select></label>
       </div>}

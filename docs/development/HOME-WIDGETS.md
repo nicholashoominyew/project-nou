@@ -23,7 +23,7 @@ Top to bottom: header (greeting, date and page count, daylight arc, New page, ge
 
 Where the brief's sample content has no real source in NOU, this is what the screen does instead:
 - **Daylight arc:** drawn from the first weather place (sunrise and sunset are calculated on this computer, shown in that place's time zone). With no place set there is no arc.
-- **Writing streak:** a day counts when a top-level page titled with that date (a daily page) exists.
+- **Habit streak:** the Daily page strip counts days on which enough habits were ticked for 100% (see [HABITS.md](HABITS.md)). Today does not break it while still open, days on which no habit counts are skipped, and ticking a forgotten day repairs it. Daily pages no longer count.
 - **Teaching of the day:** reads a database called Teachings (the title column or a Teaching/Text column, a Theme column, a Book/Source column). Five are picked per day. Without that database it explains how to make one.
 - **Today's tasks:** the linked to-dos (open first), with a tick box and an add box. To-dos typed straight into a daily page are not read, and the chips for time and "from an assistant" are not shown because to-dos carry no such data.
 - **Calendar shading:** by how many items a day has (daily page, database dates, countdown deadlines). Days after today are not shaded.

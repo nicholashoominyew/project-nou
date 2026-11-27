@@ -1,4 +1,5 @@
 // Pure rules for the Habits page and the timetable check-in pop-ups. Days are the device's local calendar days written "2026-11-24"; nothing here reads the clock.
+import { SLOT_MINUTES, SLOTS_PER_HOUR } from "./timetable/schedule";
 export type Habit = { id: string; name: string; days: number; sort_order: number; created_at: string; category: string };
 /** The habit types are the timetable's categories, so a habit's blocks take that colour. */
 export const HABIT_TYPES = ["Training", "Health", "Work", "Leisure", "Chores", "Travel", "Rest"] as const;
@@ -15,7 +16,7 @@ export const addDays = (day: string, n: number) => { const [y, m, d] = day.split
 /** Monday is 0 ... Sunday is 6. */
 export const weekdayOfDay = (day: string) => (parseDay(day).getDay() + 6) % 7;
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-export const slotTime = (slot: number) => `${pad(Math.floor(slot / 2))}:${slot % 2 ? "30" : "00"}`;
+export const slotTime = (slot: number) => `${pad(Math.floor(slot / SLOTS_PER_HOUR))}:${pad((slot % SLOTS_PER_HOUR) * SLOT_MINUTES)}`;
 export const slotRange = (start: number, end: number) => `${slotTime(start)}–${slotTime(end)}`;
 export const logKey = (day: string, habit: string) => `${day}|${habit}`;
 export const indexLog = (entries: LogEntry[]): LogMap => new Map(entries.map(e => [logKey(e.day, e.habit_id), e]));
@@ -106,17 +107,35 @@ export function monthGrid(year: number, month: number): { day: string; inMonth: 
  */
 export function activeCheckins(checkins: Checkin[], nowMs: number, variant: "A" | "B"): (Checkin & { day: string })[] {
   const now = new Date(nowMs), day = localDay(now), weekday = weekdayOfDay(day), minute = now.getHours() * 60 + now.getMinutes();
-  return checkins.filter(k => k.variant === variant && k.weekday === weekday && k.start_slot * 30 <= minute && minute < k.end_slot * 30).map(k => ({ ...k, day }));
+  return checkins.filter(k => k.variant === variant && k.weekday === weekday && k.start_slot * SLOT_MINUTES <= minute && minute < k.end_slot * SLOT_MINUTES).map(k => ({ ...k, day }));
 }
 /** Is a shown pop-up's block still running? (It disappears when the block ends, and stays on the Habits page until answered.) */
 export function blockRunning(ev: Pick<CheckinEvent, "day" | "start_slot" | "end_slot">, nowMs: number): boolean {
   const now = new Date(nowMs); if (localDay(now) !== ev.day) return false;
-  const minute = now.getHours() * 60 + now.getMinutes(); return ev.start_slot * 30 <= minute && minute < ev.end_slot * 30;
+  const minute = now.getHours() * 60 + now.getMinutes(); return ev.start_slot * SLOT_MINUTES <= minute && minute < ev.end_slot * SLOT_MINUTES;
 }
 export const WEEK_MASK_ALL = 127;
 export const maskHas = (mask: number, weekday: number) => (mask & (1 << weekday)) !== 0;
 export const maskToggle = (mask: number, weekday: number) => mask ^ (1 << weekday);
 export const maskLabel = (mask: number) => (mask === 127 ? "every day" : mask === 31 ? "weekdays" : mask === 96 ? "weekends" : WEEKDAYS.filter((_, i) => maskHas(mask, i)).join(", "));
+
+/**
+ * The Home streak: days in a row on which enough habits were ticked for 100%, and the last `count` days for its squares. Today does not break it while it is still open;
+ * a day on which no habit counts neither adds nor breaks it.
+ */
+export function targetStreak(habits: Habit[], log: LogMap, today: string, targets: Targets = NO_TARGETS, count = 14): { days: { date: string; met: boolean }[]; streak: number } {
+  const on = (day: string) => { const p = progressOn(habits, log, day, targets); return { counts: p.total > 0, met: p.total > 0 && p.done >= p.total }; };
+  const days = Array.from({ length: count }, (_, i) => { const date = addDays(today, i - count + 1); return { date, met: on(date).met }; });
+  const first = habits.map(startDay).sort()[0] ?? addDays(today, 1);
+  let streak = 0;
+  for (let day = today, guard = 0; day >= first && guard < 4000; day = addDays(day, -1), guard++) {
+    const d = on(day);
+    if (!d.counts) continue;
+    if (d.met) streak++;
+    else if (day !== today) break;
+  }
+  return { days, streak };
+}
 
 // ---- the redesigned Habits page ----
 /** The last `n` days ending at `today`, oldest first. */

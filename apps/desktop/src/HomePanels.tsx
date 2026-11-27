@@ -1,7 +1,7 @@
 import { useReorder, GRIP } from "./Reorder";
 import { pushUndo } from "./undo";
 import { useHabits } from "./useHabits";
-import { progressOn, streaks } from "./habitsLogic";
+import { progressOn, streaks, targetStreak } from "./habitsLogic";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "./Icons";
@@ -11,7 +11,7 @@ import type { HomeContext } from "./Home";
 import { Arc, CardHead, Flip, SkyIcon, StateDot } from "./HomeBits";
 import { searchPlaces, type FoundPlace } from "./geocode";
 import { fetchWeather, normalizePlaces, WEATHER_KEY, type Place, type Weather } from "./weather";
-import { activityLevel, dayFraction, isDaytime, pickForDay, pickSunPlace, rangePosition, sunPosition, sunTimes, writingDays } from "./homeLogic";
+import { activityLevel, dayFraction, isDaytime, pickForDay, pickSunPlace, rangePosition, sunPosition, sunTimes } from "./homeLogic";
 import { COUNTDOWNS_KEY, MAX_COUNTDOWNS, clockParts, countdownState, dayKey, groupByDay, localZone, monthGrid, normalizeCountdowns, parseDay, periods, validZone, zoneCity, zoneList, type CalendarEvent, type Countdown, type Unit } from "./timeLogic";
 
 function read(key: string): unknown { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; } }
@@ -29,10 +29,11 @@ const two = (n: number) => String(n).padStart(2, "0");
 const errText = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^Error: /, "");
 
 // ---- daily page strip -----------------------------------------------------------------------------------------------
-/** A slim strip: today's date, a 14-day writing streak (a day counts when a page titled with that date exists), and a button to open or make today's page. */
+/** A slim strip: today's date, the habit streak (a day counts when enough habits were ticked for 100%) with its last 14 days, and a button to open or make today's page. */
 export function DailyWidget({ ctx }: { ctx: HomeContext }) {
   const now = new Date(ctx.today + "T12:00:00");
-  const { days, streak } = useMemo(() => writingDays(ctx.pages.map(p => p.title), now, 14), [ctx.pages, ctx.today]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { habits, log, targets } = useHabits();
+  const { days, streak } = targetStreak(habits ?? [], log, ctx.today, targets, 14);
   const long = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
   return <>
     <div className="daily-id">
@@ -40,8 +41,8 @@ export function DailyWidget({ ctx }: { ctx: HomeContext }) {
       <div><h2><StateDot />Daily page</h2><span className="daily-date">{long}</span></div>
     </div>
     <div className="daily-streak">
-      <div className="streak" role="img" aria-label={"Writing streak, last 14 days: " + streak + (streak === 1 ? " day" : " days") + " in a row"}>
-        {days.map((d, i) => <span key={d.date} className={"streak-day" + (d.written ? " on" : "") + (i === days.length - 1 ? " today" : "")} style={{ animationDelay: 0.2 + i * 0.03 + "s" }} />)}
+      <div className="streak" role="img" aria-label={"Habit streak, last 14 days: " + streak + (streak === 1 ? " day" : " days") + " in a row"}>
+        {days.map((d, i) => <span key={d.date} className={"streak-day" + (d.met ? " on" : "") + (i === days.length - 1 ? " today" : "")} style={{ animationDelay: 0.2 + i * 0.03 + "s" }} />)}
       </div>
       <span className="mono-note">{streak}-DAY STREAK</span>
     </div>

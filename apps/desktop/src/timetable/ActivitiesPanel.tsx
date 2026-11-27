@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CATEGORIES, type Activity, type Category } from "./schedule";
+import { CATEGORIES, fmtDuration, SLOT_MINUTES, type Activity, type Category } from "./schedule";
 import { pushUndo } from "../undo";
 import { addActivity, deleteActivity, updateActivity } from "./useTimetable";
 
@@ -23,7 +23,7 @@ export default function ActivitiesPanel({ activities, usedBy, disabled, run }: {
         {a.colour && <button type="button" className="tt-text-btn" disabled={disabled} onClick={() => void edit(a, { colour: null })}>Reset colour</button>}
         <label className="tt-check"><input type="checkbox" checked={a.remind} disabled={disabled} onChange={e => void edit(a, { remind: e.target.checked })} /> Remind</label>
         {deleting?.id === a.id
-          ? <span className="tt-del">{usedBy(a.id) > 0 && <label>Move its {usedBy(a.id)} slots to <select aria-label="Reassign slots to" value={deleting.to} onChange={e => setDeleting({ id: a.id, to: e.target.value })}><option value="">Choose…</option>{activities.filter(o => o.id !== a.id).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>}
+          ? <span className="tt-del">{usedBy(a.id) > 0 && <label>Move its {fmtDuration(usedBy(a.id) * SLOT_MINUTES)} to <select aria-label="Reassign slots to" value={deleting.to} onChange={e => setDeleting({ id: a.id, to: e.target.value })}><option value="">Choose…</option>{activities.filter(o => o.id !== a.id).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>}
             <button type="button" className="tt-btn danger" disabled={disabled || (usedBy(a.id) > 0 && !deleting.to)} onClick={() => void run(() => deleteActivity(a.id, deleting.to || null)).then(() => setDeleting(null))}>Delete {a.name}</button>
             <button type="button" className="tt-btn" onClick={() => setDeleting(null)}>Cancel</button></span>
           : a.habit_id ? <span className="hint">Delete it on the Habits page</span>

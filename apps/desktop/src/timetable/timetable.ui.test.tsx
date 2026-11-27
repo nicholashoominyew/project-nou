@@ -29,7 +29,7 @@ const acts = [
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
   calls.push([command, args]);
   if (command === "timetable_get") return { system_page_id: "system-life-timetable", swap_ab: swapAb, activities: [...acts, ...extraActs], slots, edited };
-  if (command === "timetable_save_range") { if (failSave) throw "Unknown activity"; return [{ weekday: 0, slot_index: 18, activity_ids: ["w"] }]; }
+  if (command === "timetable_save_range") { if (failSave) throw "Unknown activity"; return [{ weekday: 0, slot_index: 54, activity_ids: ["w"] }]; }
   if (command === "habits_list_cmd") return [...habitRows];
   if (command === "checkin_list_cmd") return [...checkinRows];
   if (command === "checkins_set_block_cmd") return 1;
@@ -43,8 +43,8 @@ const fill = (variant: string, ids: string[], from: number, to: number, day = 0)
 beforeEach(() => {
   calls.length = 0; localStorage.clear(); slots = []; edited = { a: false, b: false }; swapAb = false; failSave = false; habitRows = []; checkinRows = []; extraActs = [];
   for (const v of ["A", "B"]) {
-    fill(v, ["b"], 0, 18); fill(v, ["w"], 18, 26); fill(v, ["m"], 26, 27); fill(v, ["m", "q"], 27, 29); fill(v, ["f"], 29, 44); fill(v, ["b"], 44, 48); // Monday
-    for (let d = 1; d < 7; d++) fill(v, ["f"], 0, 48, d);
+    fill(v, ["b"], 0, 54); fill(v, ["w"], 54, 78); fill(v, ["m"], 78, 81); fill(v, ["m", "q"], 81, 87); fill(v, ["f"], 87, 132); fill(v, ["b"], 132, 144); // Monday
+    for (let d = 1; d < 7; d++) fill(v, ["f"], 0, 144, d);
   }
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(monday(10, 12));
@@ -74,8 +74,8 @@ describe("current event panel", () => {
     expect(document.querySelector(".tt-now-name")!.textContent).toBe("Meal");
   });
   it("shows the (+1) marker when the event runs past midnight", async () => {
-    slots = slots.filter(s => !(s.weekday === 0 && s.slot_index >= 44) && !(s.weekday === 1 && s.slot_index < 4));
-    fill("A", ["b"], 44, 48); fill("A", ["b"], 0, 4, 1);
+    slots = slots.filter(s => !(s.weekday === 0 && s.slot_index >= 132) && !(s.weekday === 1 && s.slot_index < 12));
+    fill("A", ["b"], 132, 144); fill("A", ["b"], 0, 12, 1);
     vi.setSystemTime(monday(23, 0));
     render(<NowPanel />);
     await screen.findByRole("timer");
@@ -162,7 +162,7 @@ describe("5-minute reminder", () => {
     const toast = await screen.findByRole("status");
     expect(toast.textContent).toMatch(/UP NEXT IN 4:5\d/); expect(toast.textContent).toContain("Meal"); expect(toast.textContent).toContain("13:00–13:30");
     expect(notify).toHaveBeenCalledTimes(1); expect(notify).toHaveBeenCalledWith("In 5 min: Meal · 13:00–13:30");
-    expect(localStorage.getItem(LAST_KEY)).toBe("2026-11-16 0:26");
+    expect(localStorage.getItem(LAST_KEY)).toBe("2026-11-16 0:78");
     await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
     expect(notify).toHaveBeenCalledTimes(1);
     view.unmount();
@@ -280,17 +280,17 @@ describe("block editor", () => {
   it("opens with the block's times, day and activities; Save writes the range for the chosen days in the viewed week only, then Undo restores", async () => {
     const { dialog } = await open();
     const [start, end] = within(dialog).getAllByRole("combobox") as HTMLSelectElement[];
-    expect([start.value, end.value]).toEqual(["18", "26"]);
+    expect([start.value, end.value]).toEqual(["54", "78"]);
     expect(within(dialog).getByRole("button", { name: "MON" }).getAttribute("aria-pressed")).toBe("true");
     expect(within(dialog).getByRole("button", { name: "Work" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(within(dialog).getByRole("button", { name: "TUE" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Meal" }));
     expect(dialog.textContent).toContain("2 SELECTED · TIME SPLIT EQUALLY");
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0, 1], start: 18, end: 26, activityIds: ["w", "m"] }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0, 1], start: 54, end: 78, activityIds: ["w", "m"] }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /Edit block/ })).toBeNull());
     fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1]).toEqual({ variant: "A", cells: [{ weekday: 0, slot_index: 18, activity_ids: ["w"] }] }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1]).toEqual({ variant: "A", cells: [{ weekday: 0, slot_index: 54, activity_ids: ["w"] }] }));
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
   it("shows why Save is disabled: no activity, no day, end not after start; Start pushes End forward", async () => {
@@ -333,34 +333,34 @@ describe("block editor", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Add block" }));
     const dialog = await screen.findByRole("dialog", { name: "Add block · Week A" });
     const [start, end] = within(dialog).getAllByRole("combobox") as HTMLSelectElement[];
-    expect([start.value, end.value]).toEqual(["24", "26"]);
+    expect([start.value, end.value]).toEqual(["72", "78"]);
     expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
     expect(within(dialog).queryByRole("button", { name: "Clear to free time" })).toBeNull();
   });
   it("Clear to free time writes the Free time activity into the block", async () => {
     const { dialog } = await open();
     fireEvent.click(within(dialog).getByRole("button", { name: "Clear to free time" }));
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 18, end: 26, activityIds: ["f"] }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 54, end: 78, activityIds: ["f"] }));
   });
   it("shortening a block empties the slots it no longer covers, and Undo puts them back", async () => {
     const { dialog } = await open();
     const end = within(dialog).getAllByRole("combobox")[1] as HTMLSelectElement;
-    fireEvent.change(end, { target: { value: "24" } }); // 09:00-12:00, so 12:00-13:00 is left behind
+    fireEvent.change(end, { target: { value: "72" } }); // 09:00-12:00, so 12:00-13:00 is left behind
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 18, end: 24, activityIds: ["w"] }));
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1]).toEqual({ variant: "A", cells: [{ weekday: 0, slot_index: 24, activity_ids: [] }, { weekday: 0, slot_index: 25, activity_ids: [] }] }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 54, end: 72, activityIds: ["w"] }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1]).toEqual({ variant: "A", cells: [72, 73, 74, 75, 76, 77].map(i => ({ weekday: 0, slot_index: i, activity_ids: [] })) }));
     calls.length = 0;
     fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
     await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1].cells).toEqual([
-      { weekday: 0, slot_index: 18, activity_ids: ["w"] }, { weekday: 0, slot_index: 24, activity_ids: ["w"] }, { weekday: 0, slot_index: 25, activity_ids: ["w"] },
+      ...[54, 72, 73, 74, 75, 76, 77].map(i => ({ weekday: 0, slot_index: i, activity_ids: ["w"] })),
     ]));
   });
   it("moving a block to another day empties its old place", async () => {
     const { dialog } = await open();
     fireEvent.click(within(dialog).getByRole("button", { name: "MON" })); fireEvent.click(within(dialog).getByRole("button", { name: "TUE" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [1], start: 18, end: 26, activityIds: ["w"] }));
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1].cells).toHaveLength(8));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [1], start: 54, end: 78, activityIds: ["w"] }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_restore_cells")?.[1].cells).toHaveLength(24));
   });
   it("a block saved over the same range writes nothing extra", async () => {
     const { dialog } = await open();
@@ -369,36 +369,36 @@ describe("block editor", () => {
     expect(calls.some(c => c[0] === "timetable_restore_cells")).toBe(false);
   });
   it("a gap opens as a new block over exactly that gap, with nothing to clear", async () => {
-    slots = slots.filter(x => !(x.weekday === 0 && x.slot_index >= 34 && x.slot_index < 38)); // Monday 17:00-19:00 planned for nothing
+    slots = slots.filter(x => !(x.weekday === 0 && x.slot_index >= 102 && x.slot_index < 114)); // Monday 17:00-19:00 planned for nothing
     render(<LifeTimetable />);
     fireEvent.click(await screen.findByRole("button", { name: "Edit Empty · 17:00–19:00" }));
     const dialog = await screen.findByRole("dialog", { name: "Add block · Week A" });
     const [start, end] = within(dialog).getAllByRole("combobox") as HTMLSelectElement[];
-    expect([start.value, end.value]).toEqual(["34", "38"]);
+    expect([start.value, end.value]).toEqual(["102", "114"]);
     expect(within(dialog).queryByRole("button", { name: "Clear to free time" })).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Meal" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 34, end: 38, activityIds: ["m"] }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 102, end: 114, activityIds: ["m"] }));
     expect(calls.some(c => c[0] === "timetable_restore_cells")).toBe(false);
   });
   const restores = () => calls.filter(c => c[0] === "timetable_restore_cells").map(c => c[1]);
-  it("right-click opens a menu; Delete block empties the block's half-hours, and Undo brings it back", async () => {
+  it("right-click opens a menu; Delete block empties the block's time, and Undo brings it back", async () => {
     render(<LifeTimetable />);
     const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
     fireEvent.contextMenu(b, { clientX: 100, clientY: 100 });
     const menu = await screen.findByRole("menu", { name: "Block" });
     expect(within(menu).getByRole("menuitem", { name: "Edit block…" })).toBeTruthy();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete block" }));
-    await waitFor(() => expect(restores()[0]).toEqual({ variant: "A", cells: Array.from({ length: 8 }, (_, i) => ({ weekday: 0, slot_index: 18 + i, activity_ids: [] })) }));
+    await waitFor(() => expect(restores()[0]).toEqual({ variant: "A", cells: Array.from({ length: 24 }, (_, i) => ({ weekday: 0, slot_index: 54 + i, activity_ids: [] })) }));
     expect(screen.queryByRole("menu")).toBeNull();
     expect((await screen.findByRole("status", { name: "" }).catch(() => null)) ?? true).toBeTruthy();
     expect(screen.getByText("Block deleted")).toBeTruthy();
     calls.length = 0;
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    await waitFor(() => expect(restores()[0]).toEqual({ variant: "A", cells: Array.from({ length: 8 }, (_, i) => ({ weekday: 0, slot_index: 18 + i, activity_ids: ["w"] })) }));
+    await waitFor(() => expect(restores()[0]).toEqual({ variant: "A", cells: Array.from({ length: 24 }, (_, i) => ({ weekday: 0, slot_index: 54 + i, activity_ids: ["w"] })) }));
   });
   it("the right-click menu closes with Esc, and Edit block opens the editor; a gap has no menu", async () => {
-    slots = slots.filter(x => !(x.weekday === 0 && x.slot_index >= 34 && x.slot_index < 38));
+    slots = slots.filter(x => !(x.weekday === 0 && x.slot_index >= 102 && x.slot_index < 114));
     render(<LifeTimetable />);
     fireEvent.contextMenu(await screen.findByRole("button", { name: "Edit Empty · 17:00–19:00" }));
     expect(screen.queryByRole("menu")).toBeNull();
@@ -415,28 +415,28 @@ describe("block editor", () => {
     render(<LifeTimetable />);
     const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
     fireEvent.keyDown(b, { key: "Delete" });
-    await waitFor(() => expect(restores()[0].cells).toHaveLength(8));
+    await waitFor(() => expect(restores()[0].cells).toHaveLength(24));
   });
-  it("Alt+Down moves a block by half an hour and Alt+Shift+Up stretches its end back; the freed half-hour becomes a gap", async () => {
+  it("Alt+Down moves a block by 10 minutes and Alt+Shift+Up stretches its end back; the freed 10 minutes become a gap", async () => {
     render(<LifeTimetable />);
     const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
     fireEvent.keyDown(b, { key: "ArrowDown", altKey: true });
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 19, end: 27, activityIds: ["w"] }));
-    await waitFor(() => expect(restores()[0].cells).toEqual([{ weekday: 0, slot_index: 18, activity_ids: [] }]));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 55, end: 79, activityIds: ["w"] }));
+    await waitFor(() => expect(restores()[0].cells).toEqual([{ weekday: 0, slot_index: 54, activity_ids: [] }]));
     calls.length = 0;
     fireEvent.keyDown(await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" }), { key: "ArrowUp", altKey: true, shiftKey: true });
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 18, end: 25, activityIds: ["w"] }));
-    await waitFor(() => expect(restores()[0].cells).toEqual([{ weekday: 0, slot_index: 25, activity_ids: [] }]));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 54, end: 77, activityIds: ["w"] }));
+    await waitFor(() => expect(restores()[0].cells).toEqual([{ weekday: 0, slot_index: 77, activity_ids: [] }]));
   });
-  it("dragging a block moves it by half-hours (and it is not treated as a click); an Esc cancels the drag", async () => {
+  it("dragging a block moves it by 10-minute steps (and it is not treated as a click); an Esc cancels the drag", async () => {
     render(<LifeTimetable />);
     const b = await screen.findByRole("button", { name: "Edit Work · 09:00–13:00" });
     const press = (el: Element) => fireEvent.pointerDown(el, { button: 0, pointerType: "mouse", clientX: 0, clientY: 0 });
     press(b);
-    fireEvent.pointerMove(window, { clientX: 0, clientY: 48 }); // 48px at 24px per half-hour: two half-hours down
+    fireEvent.pointerMove(window, { clientX: 0, clientY: 72 }); // 72px at 12px per 10 minutes: an hour down
     expect(document.querySelector(".tt-ghost")?.textContent).toBe("10:00–14:00");
-    fireEvent.pointerUp(window, { clientX: 0, clientY: 48 });
-    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 20, end: 28, activityIds: ["w"] }));
+    fireEvent.pointerUp(window, { clientX: 0, clientY: 72 });
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_save_range")?.[1]).toEqual({ variant: "A", weekdays: [0], start: 60, end: 84, activityIds: ["w"] }));
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(document.querySelector(".tt-ghost")).toBeNull());
     calls.length = 0;
@@ -474,7 +474,7 @@ describe("block editor", () => {
     expect([...dialog.querySelectorAll(".tt-group-name")].map(n => n.textContent)).not.toContain("Habits");
   });
   it("marks a block that holds a habit with a bell and names the habits", async () => {
-    extraActs = [habitAct]; fill("A", ["hx"], 18, 26); // Exercise joins Work on Monday 09:00-13:00 in week A
+    extraActs = [habitAct]; fill("A", ["hx"], 54, 78); // Exercise joins Work on Monday 09:00-13:00 in week A
     render(<LifeTimetable />);
     const b = await screen.findByRole("button", { name: /Edit .*Exercise.*09:00–13:00/ });
     expect(await within(b).findByRole("img", { name: "Check-in: Exercise" })).toBeTruthy(); expect(b.getAttribute("title")).toMatch(/check-in: Exercise/);
@@ -535,5 +535,31 @@ describe("activities", () => {
     fireEvent.change(screen.getByLabelText("Reassign slots to"), { target: { value: "m" } });
     fireEvent.click(screen.getByRole("button", { name: "Delete Work" }));
     await waitFor(() => expect(calls.find(c => c[0] === "timetable_delete_activity")?.[1]).toEqual({ id: "w", reassignTo: "m" }));
+  });
+});
+
+describe("the block window's activity list", () => {
+  const add = async () => { render(<LifeTimetable />); fireEvent.click(await screen.findByRole("button", { name: "Add block" })); return await screen.findByRole("dialog", { name: "Add block · Week A" }); };
+  it("makes a new activity with a type and selects it", async () => {
+    const dialog = await add();
+    fireEvent.change(within(dialog).getByLabelText("New activity name"), { target: { value: " Piano " } });
+    fireEvent.change(within(dialog).getByLabelText("Type of the new activity"), { target: { value: "Training" } });
+    extraActs = [{ id: "new", name: "Piano", category: "Training", colour: null, remind: true, sort_order: 9 }];
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add to list" }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_add_activity")?.[1]).toEqual({ name: "Piano", category: "Training" }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Piano" }).getAttribute("aria-pressed")).toBe("true"));
+    extraActs = [];
+  });
+  it("deletes an activity from the list, asking where its time goes when it is in use", async () => {
+    const dialog = await add();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove from list" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Quiet from the list" }));
+    expect(calls.some(c => c[0] === "timetable_delete_activity")).toBe(false);
+    fireEvent.click(within(within(dialog).getByRole("group", { name: "Delete Quiet" })).getByRole("button", { name: "Keep" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Work from the list" }));
+    const confirm = within(dialog).getByRole("group", { name: "Delete Work" });
+    expect((within(confirm).getByLabelText("Give its time to") as HTMLSelectElement).value).toBe("f");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete Work" }));
+    await waitFor(() => expect(calls.find(c => c[0] === "timetable_delete_activity")?.[1]).toEqual({ id: "w", reassignTo: "f" }));
   });
 });

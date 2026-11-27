@@ -1,6 +1,6 @@
 //! Habits and timetable check-ins. A habit is something to do each day (Exercise, Anki, Reading...). The log holds at most one entry per habit per day: done, skipped,
 //! or no answer (a check-in pop-up left alone for 2 hours); a day with no entry is just empty, and any entry can be changed or removed by hand. A check-in ties a habit to a
-//! timetable block (weekday, start and end half-hour slot, week A or B): the page shows a pop-up when that block starts. Days are the device's local calendar days, sent by the
+//! timetable block (weekday, start and end 10-minute slot, week A or B): the page shows a pop-up when that block starts. Days are the device's local calendar days, sent by the
 //! page ("2026-11-24"), and times are seconds since 1970 sent by the page too, so the page's simulated clock works for testing. A habit is archived, not deleted, so its history stays.
 use crate::Db;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -151,7 +151,7 @@ pub fn link_all(c: &Connection) -> Result<(), String> {
     for h in habits_list(c)? { ensure_activity(c, &h)?; }
     sync_checkins(c)
 }
-/// Rebuild the check-ins from the timetable: each stretch of consecutive half-hours holding a habit's activity, on one weekday of one week, is one check-in at its start.
+/// Rebuild the check-ins from the timetable: each stretch of consecutive 10-minute slots holding a habit's activity, on one weekday of one week, is one check-in at its start.
 /// Check-ins that did not change keep their id (so today's pop-up history stays attached); the others are removed or added.
 pub fn sync_checkins(c: &Connection) -> Result<(), String> {
     let mut want: std::collections::BTreeSet<(String, String, i64, i64, i64)> = Default::default();

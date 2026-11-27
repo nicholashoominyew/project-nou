@@ -98,3 +98,5 @@
 /* how many habits make 100% */
 .hx-target{flex:1 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;border-top:1px solid var(--line);padding-top:14px;font-size:13px}.hx-target label{display:flex;align-items:center;gap:8px}
 .hx-target select,.hx-dayrow select{min-height:32px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);padding:0 8px;font-family:inherit;font-size:13px}
+/* picking the day the top card ticks */
+.hx-daynav{flex:1 0 100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.hx-daynav input{min-height:32px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);padding:0 8px;font-family:inherit;font-size:13px}

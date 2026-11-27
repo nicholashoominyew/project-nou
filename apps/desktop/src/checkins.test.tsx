@@ -15,7 +15,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: any) => {
   h.calls.push({ command, args });
   if (command === "timetable_get") return { system_page_id: null, swap_ab: false, activities: [{ id: "w", name: h.rename || "Shower + Breakfast", category: "Chores", colour: null, remind: true, sort_order: 0 }, { id: "x", name: "Side projects", category: "Work", colour: null, remind: true, sort_order: 1 }],
-    slots: [{ variant: "B", weekday: 0, slot_index: 10, activity_id: "w" }, { variant: "B", weekday: 0, slot_index: 11, activity_id: "x" }], edited: { a: false, b: false } };
+    slots: [30, 31, 32, 33, 34, 35].map(i => ({ variant: "B", weekday: 0, slot_index: i, activity_id: i < 33 ? "w" : "x" })), edited: { a: false, b: false } };
   if (command === "habits_list_cmd") return [{ id: "h1", name: "Exercise", days: 127, sort_order: 0, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Training" }, { id: "h2", name: "Anki", days: 127, sort_order: 1, created_at: new Date(2026, 0, 1, 12).toISOString(), category: "Health" }];
   if (command === "checkin_list_cmd") return [...h.checkins];
   if (command === "checkin_events_sweep_cmd") return h.swept;
@@ -32,7 +32,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: a
 
 function Harness() { const state = useCheckinPopups(); return <CheckinPopups state={state} />; }
 const at = (hh: number, mm = 0, ss = 0) => new Date(2026, 10, 23, hh, mm, ss); // Monday 23 Nov 2026: ISO week 48, so week B
-const k = (id: string, habit: string, over: Record<string, unknown> = {}) => ({ id, habit_id: habit, weekday: 0, start_slot: 10, end_slot: 11, variant: "B", ...over });
+const k = (id: string, habit: string, over: Record<string, unknown> = {}) => ({ id, habit_id: habit, weekday: 0, start_slot: 30, end_slot: 33, variant: "B", ...over });
 const sent = (command: string) => h.calls.filter(c => c.command === command);
 let clock = 0; const setTime = (d: Date) => { clock = d.getTime(); };
 // Only the clock is faked (Date.now); a window "focus" makes the page look at the clock at once, so the tests do not wait for its 5-second timer.
@@ -117,7 +117,7 @@ describe("check-in pop-ups", () => {
     expect(sent("checkin_events_sweep_cmd")[0].args.now).toBe(Math.floor(at(9, 0, 0).getTime() / 1000));
   });
   it("an open pop-up from before a restart is shown again while its block is running", async () => {
-    h.checkins = []; h.pending = [{ checkin_id: "k1", day: "2026-11-23", habit_id: "h1", habit: "Exercise", block: "x", start_slot: 10, end_slot: 11, shown_at: 1, expires_at: 2, state: "shown" }];
+    h.checkins = []; h.pending = [{ checkin_id: "k1", day: "2026-11-23", habit_id: "h1", habit: "Exercise", block: "x", start_slot: 30, end_slot: 33, shown_at: 1, expires_at: 2, state: "shown" }];
     await mount(at(5, 10, 0)); expect(await screen.findByRole("alertdialog", { name: "Check-in: Exercise" })).toBeTruthy();
   });
   it("a failed record does not stop the others, and is tried again at the next look", async () => {

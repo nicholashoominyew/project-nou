@@ -586,6 +586,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .tt-act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tt-act input:not([type=checkbox]):not([type=color]){min-width:200px;font-family:var(--font-body)}
 .tt-del{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* adding and removing activities inside the block window */
+.tt-newact,.tt-confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.tt-newact{border-top:1px solid var(--line);padding-top:12px}
+.tt-newact input,.tt-newact select,.tt-confirm select{min-height:36px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);padding:0 10px;font:500 13px var(--font-body)}.tt-newact input{flex:1 1 160px;min-width:0}
+.tt-confirm{font-size:13px}.tt-pill-remove{border-style:dashed;color:var(--danger)}.tt-pill-remove:disabled{color:var(--muted);cursor:default;opacity:.6}
 .tt-add{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .tt-check{display:flex;align-items:center;gap:8px;font-size:14px;min-height:28px}
 .tt-reminder-settings,.embed-settings{margin-top:10px;max-width:760px}
@@ -825,6 +829,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 
 /* Life timetable: dragging, stretching and the right-click menu */
 .tt-block{user-select:none;-webkit-user-select:none}
+/* a block of 10 or 15 minutes: one small line, no extras */
+.document.tt-screen .tt-block.short,.tt-block.short{padding:0 4px;gap:0;border-radius:3px}.tt-block.short .tt-block-name,.tt-block.day.short .tt-block-name{font-size:9px;line-height:1;white-space:nowrap}.tt-block.short .tt-block-bell,.tt-block.short .tt-block-stripe{display:none}
 .tt-block.dragging{opacity:.35}
 .tt-ghost{position:absolute;left:8px;right:8px;z-index:5;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:2px dashed var(--accent);border-radius:14px;background:var(--accent-soft,rgba(255,255,144,.14));pointer-events:none}
 .tt-ghost span{font:600 11px var(--font-mono);color:var(--text);background:var(--bg);border-radius:6px;padding:2px 6px}

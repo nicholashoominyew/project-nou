@@ -54,16 +54,6 @@ export function sunPosition(now: Date, t: { rise: Date; set: Date }): { fraction
   return { fraction: Math.min(1, Math.max(0, f)), up: f >= 0 && f <= 1, leftMinutes: Math.max(0, Math.round((t.set.getTime() - now.getTime()) / 60000)) };
 }
 
-/** The last `count` days (today last) and whether a daily page exists for each, plus the run of days ending today (or yesterday, if today is not written yet). */
-export function writingDays(titles: string[], today: Date, count = 14): { days: { date: string; written: boolean }[]; streak: number } {
-  const have = new Set(titles.map(t => t.trim()).filter(t => parseDay(t)));
-  const days = Array.from({ length: count }, (_, i) => { const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (count - 1 - i)); return { date: dayKey(d), written: have.has(dayKey(d)) }; });
-  let streak = 0, i = days.length - 1;
-  if (!days[i].written) i--;
-  while (i >= 0 && days[i].written) { streak++; i--; }
-  return { days, streak };
-}
-
 /** 0 to 3: how busy a day is, for the calendar shading. */
 export const activityLevel = (items: number) => (items <= 0 ? 0 : items === 1 ? 1 : items === 2 ? 2 : 3);
 
